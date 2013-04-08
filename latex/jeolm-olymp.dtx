@@ -1,0 +1,304 @@
+% \iffalse meta-comment
+%
+% jeolm-olymp.dtx
+%
+% Copyright 2013 July Tikhonov <july.tikh@gmail.com>.
+%
+% This work may be distributed and/or modified under the
+% conditions of the LaTeX Project Public License, either version 1.3
+% of this license or (at your option) any later version.
+% The latest version of this license is in
+%   http://www.latex-project.org/lppl.txt
+% and version 1.3 or later is part of all distributions of LaTeX
+% version 2005/12/01 or later.
+%
+% This work has the LPPL maintenance status `author-maintained'.
+%
+% \fi
+%
+% \iffalse
+%
+%<*driver>
+\ProvidesFile{jeolm-olymp.dtx}
+%</driver>
+%
+%<package>\NeedsTeXFormat{LaTeX2e}[2009/09/24]
+%<package>\ProvidesPackage{jeolm-olymp}
+%<*package>
+    [2013/03/20 v0.3 Jeolm LaTeX routines (olympiad macros)]
+%</package>
+%
+%<*batchfile>
+\begingroup
+
+\input docstrip.tex
+
+\keepsilent
+\askforoverwritefalse
+
+\preamble
+
+This is a generated file.
+
+Copyright 2012 July Tikhonov <july.tikh@gmail.com>.
+
+This work may be distributed and/or modified under the
+conditions of the LaTeX Project Public License, either version 1.3
+of this license or (at your option) any later version.
+The latest version of this license is in
+  http://www.latex-project.org/lppl.txt
+and version 1.3 or later is part of all distributions of LaTeX
+version 2005/12/01 or later.
+
+This work has the LPPL maintenance status `author-maintained'.
+
+\endpreamble
+
+\generate{
+    \file{jeolm-olymp.sty}{\from{jeolm-olymp.dtx}{package}}
+}
+
+\endgroup
+%</batchfile>
+%
+%<*driver>
+\documentclass{ltxdoc}
+
+\usepackage[utf8]{inputenc}
+\usepackage[english,russian]{babel}
+\usepackage[braces]{colordoc}
+\def\textnew#1{{\color{color-def}#1}}
+
+\usepackage[nogeometry]{jeolm}
+\usepackage{jeolm-olymp}
+
+\EnableCrossrefs
+\CodelineIndex
+
+\begin{document}
+\DocInput{jeolm-olymp.dtx}
+\end{document}
+%</driver>
+%
+% \fi
+%
+% \CheckSum{0}
+%
+% \CharacterTable
+%  {Upper-case    \A\B\C\D\E\F\G\H\I\J\K\L\M\N\O\P\Q\R\S\T\U\V\W\X\Y\Z
+%   Lower-case    \a\b\c\d\e\f\g\h\i\j\k\l\m\n\o\p\q\r\s\t\u\v\w\x\y\z
+%   Digits        \0\1\2\3\4\5\6\7\8\9
+%   Exclamation   \!     Double quote  \"     Hash (number) \#
+%   Dollar        \$     Percent       \%     Ampersand     \&
+%   Acute accent  \'     Left paren    \(     Right paren   \)
+%   Asterisk      \*     Plus          \+     Comma         \,
+%   Minus         \-     Point         \.     Solidus       \/
+%   Colon         \:     Semicolon     \;     Less than     \<
+%   Equals        \=     Greater than  \>     Question mark \?
+%   Commercial at \@     Left bracket  \[     Backslash     \\
+%   Right bracket \]     Circumflex    \^     Underscore    \_
+%   Grave accent  \`     Left brace    \{     Vertical bar  \|
+%   Right brace   \}     Tilde         \~}
+%
+%
+% \GetFileInfo{jeolm-olymp.dtx}
+%
+% \title{The \textsf{jeolm-olymp} package%
+%    \thanks{This document corresponds to
+%        \textsf{jeolm-olymp}~\fileversion, dated \filedate.}}
+%
+% \author{July Tikhonov \\ \texttt{july.tikh@gmail.com}}
+%
+% \maketitle
+%
+% \DoNotIndex{\def,\edef,\newcommand,\newenvironment}
+%
+% \section{Introduction}
+%
+% \section{Usage}
+%
+% \subsection{Postwords}
+%
+% |\jeolmpostwordwritten{240 минут}{7}|
+% \jeolmpostwordwritten{240 минут}{7}
+% |\jeolmpostwordwrittenEN{240 minutes}{7}|
+% \jeolmpostwordwrittenEN{240 minutes}{7}
+% |\jeolmpostwordoral{240 минут}{3}|
+% \jeolmpostwordoral{240 минут}{3}
+% |\jeolmpostwordoralEN{240 minutes}{3}|
+% \jeolmpostwordoralEN{240 minutes}{3}
+%
+% \subsection{Unified olympiad references}
+%
+% |\olympref{Some olympiad}|
+%
+% \olympref{Some olympiad}
+%
+% |\olymprefx{Some olympiad}{2000}|
+%
+% \olymprefx{Some olympiad}{2000}
+%
+% |\mmoref{2001}|
+%
+% \mmoref{2001}
+%
+% |\mmorefx{2002}{11}|
+%
+% \mmorefx{2002}{11}
+%
+% |\mmorefxx{2003}{11}{4}|
+%
+% \mmorefxx{2003}{11}{4}
+%
+% |\armoref{2004}|
+%
+% \armoref{2004}
+%
+% |\armorefx{2005}{10}|
+%
+% \armorefx{2005}{10}
+%
+% |\armorefxx{2005}{10}{2}|
+%
+% \armorefxx{2005}{10}{2}
+%
+% \StopEventually{\PrintIndex}
+%
+% \section{Implementation}
+%
+%    \begin{macrocode}
+%<*package>
+%    \end{macrocode}
+%
+%    \begin{macrocode}
+\RequirePackage{jeolm}
+%    \end{macrocode}
+%
+% \subsection{Postwords}
+%
+% \begin{macro}{\jeolmpostword}
+%    \begin{macrocode}
+\newcommand\jeolmpostword[1]{%
+\vspace{1ex}%
+\begin{center}\small\sffamily #1 \end{center}}
+%    \end{macrocode}
+% \end{macro}
+%
+% \begin{macro}{\jeolmpostwordwritten}
+% \begin{macro}{\jeolmpostwordwrittenEN}
+% Fisrt argument is the olympiad duration.
+% Second argument is a maximal mark for a problem.
+%    \begin{macrocode}
+\newcommand\jeolmpostwordwritten[2]{\jeolmpostword{%
+    Продолжительность олимпиады: #1.\\
+    Баллов за полное решение каждой задачи: #2.}}
+\newcommand\jeolmpostwordwrittenEN[2]{\jeolmpostword{%
+    Olympiad duration: #1.\\
+    Mark for~a~complete solution of~each~problem: #2.}}
+%    \end{macrocode}
+% \end{macro}
+% \end{macro}
+%
+% \begin{macro}{\jeolmpostwordoral}
+% \begin{macro}{\jeolmpostwordoralEN}
+% Fisrt argument is the olympiad duration.
+% Second argument is a maximal number of tries for a problem.
+%    \begin{macrocode}
+\newcommand\jeolmpostwordoral[2]{\jeolmpostword{%
+    Продолжительность олимпиады: #1.\\
+    Полное решение каждой задачи стоит 1~балл.
+    Неполное стоит 0~баллов.\\
+    Попыток на~каждую задачу: #2.}}
+\newcommand\jeolmpostwordoralEN[2]{\jeolmpostword{%
+    Olympiad duration: #1.\\
+    Complete solution of~each~problem counts~for~mark~1.
+    Incomplete solution counts~for~0.\\
+    Tries per each problem: #2.}}
+%    \end{macrocode}
+% \end{macro}
+% \end{macro}
+%
+% \subsection{Unified olympiad references}
+%
+% \begin{macro}{\olympref}
+%    \begin{macrocode}
+\newcommand\olympref[1]{\textit{(#1)}}
+%    \end{macrocode}
+% \end{macro}
+%
+% \begin{macro}{\olymprefx}
+%    \begin{macrocode}
+\newcommand\olymprefx[2]{\olympref{#1-#2}}
+%    \end{macrocode}
+% \end{macro}
+%
+% \subsubsection{Moscow Mathematical Olympiad}
+%
+% \begin{macro}{\mmoref}
+% Год задачи.
+%    \begin{macrocode}
+\newcommand\mmoref[1]{\olymprefx{ММО}{#1}}
+%    \end{macrocode}
+% \end{macro}
+%
+% \begin{macro}{\mmorefx}
+% Год и класс задачи.
+%    \begin{macrocode}
+\newcommand\mmorefx[2]{\olymprefx{ММО}{#1, #2}}
+%    \end{macrocode}
+% \end{macro}
+%
+% \begin{macro}{\mmorefxx}
+% Год, класс и номер задачи.
+%    \begin{macrocode}
+\newcommand\mmorefxx[3]{\olymprefx{ММО}{#1, #2.#3}}
+%    \end{macrocode}
+% \end{macro}
+%
+% \subsubsection{All-Russian Mathematical Olympiad}
+%
+% \begin{macro}{\armoref}
+% Год задачи.
+%    \begin{macrocode}
+\newcommand\armoref[1]{\olymprefx{РФ}{#1}}
+%    \end{macrocode}
+% \end{macro}
+%
+% \begin{macro}{\armorefx}
+% Год и класс задачи.
+%    \begin{macrocode}
+\newcommand\armorefx[2]{\olymprefx{РФ}{#1, #2}}
+%    \end{macrocode}
+% \end{macro}
+%
+% \begin{macro}{\armorefxx}
+% Год, класс и номер задачи.
+%    \begin{macrocode}
+\newcommand\armorefxx[3]{\olymprefx{РФ}{#1, #2.#3}}
+%    \end{macrocode}
+% \end{macro}
+%
+% \subsubsection{International Mathematical Olympiad}
+%
+% \begin{macro}{\imoref}
+% Год задачи.
+%    \begin{macrocode}
+\newcommand\imoref[1]{\olymprefx{IMO}{#1}}
+%    \end{macrocode}
+% \end{macro}
+%
+% \begin{macro}{\imorefx}
+% Год и номер задачи.
+%    \begin{macrocode}
+\newcommand\imorefx[2]{\olymprefx{IMO}{#1, #2}}
+%    \end{macrocode}
+% \end{macro}
+%
+%    \begin{macrocode}
+%</package>
+%    \end{macrocode}
+%
+% \Finale
+%
+\endinput
+

@@ -1,0 +1,491 @@
+% \iffalse meta-comment
+%
+% jeolm.dtx
+%
+% Copyright 2013 July Tikhonov <july.tikh@gmail.com>.
+%
+% This work may be distributed and/or modified under the
+% conditions of the LaTeX Project Public License, either version 1.3
+% of this license or (at your option) any later version.
+% The latest version of this license is in
+%   http://www.latex-project.org/lppl.txt
+% and version 1.3 or later is part of all distributions of LaTeX
+% version 2005/12/01 or later.
+%
+% This work has the LPPL maintenance status `author-maintained'.
+%
+% \fi
+%
+% \iffalse
+%
+%<*driver>
+\ProvidesFile{jeolm.dtx}
+%</driver>
+%
+%<package>\NeedsTeXFormat{LaTeX2e}[2009/09/24]
+%<package>\ProvidesPackage{jeolm}
+%<*package>
+    [2013/03/18 v0.2 Jeolm LaTeX routines]
+%</package>
+%
+%<*batchfile>
+\begingroup
+
+\input docstrip.tex
+
+\keepsilent
+\askforoverwritefalse
+
+\preamble
+
+This is a generated file.
+
+Copyright 2013 July Tikhonov <july.tikh@gmail.com>.
+
+This work may be distributed and/or modified under the
+conditions of the LaTeX Project Public License, either version 1.3
+of this license or (at your option) any later version.
+The latest version of this license is in
+  http://www.latex-project.org/lppl.txt
+and version 1.3 or later is part of all distributions of LaTeX
+version 2005/12/01 or later.
+
+This work has the LPPL maintenance status `author-maintained'.
+
+\endpreamble
+
+\generate{
+    \file{jeolm.sty}{\from{jeolm.dtx}{package}}
+}
+
+\endgroup
+%</batchfile>
+%
+%<*driver>
+\documentclass{ltxdoc}
+
+\usepackage[utf8]{inputenc}
+\usepackage[english,russian]{babel}
+\usepackage[braces]{colordoc}
+\def\textnew#1{{\color{color-def}#1}}
+
+\usepackage[nogeometry]{jeolm}
+
+\usepackage{ltxdoc-local}
+
+\EnableCrossrefs
+\CodelineIndex
+
+\begin{document}
+\DocInput{jeolm.dtx}
+\end{document}
+%</driver>
+%
+% \fi
+%
+% \CheckSum{0}
+%
+% \CharacterTable
+%  {Upper-case    \A\B\C\D\E\F\G\H\I\J\K\L\M\N\O\P\Q\R\S\T\U\V\W\X\Y\Z
+%   Lower-case    \a\b\c\d\e\f\g\h\i\j\k\l\m\n\o\p\q\r\s\t\u\v\w\x\y\z
+%   Digits        \0\1\2\3\4\5\6\7\8\9
+%   Exclamation   \!     Double quote  \"     Hash (number) \#
+%   Dollar        \$     Percent       \%     Ampersand     \&
+%   Acute accent  \'     Left paren    \(     Right paren   \)
+%   Asterisk      \*     Plus          \+     Comma         \,
+%   Minus         \-     Point         \.     Solidus       \/
+%   Colon         \:     Semicolon     \;     Less than     \<
+%   Equals        \=     Greater than  \>     Question mark \?
+%   Commercial at \@     Left bracket  \[     Backslash     \\
+%   Right bracket \]     Circumflex    \^     Underscore    \_
+%   Grave accent  \`     Left brace    \{     Vertical bar  \|
+%   Right brace   \}     Tilde         \~}
+%
+%
+% \GetFileInfo{jeolm.dtx}
+%
+% \title{The \textsf{jeolm} package%
+%    \thanks{This document corresponds to
+%        \textsf{jeolm}~\fileversion, dated \filedate.}}
+%
+% \author{July Tikhonov \\ \texttt{july.tikh@gmail.com}}
+%
+% \maketitle
+%
+% \DoNotIndex{\def,\edef}
+% \DoNotIndex{\fi,\par,\z@}
+% \DoNotIndex{\DeclareOption,\ProcessOptions,\RequirePackage}
+%
+% \section{Introduction}
+%
+% This \textsf{jeolm} package provides the set of supplementary routines for
+% a course-like project consisting of many small pieces, that are distributed
+% to course listeners over time.
+%
+% \section{Usage}
+%
+% \subsection{Package options}
+%
+% \subsubsection{Geometry options}
+%
+% Option |geometry| (default) enables loading of \textsf{geometry} package,
+% setting \emph{all} margins to |2em|, and setting |\pagestyle{empty}|;
+% option |nogeometry| disables this behavior.
+%
+% \subsection{Figures}
+%
+% \DescribeMacro{\jeolmfiguremap}
+% \DescribeMacro{\jeolmfigure}
+% Macro |\jeolmfiguremap|\marg{alias}\marg{realname} will set a map from its
+% first argument to the second.
+% Macro
+% |\jeolmfigure|\oarg{graphics options}\marg{alias} will use this map to
+% determine actual figure name and delegate to
+% |\includegraphics|\oarg{graphics options}\marg{realname}.
+%
+% \subsection{Headers}
+%
+% \DescribeMacro{\jeolmheaderset}
+% \DescribeMacro{\jeolmheader}
+% Macro |\jeolmheader| is the standard header, placed on the top of each
+% course-piece, containing information both about course and institution.
+% This macro is intended to be used programmatically.
+% It is left undefined, and is intended to be defined by the call to
+% |\jeolmheaderset|.
+%
+% Macro |\jeolmheaderset|\marg{institution}\marg{course} will define
+% |\jeolmheader| to be |\jeolmheadertemplate|\marg{institution}\marg{course}.
+% This macro is intended to be used in \textsf{local.sty} file.
+%
+% \subsection{Problem numbering}
+%
+% \DescribeMacro{\problem}
+% The basic macro for problem numbering is
+% |\problem|.
+% It will step the counter and format it just like this:
+% \quad
+% \problem For |\problem|.
+%
+% \DescribeMacro{\problemx}
+% Marking a problem (e.\,g. as hard) should be dome with the
+% |\problemx|\marg{mark} macro, just like this:
+% \\
+% \problemx{*} For |\problemx{*}|.
+% \quad
+% or this:
+% \quad
+% \problemx{$^\circ$} For |\problemx{$^\circ$}|.
+%
+% \DescribeMacro{\resetproblem}
+% Macro |\resetproblem| will restart problem numeration, and
+% |\setproblem|\marg{value} will make next problem number be
+% $\text{\meta{value}}+1$.
+%
+% \DescribeMacro{\problemy}
+% Sometimes auto-numbering is not needed.
+% Macro |\problemy|\marg{problem number} will use supplied argument instead of
+% a counter.
+% Argument does not need to be a number, for example:
+% \\
+% \problemy{2.3} For |\problemy{2.3}|.
+% \qquad
+% \problemyx{2.3}{*} For |\problemyx{2.3}{*}|.
+% \\
+% Macro |\problemyx|\marg{problem number}\marg{mark} combines features of
+% |\problemy| and |\problemx|.
+%
+% \DescribeMacro{\sbp}
+% \DescribeMacro{\sbpx}
+% To indicate sub-problems, macro
+% |\subproblem| is used, with
+% |\subproblemx|\marg{mark} counterpart:
+% \\
+% \problem
+% \subproblem for |\subproblem|;
+% \quad
+% \subproblemx{*} for |\subproblem{*}|.
+% \\
+% Macros |\sbp| and |\sbpx| are corresponding |\let| aliases for |\subproblem|
+% and |\subproblemx|.
+%
+% \DescribeEnv{problems}
+% The |problems| environment utilises |list|, inserting problem numbers in list
+% labels.
+% So, the |\item|'s inside |problems| combine |\problem| numbering and
+% formatting with usual list environments formatting behavior.
+% Macros |\itemx|, |\itemy| and |\itemyx| are also provided.
+% Nothing prevents one from using normal |\problem| command inside |problems|
+% environment~--- it will not make use of list formatting.
+% \begin{problems}
+% \item
+% For |\item|.
+% \item\label{some problem}%
+% For another |\item|.
+% \item
+% Mentioning previous problem: \ref{some problem}.
+% \itemx{*}
+% For |\itemx{*}|.
+% \itemy{21}
+% For |\itemy{21}|.
+% \qquad
+% \problem
+% For |\problem|.
+% \itemy{2.1}
+% For |\itemy{2.1}|, mentioning next problem:
+% \ref{another problem}.
+% \itemyx{2.2}{*}\label{another problem}%
+% For |\itemyx{2.2}{*}|.
+% \end{problems}
+%
+% \subsection{Statements}
+%
+% Problems are not the only structural elements of course.
+% Others include |\definition|, |\theorem|, |\lemma|, and some more.
+%
+% \StopEventually{\newpage\PrintIndex}
+%
+% \section{Implementation}
+%
+%    \begin{macrocode}
+%<*package>
+%    \end{macrocode}
+%
+%    \begin{macrocode}
+\RequirePackage{math-common}
+%    \end{macrocode}
+%
+% \subsection{Package options}
+%
+%    \begin{macrocode}
+\newif\if@jeolm@option@geometry
+\@jeolm@option@geometrytrue
+\DeclareOption{geometry}{\@jeolm@option@geometrytrue}
+\DeclareOption{nogeometry}{\@jeolm@option@geometryfalse}
+%    \end{macrocode}
+%
+%    \begin{macrocode}
+\ProcessOptions
+%    \end{macrocode}
+%
+% \subsubsection{Geometry options}
+%
+%    \begin{macrocode}
+\if@jeolm@option@geometry
+\RequirePackage{geometry}
+\geometry{margin=2em,lmargin=2em,rmargin=2em}
+\pagestyle{empty}
+\RequirePackage{parskip}
+\setlength{\parindent}{0ex}
+\fi
+%    \end{macrocode}
+%
+% \subsection{Figures}
+%
+% \begin{macro}{\jeolmfiguremap}
+% \begin{macro}{\jeolmfigure}
+%    \begin{macrocode}
+\newcommand\jeolmfiguremap[2]{%
+\expandafter\def\csname jeolmfiguremap@#1\endcsname{#2}}
+\newcommand\jeolmfigure[2][]{%
+\includegraphics[#1]{\csname jeolmfiguremap@#2\endcsname}}
+%    \end{macrocode}
+% \end{macro}
+% \end{macro}
+%
+% \subsection{Headers}
+%
+% \begin{macro}{\jeolmheadertemplate}
+% \begin{macro}{\jeolmheaderset}
+% \begin{macro}{\jeolmheader}
+%    \begin{macrocode}
+\newcommand\jeolmheadertemplate[2]{%
+\vspace{1.5em}%
+{\small\sffamily
+\centerline{\bfseries #1}\centerline{#2}%
+\vspace{0.5ex}\hrule\par\vspace{0.5ex}}%
+\vspace{-1em}}
+\newcommand\jeolmheaderset[2]{%
+\newcommand\jeolmheader{\jeolmheadertemplate{#1}{#2}}}
+%    \end{macrocode}
+% \end{macro}
+% \end{macro}
+% \end{macro}
+%
+% \subsection{Problem numbering}
+%
+% \subsubsection{Public definitions}
+%
+% \begin{macro}{\problem}
+% \begin{macro}{\problemx}
+% \begin{macro}{\problemy}
+% \begin{macro}{\problemyx}
+%    \begin{macrocode}
+\newcommand\problem{\problemx{}}
+\newcommand\problemx[1]{\problem@x{#1}\problem@space\ignorespaces}
+\newcommand\problemy[1]{\problemyx{#1}{}}
+\newcommand\problemyx[2]{\problem@yx{#1}{#2}\problem@space\ignorespaces}
+%    \end{macrocode}
+% \end{macro}
+% \end{macro}
+% \end{macro}
+% \end{macro}
+%
+% \begin{macro}{\subproblem}
+% \begin{macro}{\subproblemx}
+% \begin{macro}{\sbp}
+% \begin{macro}{\sbpx}
+%    \begin{macrocode}
+\newcommand\subproblem{\subproblemx{}}
+\newcommand\subproblemx[1]{\subproblem@x{#1}\subproblem@space\ignorespaces}
+\let\sbp\subproblem
+\let\sbpx\subproblemx
+%    \end{macrocode}
+% \end{macro}
+% \end{macro}
+% \end{macro}
+% \end{macro}
+%
+% \subsubsection{Numbering}
+%
+% \begin{macro}{\setproblem}
+% \begin{macro}{\resetproblem}
+%    \begin{macrocode}
+\newcounter{jeolmproblem}
+\newcommand\setproblem[1]{\setcounter{jeolmproblem}{#1}}
+\newcommand\resetproblem{\setcounter{jeolmproblem}{0}}
+%    \end{macrocode}
+% \end{macro}
+% \end{macro}
+%
+%    \begin{macrocode}
+\newcounter{jeolmsubproblem}
+%    \end{macrocode}
+%
+%    \begin{macrocode}
+\newcommand\problem@x[1]{%
+\stepcounter{jeolmproblem}\problem@yx{\arabic{jeolmproblem}}{#1}}
+\newcommand\problem@yx[2]{\problem@label{#1}\problem@format{#1}{#2}}
+\newcommand\problem@in@item{\problem@yx{\arabic{jeolmproblem}}{}}
+\newcommand\problemx@in@item[1]{\problem@yx{\arabic{jeolmproblem}}{#1}}
+%    \end{macrocode}
+%
+%    \begin{macrocode}
+\newcommand\subproblem@x[1]{%
+\stepcounter{jeolmsubproblem}\subproblem@yx{\alph{jeolmsubproblem}}{#1}}
+\newcommand\subproblem@yx[2]{\subproblem@label{#1}\subproblem@format{#1}{#2}}
+%    \end{macrocode}
+%
+% \subsubsection{Labeling}
+%
+%    \begin{macrocode}
+\newcommand\problem@label[1]{%
+\global\edef\theproblem{#1}%
+\edef\@currentlabel{\theproblem}%
+\setcounter{jeolmsubproblem}{0}}
+%    \end{macrocode}
+%
+%    \begin{macrocode}
+\newcommand\subproblem@label[1]{%
+\global\edef\thesubproblem{{\theproblem}#1}%
+\edef\@currentlabel{\thesubproblem}}
+%    \end{macrocode}
+%
+% \subsubsection{Formatting}
+%
+% \begin{environment}{problems}
+%    \begin{macrocode}
+\newenvironment{problems}{%
+\if@nobreak\vspace{-1.5ex}\fi
+\let\itemx\problem@itemx
+\let\itemy\problem@itemy
+\let\itemyx\problem@itemyx
+\begin{list}{\problem@in@item@current}{%
+\leftmargin=5ex\labelsep=\problem@space@length%
+\@nmbrlisttrue\def\@listctr{jeolmproblem}}%
+}{\end{list}}
+%    \end{macrocode}
+% \end{environment}
+%
+%    \begin{macrocode}
+\newlength\problem@space@length
+\problem@space@length=1.5ex
+\newcommand\problem@space{\hspace{\problem@space@length}}
+\newcommand\problem@format[2]{\textbf{#1.\rlap{\!#2}}}
+\newcommand\subproblem@space{\hspace{1ex}}
+\newcommand\subproblem@format[2]{\textbf{(#1#2)}}
+%    \end{macrocode}
+%
+%    \begin{macrocode}
+\let\problem@in@item@current\problem@in@item
+\newcommand\problem@itemx[1]{%
+\def\problem@in@item@current{\problemx@in@item{#1}}%
+\item%
+\let\problem@in@item@current\problem@in@item}
+\newcommand\problem@itemy[1]{%
+\item[\problem@format{#1}{}]\problem@label{#1}}
+\newcommand\problem@itemyx[2]{%
+\item[\problem@format{#1}{#2}]\problem@label{#1}}
+%    \end{macrocode}
+%
+% \subsection{Statements}
+%
+% \begin{macro}{\basestatement}
+%    \begin{macrocode}
+\newcommand\claim[2]{\claim@label{#2}\claim@format{#1}}
+\newcommand\aclaim[1]{\claim@format{#1}}
+\newcommand\claim@label[1]{\edef\@currentlabel{#1}}
+\newcommand\claim@format[1]{\textbf{#1.\ }\ignorespaces}
+%    \end{macrocode}
+% \end{macro}
+%
+% \begin{macro}{\theorem}
+% \begin{macro}{\theoremof}
+% \begin{macro}{\theoremofenum}
+%    \begin{macrocode}
+\newcommand\theorem{\aclaim{Теорема}{}}
+\newcommand\theoremof[1]{\claim{Теорема #1}{#1}}
+\newcounter{theorem}
+\newcommand\theoremnum{\stepcounter{theorem}\theoremof{\thetheorem}}
+%    \end{macrocode}
+% \end{macro}
+% \end{macro}
+% \end{macro}
+%
+% \begin{macro}{\definition}
+% \begin{macro}{\lemma}
+% \begin{macro}{\statement}
+% \begin{macro}{\proposition}
+% \begin{macro}{\corollary}
+%    \begin{macrocode}
+\newcommand\definition{\aclaim{Определение}}
+\newcommand\lemma{\aclaim{Лемма}}
+\newcommand\statement{\aclaim{Утверждение}}
+\newcommand\proposition{\aclaim{Предложение}}
+\newcommand\corollary{\aclaim{Следствие}}
+%    \end{macrocode}
+% \end{macro}
+% \end{macro}
+% \end{macro}
+% \end{macro}
+% \end{macro}
+%
+% \begin{macro}{\observation}
+% \begin{macro}{\example}
+% \begin{macro}{\solution}
+%    \begin{macrocode}
+\newcommand\observation{\aclaim{Замечание}}
+\newcommand\example{\aclaim{Пример}}
+\newcommand\solution{\aclaim{Решение}}
+%    \end{macrocode}
+% \end{macro}
+% \end{macro}
+% \end{macro}
+%
+%    \begin{macrocode}
+%</package>
+%    \end{macrocode}
+%
+% \Finale
+%
+\endinput
+
