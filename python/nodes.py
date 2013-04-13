@@ -7,6 +7,8 @@ from itertools import chain
 
 from pathlib import Path, PurePath
 
+from jeolm.utils import pure_relative
+
 logger = logging.getLogger(__name__)
 rule_logger = logging.getLogger(__name__ + '.rule')
 
@@ -110,7 +112,8 @@ class Node:
         if not isinstance(cwd, Path) or not cwd.is_absolute():
             raise ValueError("cwd must be an absolute Path")
         rule_repr = '[{node.name}] <cwd={cwd!s}> {command}'.format(
-            node=self, cwd=cwd, command=' '.join(callargs) )
+            node=self, cwd=pure_relative(Path.cwd(), cwd),
+            command=' '.join(callargs) )
         @self.add_rule
         def subprocess_rule():
             self.print_rule(rule_repr)
@@ -283,7 +286,7 @@ class LinkNode(PathNode):
         if not relative:
             self.source_path = source.path
         else:
-            self.source_path = self.relative_path(
+            self.source_path = pure_relative(
                 self.path.parent(), source.path )
 
         @self.add_rule
@@ -327,19 +330,6 @@ class LinkNode(PathNode):
             os.path.lexists(path) and
             os.path.islink(path) and
             str(self.source_path) == os.readlink(path) )
-
-    @classmethod
-    def relative_path(cls, fromdir, absolute):
-        """This asserts unexistance of directory symlinks."""
-        if not absolute.is_absolute(): raise ValueError(absolute)
-        if not fromdir.is_absolute(): raise ValueError(fromdir)
-        upstairs = 0
-        absolute_parents = set(absolute.parents())
-        while fromdir not in absolute_parents:
-            fromdir = fromdir.parts[:-1]
-            upstairs += 1
-        return PurePath(*
-            ['..'] * upstairs + [absolute.relative_to(fromdir)] )
 
 class DirectoryNode(PathNode):
     def __init__(self, path, *args, parents=False, **kwargs):

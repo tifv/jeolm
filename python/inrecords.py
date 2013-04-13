@@ -7,7 +7,7 @@ import logging
 from pathlib import Path, PurePath
 
 from jeolm import yaml
-from jeolm.utils import purejoin
+from jeolm.utils import pure_join
 
 logger = logging.getLogger(__name__)
 
@@ -277,7 +277,7 @@ class InrecordReviewer:
         parent = inname.parent()
         if figures:
             inrecord['figures'] = OrderedDict(
-                (figure, purejoin(parent, figure))
+                (figure, pure_join(parent, figure))
                 for figure in figures )
 
     nofigures_pattern = re.compile(
@@ -321,7 +321,7 @@ class InrecordReviewer:
 
         parent = inname.parent()
         used = OrderedDict(
-            (used_name, purejoin(parent, new_used[used_name]))
+            (used_name, pure_join(parent, new_used[used_name]))
             for used_name in used_names )
         if used:
             inrecord['used'] = used

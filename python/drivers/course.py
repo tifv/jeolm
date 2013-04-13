@@ -5,7 +5,7 @@ from string import Template
 
 from pathlib import PurePosixPath as PurePath
 
-from jeolm.utils import purejoin
+from jeolm.utils import pure_join
 
 import logging
 logger = logging.getLogger(__name__)
@@ -173,7 +173,7 @@ class Driver(metaclass=Substitutioner):
             raise TypeError(delegator)
         for d in delegator:
             yield from self.trace_delegators(
-                purejoin(resolved_path, d),
+                pure_join(resolved_path, d),
                 seen_targets=seen_targets )
 
     def list_protorecord_methods(self):
@@ -252,7 +252,7 @@ class Driver(metaclass=Substitutioner):
                     raise TypeError(target, item)
 
                 yield self.substitute_jeolmheader()
-                subpath = self.outrecords.resolve(purejoin(target, item))
+                subpath = self.outrecords.resolve(pure_join(target, item))
                 inpath, inrecord = \
                     self.inrecords.get_item(subpath, with_ext='.tex')
                 if inrecord is None:
@@ -284,7 +284,7 @@ class Driver(metaclass=Substitutioner):
                 raise TypeError(target, item)
 
             subpath, subrecord = self.outrecords.get_item(
-                purejoin(target, item) )
+                pure_join(target, item) )
             subprotorecord = self.produce_fluid_protorecord(
                 subpath, subrecord,
                 inpath_set=inpath_set, date_set=date_set )
@@ -409,7 +409,7 @@ class Driver(metaclass=Substitutioner):
                 return path, record
             if len(record) > 1:
                 raise ValueError(record)
-            alias_path = purejoin(path, record['$alias'])
+            alias_path = pure_join(path, record['$alias'])
             assert not alias_path.is_absolute(), alias_path
             if alias_path in seen_aliases:
                 raise ValueError(alias_path)

@@ -1,7 +1,7 @@
 from pathlib import PurePosixPath as PurePath
 
 from .course import Driver as CourseDriver, RecordNotFoundError
-from jeolm.utils import purejoin
+from jeolm.utils import pure_join
 
 
 import logging
@@ -30,7 +30,7 @@ class Driver(CourseDriver):
             else:
                 for league in contest['leagues']:
                     yield from self.trace_delegators(
-                        purejoin(mimicroot, league, mimicpath),
+                        pure_join(mimicroot, league, mimicpath),
                         seen_targets=seen_targets )
         elif '$contest$league' in record:
             yield target
@@ -41,7 +41,7 @@ class Driver(CourseDriver):
             else:
                 for league in regatta['leagues']:
                     yield from self.trace_delegators(
-                        purejoin(mimicroot, league, mimicpath),
+                        pure_join(mimicroot, league, mimicpath),
                         seen_targets=seen_targets )
         elif '$regatta$league' in record:
             league = record['$regatta$league']
@@ -50,7 +50,7 @@ class Driver(CourseDriver):
             else:
                 for subjectkey in league['subjects']:
                     yield from self.trace_delegators(
-                        purejoin(mimicroot, subjectkey, 'jury'),
+                        pure_join(mimicroot, subjectkey, 'jury'),
                         seen_targets=seen_targets )
         else:
             raise AssertionError(record)
@@ -172,7 +172,7 @@ class Driver(CourseDriver):
         yield self.constitute_section(contest['name'], select=subtarget)
         for leaguekey in contest['leagues']:
             leagueroot, leaguerecord = self.outrecords.get_item(
-                purejoin(subroot, leaguekey) )
+                pure_join(subroot, leaguekey) )
             league = leaguerecord['$contest$league']
             subprotorecord = self.produce_contest_league_protorecord(
                 leagueroot[subtarget], leagueroot, PurePath(subtarget),
@@ -238,7 +238,7 @@ class Driver(CourseDriver):
         yield self.constitute_section(regatta['name'], select=subtarget)
         for leaguekey in regatta['leagues']:
             leagueroot, leaguerecord = self.outrecords.get_item(
-                purejoin(subroot, leaguekey) )
+                pure_join(subroot, leaguekey) )
             league = leaguerecord['$regatta$league']
             subprotorecord = self.produce_regatta_league_protorecord(
                 leagueroot[subtarget], leagueroot, PurePath(subtarget),
@@ -340,12 +340,12 @@ class Driver(CourseDriver):
         return super().produce_fluid_protorecord(target, record, **kwargs)
 
     def find_contest(self, record):
-        return self.outrecords[purejoin(
+        return self.outrecords[pure_join(
             record['$mimic$root'], record['$contest$league']['contest']
         )]['$contest']
 
     def find_regatta(self, record):
-        return self.outrecords[purejoin(
+        return self.outrecords[pure_join(
             record['$mimic$root'], record['$regatta$league']['regatta']
         )]['$regatta']
 
