@@ -76,3 +76,6 @@ def load_localmodule(root, *, module_name='jeolm.local'):
     logger.debug("Loaded meta/local.py as '{}'".format(module_name))
     return localmodule
 
+def repr_required():
+    return ', '.join(["'{}/'".format(d) for d in required_directories] + ["'meta/{}'".format(f) for f in required_meta_files])
+

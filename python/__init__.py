@@ -54,7 +54,8 @@ def main():
         if not filesystem.check_root(root):
             root = None
     if root is None:
-        logger.critical("Missing jeolm directory and/or file layout.")
+        logger.critical('Missing directory and file layout required for jeolm.')
+        logger.critical('Required layout: {}'.format(filesystem.repr_required()))
         raise SystemExit
 #    setup_file_logging(root)
 #    logger.debug('Log file enabled')
