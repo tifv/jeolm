@@ -294,8 +294,12 @@ class InrecordReviewer:
         if inrecord is None:
             inrecord = {}
 
+        parent = inname.parent()
         new_used = OrderedDict(
-            (match.group('used_name'), match.group('original_name'))
+            (
+                match.group('used_name'),
+                pure_join(parent, match.group('original_name'))
+            )
             for match in self.asy_use_pattern.finditer(s) )
         old_used = inrecord.pop('used', ())
         used_names = [
@@ -319,9 +323,8 @@ class InrecordReviewer:
                         old_used[used_name], new_used[used_name]
                     ) )
 
-        parent = inname.parent()
         used = OrderedDict(
-            (used_name, pure_join(parent, new_used[used_name]))
+            (used_name, new_used[used_name])
             for used_name in used_names )
         if used:
             inrecord['used'] = used
