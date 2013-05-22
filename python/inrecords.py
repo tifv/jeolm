@@ -227,7 +227,7 @@ class InrecordReviewer:
     nocaption_pattern = re.compile(
         r'(?m)^% no caption$' )
     caption_pattern = re.compile(
-        r'(?m)^% (?P<caption>.+?)$' )
+        r'(?m)^% (?P<caption>[^ ].*?)$' )
 
     def review_tex_date(self, inname, inrecord, s):
         if self.nodate_pattern.search(s) is not None:
