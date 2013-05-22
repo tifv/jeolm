@@ -215,11 +215,14 @@ class InrecordReviewer:
         if caption_match is None:
             if 'caption' in inrecord:
                 logger.info("{!s}: file is missing any caption; "
-                    "preserved the caption holded in the record"
-                    .format(inname) )
+                    "preserved the caption '{}' holded in the record"
+                    .format(inname, inrecord['caption']) )
             return
         caption = caption_match.group('caption')
-        if 'caption' in inrecord and inrecord['caption'] != caption:
+        if 'caption' not in inrecord:
+            logger.info("{!s}: added caption '{}'"
+                .format(inname, caption) )
+        elif inrecord['caption'] != caption:
             logger.info("{!s}: caption changed from '{}' to '{}'"
                 .format(inname, inrecord['caption'], caption) )
         inrecord['caption'] = caption
@@ -237,12 +240,15 @@ class InrecordReviewer:
         if date_match is None:
             if 'date' in inrecord:
                 logger.info("{!s}: file is missing any date; "
-                    "preserved the date holded in the record".format(inname) )
+                    "preserved the date '{}' holded in the record"
+                    .format(inname, inrecord['date']) )
             return
         date = datetime.date(**{
             key : int(value)
             for key, value in date_match.groupdict().items() })
-        if 'date' in inrecord and inrecord['date'] != date:
+        if 'date' not in inrecord:
+            logger.info("{!s}: added date changed '{}'".format(inname, date))
+        elif inrecord['date'] != date:
             logger.info("{!s}: date changed from '{}' to '{}'"
                 .format(inname, inrecord['date'], date) )
         inrecord['date'] = date
