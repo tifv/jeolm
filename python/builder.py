@@ -108,17 +108,17 @@ class Builder:
         source_node = LinkNode(
             self.get_source_node(figrecord['source']), builddir['main.asy'],
             needs=(builddir_node,) )
-        source_node.extend_needs(
+        eps_node = FileNode(
+            builddir['main.eps'],
+            name='build/figures:{}:eps'.format(figname),
+            needs=(source_node, builddir_node) )
+        eps_node.extend_needs(
             LinkNode(
                 self.get_source_node(original_path), builddir[used_name],
                 needs=(builddir_node,) )
             for used_name, original_path
             in figrecord['used'].items() )
-        eps_node = FileNode(
-            builddir['main.eps'],
-            name='build/figures:{}:eps'.format(figname),
-            needs=(source_node, builddir_node) )
-        eps_node.subprocess_rule(('asy', 'main.asy'), cwd=builddir)
+        eps_node.subprocess_rule(('asy', '-offscreen', 'main.asy'), cwd=builddir)
         return eps_node
 
     def prebuild_eps_figure(self, figname, figrecord, builddir_node):
