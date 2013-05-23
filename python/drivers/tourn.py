@@ -195,7 +195,7 @@ class Driver(CourseDriver):
         for i in range(1, 1 + league['problems']):
             inpath = subroot['{}.tex'.format(i)]
             if inpath not in self.inrecords:
-                raise RecordNotFoundError(inpath, target)
+                raise RecordNotFoundError(inpath, subroot)
             inpath_set.add(inpath)
             yield { 'inpath' : inpath,
                 'select' : select,
