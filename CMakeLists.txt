@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 2.8)
 project(jeolm NONE)
 
-subdirs(scripts latex)
+subdirs(latex)
 
 find_program(PYTHON3
     NAMES python3.4 python3
