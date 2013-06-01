@@ -1,7 +1,11 @@
+"""
+Nodes, and dependency trees constructed of them.
+"""
+
 import os
+import sys
+import re
 import subprocess
-import logging
-import warnings
 
 from itertools import chain
 
@@ -9,6 +13,9 @@ from pathlib import Path, PurePath
 
 from jeolm.utils import pure_relative
 
+# Logging and warning
+import logging
+import warnings
 logger = logging.getLogger(__name__)
 rule_logger = logging.getLogger(__name__ + '.rule')
 
@@ -16,14 +23,12 @@ class NodeCycleError(RuntimeError): pass
 
 class Node:
     """
-    Node represents target, or source, or anything.
+    Node represents target, or source, or whatever.
 
     Attributes
     ----------
-
     name
         some short-but-identifying name
-
     updated
         bool, True if self.update() was ever triggered
     modified
@@ -58,11 +63,11 @@ class Node:
             raise NodeCycleError(self.name)
         if self.updated:
             return
-        self._update_needs()
-        self._update_self()
+        self.update_needs()
+        self.update_self()
         self.updated = True
 
-    def _update_needs(self):
+    def update_needs(self):
         try:
             self._locked = True
             for node in self.needs:
@@ -74,7 +79,7 @@ class Node:
         finally:
             self._locked = False
 
-    def _update_self(self):
+    def update_self(self):
         if self.needs_build():
             self.run_rules()
 
@@ -108,16 +113,15 @@ class Node:
         for rule in self.rules:
             rule()
 
-    def subprocess_rule(self, callargs, *, cwd, **kwargs):
+    def add_subprocess_rule(self, callargs, *, cwd, **kwargs):
         if not isinstance(cwd, Path) or not cwd.is_absolute():
             raise ValueError("cwd must be an absolute Path")
-        rule_repr = (
-            '[<BOLD><MAGENTA>{node.name}<RESET>] '
-            '<cwd=<BOLD><BLUE>{cwd!s}<RESET>> <BOLD>{command}<RESET>'
+        rule_repr = ('[<BOLD><MAGENTA>{node.name}<RESET>] '
+            '<cwd=<BOLD><BLUE>{cwd!s}<RESET>> '
+            '<BOLD>{command}<RESET>'
             .format(
                 node=self, cwd=pure_relative(Path.cwd(), cwd),
-                command=' '.join(callargs) )
-        )
+                command=' '.join(callargs) ) )
         @self.add_rule
         def subprocess_rule():
             self.print_rule(rule_repr)
@@ -136,16 +140,13 @@ class Node:
 
 class DatedNode(Node):
     """
-    DatedNode has a notion of modification time.
+    DatedNode introduces a notion of modification time.
 
     Attributes
     ----------
-
     mtime
         integer, usually returned by some os.stat as st_mtime_ns
         (in nanoseconds)
-
-    See superclasses for other attributes.
     """
 
     def __init__(self, *args, mtime=None, **kwargs):
@@ -176,11 +177,8 @@ class PathNode(DatedNode):
 
     Attributes
     ----------
-
     path
         absolute pathlib.Path object
-
-    See superclasses for other attributes
     """
 
     # This is used for detecting multiple nodes per path
@@ -202,9 +200,9 @@ class PathNode(DatedNode):
         super().__init__(*args, **kwargs)
         self.path = path
 
-    def _update_self(self):
+    def update_self(self):
         self.load_mtime()
-        super()._update_self()
+        super().update_self()
 
     def load_mtime(self):
         """
@@ -256,14 +254,14 @@ class FileNode(PathNode):
     def open(self, *args, **kwargs):
         return open(str(self.path), *args, **kwargs)
 
-    def edit_rule(self, editfunc):
-        @self.add_rule
-        def edit_rule():
-            with self.open('r') as f:
-                s = f.read()
-            s = editfunc(s)
-            with self.open('w') as f:
-                f.write(s)
+#    def add_edit_rule(self, editfunc):
+#        @self.add_rule
+#        def edit_rule():
+#            with self.open('r') as f:
+#                s = f.read()
+#            s = editfunc(s)
+#            with self.open('w') as f:
+#                f.write(s)
 
     def run_rules(self):
         if self.path.exists() and self.path.is_symlink():
@@ -276,9 +274,8 @@ class LinkNode(PathNode):
 
     Attributes
     ----------
-
     source
-        PathNode instance
+        PathNode instance. Represents the target of the link.
     """
 
     def __init__(self, source, destpath, *, needs=(),
@@ -294,14 +291,16 @@ class LinkNode(PathNode):
             self.source_path = pure_relative(
                 self.path.parent(), source.path )
 
+        rule_repr = (
+            '[<BOLD><MAGENTA>{node.name}<RESET>] '
+            '<source=<BOLD><BLUE>{node.source.name}<RESET>> '
+            '<BOLD>ln --symbolic {node.source_path!s} {node.path!s}<RESET>'
+            .format(node=self) )
         @self.add_rule
         def link_rule():
             if os.path.lexists(str(self.path)):
                 self.path.unlink()
-            self.print_rule(
-                '[{node.name}] <source={node.source.name}> '
-                'ln --symbolic {node.source_path!s} {node.path!s}'
-                .format(node=self) )
+            self.print_rule(rule_repr)
             os.symlink(str(self.source_path), str(self.path))
             self.modified = True
 
@@ -339,8 +338,10 @@ class LinkNode(PathNode):
 class DirectoryNode(PathNode):
     def __init__(self, path, *args, parents=False, **kwargs):
         super().__init__(path, *args, **kwargs)
-        rule_repr = '[{node.name}] {command} {node.path}'.format(
-            node=self, command='mkdir --parents' if parents else 'mkdir' )
+        rule_repr = ('[<BOLD><MAGENTA>{node.name}<RESET>] '
+            '<BOLD>{command} {node.path}<RESET>'
+            .format(node=self,
+                command='mkdir --parents' if parents else 'mkdir' ) )
         @self.add_rule
         def mkdir_rule():
             if os.path.lexists(str(path)):
@@ -361,6 +362,13 @@ class DirectoryNode(PathNode):
         Set self.mtime to appropriate value.
 
         Set self.mtime to None if file does not exist.
+        Otherwise, set self.mtime to 0.
+
+        This method overrides normal behavior. It reflects the fact
+        that directories cannot be modified --- they either exist
+        (mtime=0) or not (mtime=None). Directory real mtime changes with
+        every new file in it --- using it would cause unnecessary
+        updates.
         """
         try:
             stat = self.stat()
@@ -368,4 +376,96 @@ class DirectoryNode(PathNode):
             self.mtime = None
         else:
             self.mtime = 0
+
+class LaTeXNode(FileNode):
+    """
+    Represents a target of some latex command.
+
+    Aims at reasonable handling of latex output to stdin/log.
+    Completely suppresses latex output unless finds something
+    interesting in it.
+    """
+
+    interesting_latexlog_pattern = re.compile(
+        '(?m)^! |[Ee]rror|[Ww]arning|No pages of output.'
+    )
+    latexlog_encoding = 'cp1251' # XXX WTF?
+
+    overfull_latexlog_pattern = re.compile(
+        r'(?m)^(Overfull|Underfull)\s+\\hbox\s+\([^()]*?\)\s+'
+        r'in\s+paragraph\s+at\s+lines\s+\d+--\d+'
+    )
+    page_latexlog_pattern = re.compile(r'\[(?P<number>(?:\d|\s)+)\]')
+
+    def add_latex_rule(self, sourcename, *,
+        command='latex', cwd,
+        logpath=None, **kwargs
+    ):
+        if not isinstance(cwd, Path) or not cwd.is_absolute():
+            raise ValueError("cwd must be an absolute Path")
+        kwargs.update(universal_newlines=False)
+        rule_repr = ('[<BOLD><MAGENTA>{node.name}<RESET>] '
+            '<cwd=<BOLD><BLUE>{cwd!s}<RESET>> '
+            '<BOLD>{command} {sourcename}<RESET>'
+            .format(
+                node=self, cwd=pure_relative(Path.cwd(), cwd),
+                command=command, sourcename=sourcename ) )
+        callargs = ('latex',
+            '-interaction=nonstopmode', '-halt-on-error', '-file-line-error',
+            sourcename )
+        @self.add_rule
+        def latex_rule():
+            self.print_rule(rule_repr)
+            try:
+                output = subprocess.check_output(callargs, cwd=str(cwd),
+                    **kwargs )
+            except subprocess.CalledProcessError as exception:
+                self.print_latex_output(exception.output, force=True)
+                rule_logger.critical(
+                    '<BOLD>[<RED>{node.name}<BLACK>] '
+                    '{exc.cmd} returned code {exc.returncode}<RESET>'
+                    .format(node=self, exc=exception) )
+                raise
+            self.print_latex_output(output)
+            if logpath is not None:
+                self.print_overfulls(logpath)
+
+    def print_latex_output(self, output, force=False):
+        output = output.decode(self.latexlog_encoding)
+        if force or self.interesting_latexlog_pattern.search(output):
+            print(output)
+
+    def print_overfulls(self, logpath):
+        with logpath.open(encoding=self.latexlog_encoding) as f:
+            s = f.read()
+
+        page_marks = {1 : 0}
+        last_page = 1; last_mark = 0
+        while True:
+            for match in self.page_latexlog_pattern.finditer(s):
+                value = int(match.group('number').replace('\n', ''))
+                if value == last_page + 1:
+                    break
+            else:
+                break
+            last_page += 1
+            last_mark = match.end()
+            page_marks[last_page] = last_mark
+        def current_page(pos):
+            page = max(
+                (
+                    (page, mark)
+                    for (page, mark) in page_marks.items()
+                    if mark <= pos
+                ), key=lambda v:v[1])[0]
+            if page == 1:
+                return '1--2'
+            else:
+                return page + 1
+
+        for match in self.overfull_latexlog_pattern.finditer(s):
+            start = match.start()
+            print(
+                '[{}]'.format(current_page(match.start())),
+                match.group(0) )
 

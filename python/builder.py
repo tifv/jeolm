@@ -3,7 +3,8 @@ import logging
 
 from pathlib import Path, PurePath
 
-from .nodes import Node, DatedNode, FileNode, DirectoryNode, LinkNode
+from .nodes import (
+    Node, DatedNode, FileNode, DirectoryNode, LinkNode, LaTeXNode )
 from . import filesystem, drivers, yaml
 
 logger = logging.getLogger(__name__)
@@ -120,7 +121,8 @@ class Builder:
                 needs=(builddir_node,) )
             for used_name, original_path
             in figrecord['used'].items() )
-        eps_node.subprocess_rule(('asy', '-offscreen', 'main.asy'), cwd=builddir)
+        eps_node.add_subprocess_rule(
+            ('asy', '-offscreen', 'main.asy'), cwd=builddir )
         return eps_node
 
     def prebuild_eps_figure(self, figname, figrecord, builddir_node):
@@ -150,6 +152,8 @@ class Builder:
         pdf_name = metaname + '.pdf'
         ps_name = metaname + '.ps'
 
+        log_name = metaname + '.log'
+
     # self.autosource_nodes
         tex_node = self.autosource_nodes[metaname] = FileNode(
             builddir[tex_name], needs=(metanode, builddir_node),
@@ -163,7 +167,7 @@ class Builder:
             with tex_node.open('w') as f:
                 f.write(s)
 
-        dvi_node = FileNode(
+        dvi_node = LaTeXNode(
             builddir[dvi_name], needs=(tex_node,),
             name='build/latex:{}:dvi'.format(metaname))
         dvi_node.extend_needs(
@@ -179,21 +183,20 @@ class Builder:
                 self.eps_nodes[figname], builddir[figname + '.eps'],
                 needs=(builddir_node,) )
             for figname in metarecord['fignames'] )
-        dvi_node.subprocess_rule(
-            ('latex', '-halt-on-error', tex_name), cwd=builddir)
+        dvi_node.add_latex_rule(tex_name, cwd=builddir, logpath=builddir[log_name])
 
     # self.ps_nodes
         ps_node = self.ps_nodes[metaname] = FileNode(
             builddir[ps_name], needs=(dvi_node,),
             name='build/latex:{}:ps'.format(metaname))
-        ps_node.subprocess_rule(
+        ps_node.add_subprocess_rule(
             ('dvips', dvi_name, '-o', ps_name), cwd=builddir )
 
     # self.pdf_nodes
         pdf_node = self.pdf_nodes[metaname] = FileNode(
             builddir[pdf_name], needs=(dvi_node,),
             name='build/latex:{}:pdf'.format(metaname) )
-        pdf_node.subprocess_rule(
+        pdf_node.add_subprocess_rule(
             ('dvipdf', dvi_name, pdf_name), cwd=builddir )
 
     def shipout(self):
