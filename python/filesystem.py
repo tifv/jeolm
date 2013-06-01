@@ -38,17 +38,24 @@ def check_root(root):
         (meta_files - expected_meta_files) | \
         (meta_items - meta_files - expected_meta_dirs)
     if broken_links:
-        logger.warning("Found broken links: '{}'".format(
-            "', '".join(sorted(broken_links))
-        ))
+        logger.warning(
+            '<BOLD>Found broken links: {}<RESET>'.format(', '.join(
+                "'<YELLOW>{}<BLACK>'".format(x)
+                for x in sorted(broken_links)
+            )) )
     if unexpected_directories:
-        logger.warning("Found unexpected directories: '{}'.".format(
-            "', '".join(sorted(unexpected_directories))
-        ))
+        logger.warning(
+            '<BOLD>Found unexpected directories: {}<RESET>.'.format(', '.join(
+                "'<YELLOW>{}<BLACK>'".format(x)
+                for x in sorted(unexpected_directories)
+            )) )
     if unexpected_meta_items:
-        logger.warning("Found unexpected items in 'meta/': '{}'.".format(
-            "', '".join(sorted(unexpected_meta_items))
-        ))
+        logger.warning(
+            "<BOLD>Found unexpected items in 'meta/': {}<RESET>."
+            .format(', '.join(
+                "'<YELLOW>{}<BLACK>'".format(x)
+                for x in sorted(unexpected_meta_items)
+            )) )
     return True
 
 def find_root():
@@ -73,7 +80,7 @@ def load_localmodule(root, *, module_name='jeolm.local'):
     localmodule = importlib.machinery.SourceFileLoader(
         module_name, str(module_path)
     ).load_module()
-    logger.debug("Loaded meta/local.py as '{}'".format(module_name))
+    logger.debug("Loaded 'meta/local.py' as {} module".format(module_name))
     return localmodule
 
 def repr_required():

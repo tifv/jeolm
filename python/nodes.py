@@ -111,9 +111,13 @@ class Node:
     def subprocess_rule(self, callargs, *, cwd, **kwargs):
         if not isinstance(cwd, Path) or not cwd.is_absolute():
             raise ValueError("cwd must be an absolute Path")
-        rule_repr = '[{node.name}] <cwd={cwd!s}> {command}'.format(
-            node=self, cwd=pure_relative(Path.cwd(), cwd),
-            command=' '.join(callargs) )
+        rule_repr = (
+            '[<BOLD><MAGENTA>{node.name}<RESET>] '
+            '<cwd=<BOLD><BLUE>{cwd!s}<RESET>> <BOLD>{command}<RESET>'
+            .format(
+                node=self, cwd=pure_relative(Path.cwd(), cwd),
+                command=' '.join(callargs) )
+        )
         @self.add_rule
         def subprocess_rule():
             self.print_rule(rule_repr)
@@ -121,7 +125,8 @@ class Node:
                 subprocess.check_call(callargs, cwd=str(cwd), **kwargs)
             except subprocess.CalledProcessError as exception:
                 rule_logger.critical(
-                    "[{node.name}] {exc.cmd} returned code {exc.returncode}"
+                    '<BOLD>[<RED>{node.name}<BLACK>] '
+                    '{exc.cmd} returned code {exc.returncode}<RESET>'
                     .format(node=self, exc=exception) )
                 raise
 

@@ -74,21 +74,22 @@ class InrecordReviewer:
             return None
         assert isinstance(inrecords, dict), inrecords
         if inrecords.get('no review', False):
-            logger.warning("{!s}: overpassing 'no review' tag"
+            logger.warning("<BOLD><YELLOW>{!s}<BLACK>: "
+                "overpassing 'no review' tag<RESET>"
                 .format(full_inname) )
         if inname.name not in inrecords:
             if not create_path:
                 return None
-            logger.info("{!s}: inrecord added".format(inname))
+            logger.info('<BOLD><GREEN>{!s}<RESET>: inrecord added'
+                .format(inname) )
             if inname.ext == '':
                 inrecords[inname.name] = OrderedDict()
             else:
                 inrecords[inname.name] = dict()
         inrecord = inrecords[inname.name]
         if not isinstance(inrecord, dict):
-            raise TypeError(
-                "{!s}: dictionary expected, found {!r}"
-                    .format(full_inname, type(inrecord)) )
+            raise TypeError("{!s}: dictionary expected, found {!r}"
+                .format(full_inname, type(inrecord)) )
         return inrecord
 
     def set_inrecord(self, inname, inrecord):
@@ -136,20 +137,23 @@ class InrecordReviewer:
                 if subname in inrecord:
                     raise ValueError("{!s}: unrecognized extension"
                         .format(inname[subname]) )
-                logger.info("{!s}: extension of '{}' unrecognized"
+                logger.warning('<BOLD><MAGENTA>{!s}<BLACK>: extension of '
+                    '<YELLOW>{}<BLACK> unrecognized<RESET>'
                     .format(inname, subname) )
                 continue
             subrecord = inrecord.get(subname, None)
             subrecord = self.review_inrecord(inname[subname], subrecord)
             if subrecord is None and subname in inrecord:
                 inrecord.pop(subname)
-                logger.info("{!s}: inrecord removed".format(inname[subname]))
+                logger.info('<BOLD><RED>{!s}<RESET>: inrecord removed<RESET>'
+                    .format(inname[subname]) )
             elif subname in inrecord:
                 inrecord[subname] = subrecord
             elif subrecord is not None:
                 assert isinstance(subname, str)
                 inrecord[subname] = subrecord
-                logger.info("{!s}: inrecord added".format(inname[subname]))
+                logger.info('<BOLD><GREEN>{!s}<BLACK>: inrecord added<RESET>'
+                    .format(inname[subname]) )
             else:
                 pass
         self.report_screened_names(inname, inrecord)
@@ -165,23 +169,23 @@ class InrecordReviewer:
             s for s in inrecord
             if not s.endswith(('.tex', '.asy', '.eps')) }
         for name in tex_basenames & dirnames:
-            logger.warning(
-                "'{texpath!s}' got screened by '{dirpath}'"
+            logger.warning("<BOLD>'<YELLOW>{texpath!s}<BLACK>' "
+                "got screened by '{dirpath}'<RESET>"
                 .format(texpath=inname[name + '.tex'], dirpath=inname[name]) )
         for name in asy_basenames & dirnames:
-            logger.warning(
-                "'{asypath!s}' got screened by '{dirpath}'"
+            logger.warning("<BOLD>'<YELLOW>{asypath!s}<BLACK>' "
+                "got screened by '{dirpath}'<RESET>"
                 .format(asypath=inname[name + '.asy'], dirpath=inname[name]) )
         for name in eps_basenames & dirnames:
-            logger.warning(
-                "'{epspath!s}' got screened by '{dirpath}'"
+            logger.warning("<BOLD>'<YELLOW>{epspath!s}<BLACK>' "
+                "got screened by '{dirpath}'<RESET>"
                 .format(epspath=inname[name + '.eps'], dirpath=inname[name]) )
         for name in eps_basenames & asy_basenames:
-            logger.warning(
-                "'{epspath!s}' got screened by '{asypath}'".format(
+            logger.warning("<BOLD>'<YELLOW>{epspath!s}<BLACK>' "
+                "got screened by '{asypath}'<RESET>"
+                .format(
                     epspath=inname[name + '.eps'],
-                    asypath=inname[name + '.asy']
-                ) )
+                    asypath=inname[name + '.asy'] ) )
 
     def review_tex_inrecord(self, inname, inrecord):
         assert inrecord is None or 'no review' not in inrecord
@@ -214,16 +218,20 @@ class InrecordReviewer:
         caption_match = self.caption_pattern.search(s)
         if caption_match is None:
             if 'caption' in inrecord:
-                logger.info("{!s}: file is missing any caption; "
-                    "preserved the caption '{}' holded in the record"
+                logger.warning("<BOLD><MAGENTA>{!s}<BLACK>: "
+                    "file is missing any caption; "
+                    "preserved the caption '{}' holded in the record<RESET>"
                     .format(inname, inrecord['caption']) )
             return
         caption = caption_match.group('caption')
         if 'caption' not in inrecord:
-            logger.info("{!s}: added caption '{}'"
+            logger.info("<BOLD><MAGENTA>{!s}<RESET>: "
+                "added caption '<BOLD><GREEN>{}<RESET>'"
                 .format(inname, caption) )
         elif inrecord['caption'] != caption:
-            logger.info("{!s}: caption changed from '{}' to '{}'"
+            logger.info("<BOLD><MAGENTA>{!s}<RESET>: "
+                "caption changed from '<BOLD><RED>{}<BLACK>' "
+                "to '<BOLD><GREEN>{}<BLACK>'"
                 .format(inname, inrecord['caption'], caption) )
         inrecord['caption'] = caption
 
@@ -239,17 +247,22 @@ class InrecordReviewer:
         date_match = self.date_pattern.search(s)
         if date_match is None:
             if 'date' in inrecord:
-                logger.info("{!s}: file is missing any date; "
-                    "preserved the date '{}' holded in the record"
+                logger.warning("<BOLD><MAGENTA>{!s}<BLACK>: "
+                    "file is missing any date; "
+                    "preserved the date '{}' holded in the record<RESET>"
                     .format(inname, inrecord['date']) )
             return
         date = datetime.date(**{
             key : int(value)
             for key, value in date_match.groupdict().items() })
         if 'date' not in inrecord:
-            logger.info("{!s}: added date changed '{}'".format(inname, date))
+            logger.info("<BOLD><MAGENTA>{!s}<RESET>: "
+                "added date '<BOLD><GREEN>{}<RESET>'"
+                .format(inname, date) )
         elif inrecord['date'] != date:
-            logger.info("{!s}: date changed from '{}' to '{}'"
+            logger.info("<BOLD><MAGENTA>{!s}<RESET>: "
+                "date changed from '<BOLD><RED>{}<RESET>' "
+                "to '<BOLD><GREEN>{}<RESET>'"
                 .format(inname, inrecord['date'], date) )
         inrecord['date'] = date
 
@@ -276,9 +289,13 @@ class InrecordReviewer:
             if figure not in old_figures
         ]
         for figure in set(old_figures).difference(new_figures):
-            logger.info("{!s}: removed figure '{}'".format(inname, figure))
+            logger.info("<BOLD><MAGENTA>{!s}<RESET>: "
+                "removed figure '<BOLD><RED>{}<RESET>'"
+                .format(inname, figure) )
         for figure in set(new_figures).difference(old_figures):
-            logger.info("{!s}: added figure '{}'".format(inname, figure))
+            logger.info("<BOLD><MAGENTA>{!s}<RESET>: "
+                "added figure '<BOLD><GREEN>{}<RESET>'"
+                .format(inname, figure))
 
         parent = inname.parent()
         if figures:
@@ -316,14 +333,18 @@ class InrecordReviewer:
             if used_name not in old_used
         ]
         for used_name in set(old_used).difference(new_used):
-            logger.info("{!s}: removed used name '{}' for '{}'"
+            logger.info("<BOLD><MAGENTA>{!s}<RESET>: "
+                "removed used name '{}' for '<BOLD><RED>{}<RESET>'"
                 .format(inname, used_name, old_used[used_name]) )
         for used_name in set(new_used).difference(old_used):
-            logger.info("{!s}: added used name '{}' for '{}'"
+            logger.info("<BOLD><MAGENTA>{!s}<RESET>: "
+                "added used name '{}' for '<BOLD><GREEN>{}<RESET>'"
                 .format(inname, used_name, new_used[used_name]) )
         for used_name in set(new_used).intersection(old_used):
             if new_used[used_name] != old_used[used_name]:
-                logger.info("{!s}: used name '{}' changed from '{}' to '{}'"
+                logger.info("<BOLD><MAGENTA>{!s}<RESET>: "
+                    "used name '{}' changed from '<BOLD><RED>{}<RESET>' "
+                    "to '<BOLD><GREEN>{}<RESET>'"
                     .format(
                         inname, used_name,
                         old_used[used_name], new_used[used_name]

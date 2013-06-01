@@ -9,5 +9,5 @@ try:
     jeolm.main()
 except subprocess.CalledProcessError as exception:
     logger.critical(
-        "Command {exc.cmd} returned status {exc.returncode}"
+        "Command {exc.cmd} returned code {exc.returncode}"
         .format(exc=exception) )

@@ -71,12 +71,14 @@ class Builder:
         metanode.record = metarecord
         cache = self.metarecords_cache
         if metaname not in cache:
-            logger.debug("Metanode '{}' was NOT FOUND in cache".format(metaname))
+            logger.debug("Metanode '{}' was not found in cache"
+                .format(metaname) )
             cache['cache mtimes'][metaname] = metanode.mtime = self.meta_mtime
             cache[metaname] = metarecord
             self.cache_updated = True
         elif cache[metaname] != metarecord:
-            logger.debug("Metanode {} was FOUND OBSOLETE in cache".format(metaname))
+            logger.debug("Metanode {} was found obsolete in cache"
+                .format(metaname) )
             cache['cache mtimes'][metaname] = metanode.mtime = self.meta_mtime
             cache[metaname] = metarecord
             metanode.modified = True

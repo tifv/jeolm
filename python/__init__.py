@@ -6,7 +6,6 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 logger.addHandler(logging.NullHandler())
-logging_formatter = logging.Formatter("%(name)s: %(message)s")
 
 def get_parser():
     parser = argparse.ArgumentParser(description='Automated build system')
@@ -54,8 +53,11 @@ def main():
         if not filesystem.check_root(root):
             root = None
     if root is None:
-        logger.critical('Missing directory and file layout required for jeolm.')
-        logger.critical('Required layout: {}'.format(filesystem.repr_required()))
+        logger.critical(
+            '<BOLD><RED>Missing directory and file layout '
+            'required for jeolm.<RESET>' )
+        logger.warning('<BOLD>Required layout: {}<RESET>'
+            .format(filesystem.repr_required()) )
         raise SystemExit
 #    setup_file_logging(root)
 #    logger.debug('Log file enabled')
@@ -81,14 +83,40 @@ def main():
     builder.build(args.targets, root=root)
 
 def setup_logging(verbose):
+    import sys
     handler = logging.StreamHandler()
     handler.setLevel(logging.INFO if not verbose else logging.DEBUG)
-    handler.setFormatter(logging_formatter)
+    handler.setFormatter(FancyFormatter("%(name)s: %(message)s",
+        fancy=sys.stdout.isatty() ))
     logger.addHandler(handler)
 
 def setup_file_logging(root):
     handler = logging.FileHandler(str(root['jeolm.log']))
     handler.setLevel(logging.DEBUG)
-    handler.setFormatter(logging_formatter)
+    handler.setFormatter(FancyFormatter("%(name)s: %(message)s", fancy=False))
     logger.addHandler(handler)
+
+class FancyFormatter(logging.Formatter):
+    fancy_replacements = {
+        '<RESET>' : '\033[0m',
+        '<BOLD>' : '\033[1m',
+        '<BLACK>' : '\033[30m',
+        '<RED>' : '\033[31m',
+        '<GREEN>' : '\033[32m',
+        '<YELLOW>' : '\033[33m',
+        '<BLUE>' : '\033[34m',
+        '<MAGENTA>' : '\033[35m',
+        '<CYAN>' : '\033[36m',
+    }
+    def __init__(self, *args, fancy=False, **kwargs):
+        self.fancy = fancy
+        return super().__init__(*args, **kwargs)
+
+    def format(self, record):
+        return self.fancify(super().format(record))
+
+    def fancify(self, s):
+        for k, v in self.fancy_replacements.items():
+            s = s.replace(k, v if self.fancy else '')
+        return s
 
