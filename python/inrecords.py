@@ -2,46 +2,61 @@ import os
 import re
 import datetime
 from collections import OrderedDict
-import logging
 
 from pathlib import Path, PurePath
 
 from jeolm import yaml
 from jeolm.utils import pure_join
 
+import logging
 logger = logging.getLogger(__name__)
 
-def review(viewdir, reviewed, *, root):
+def review(reviewed, *, root, viewpoint):
+    """
+    Review inrecords for the given paths.
+
+    viewpoint [Path]
+        probably Path.cwd()
+    reviewed [str or PurePath]
+        items sheduled for review. Considered to be relative to the
+        viewpoint.
+    root [Path]
+        jeolm root directory
+    """
+
     if any('..' in PurePath(inname).parts for inname in reviewed):
         raise ValueError("'..' parts in reviewed items are not allowed")
 
+    sourceroot = root['source']
     reviewed = [
-        PurePath(viewdir[inname].relative_to(root['source']))
+        PurePath(viewpoint, inname).relative_to(sourceroot)
         for inname in reviewed ]
     if not reviewed:
-        reviewed = [PurePath('.')]
-    InrecordReviewer(root).review(reviewed)
+        reviewed = [PurePath('')]
+
+    reviewer = InrecordReviewer(root)
+    reviewer.load_inrecords()
+    reviewer.review(reviewed)
+    reviewer.dump_inrecords()
 
 class InrecordReviewer:
-    def __new__(cls, root):
-        instance = super().__new__(cls)
-        instance.root = root
-        return instance
+    __slots__ = ['root', 'inrecords']
 
-    def review(self, reviewed, load_dump=True):
-        if load_dump:
-            self.load_inrecords()
+    def __init__(self, root):
+        self.root = root
 
+    @property
+    def metapath(self):
+        return self.root['meta/in.yaml']
+
+    def review(self, reviewed):
         for inname in reviewed:
             inrecord = self.get_inrecord(inname)
             inrecord = self.review_inrecord(inname, inrecord)
             self.set_inrecord(inname, inrecord)
 
-        if load_dump:
-            self.dump_inrecords()
-
     def load_inrecords(self):
-        with self.root['meta/in.yaml'].open('r') as f:
+        with self.metapath.open('r') as f:
             s = f.read()
         inrecords = yaml.load(s)
         if inrecords is None:
@@ -52,11 +67,19 @@ class InrecordReviewer:
 
     def dump_inrecords(self):
         s = yaml.dump(self.inrecords, default_flow_style=False)
-        with open(str(self.root['meta/in.yaml.new']), 'w') as f:
+        metapath_new = Path('.in.yaml.new')
+        with metapath_new.open('w') as f:
             f.write(s)
-        self.root['meta/in.yaml.new'].rename(self.root['meta/in.yaml'])
+        metapath_new.rename(self.metapath)
 
     def get_inrecord(self, inname, full_inname=None, create_path=False):
+        """
+        Return inrecord for given inname.
+
+        Return None if there is not such inrecord.
+        If create_path is set to True, None will never be returned -
+        instead, empty directory inrecords will be created.
+        """
         if full_inname is None:
             full_inname = inname
             if inname.ext not in {'', '.tex', '.asy', '.eps'}:
@@ -93,6 +116,7 @@ class InrecordReviewer:
         return inrecord
 
     def set_inrecord(self, inname, inrecord):
+        """Fit given inrecord in the inrecords tree."""
         assert inname != PurePath('.') or inrecord is not None
         if inrecord is None:
             inrecords = self.get_inrecord(inname.parent())
@@ -160,6 +184,13 @@ class InrecordReviewer:
         return inrecord
 
     def report_screened_names(self, inname, inrecord):
+        """
+        Show warnings if some inrecords are screened by other.
+
+        'Screened' means that there are two files in the inrecords
+        tree, but their names are clashing so in some cases one of them
+        will be inaccessible.
+        """
         tex_basenames, asy_basenames, eps_basenames = (
             {
                 s[:s.index(ext)]
@@ -168,6 +199,7 @@ class InrecordReviewer:
         dirnames = {
             s for s in inrecord
             if not s.endswith(('.tex', '.asy', '.eps')) }
+
         for name in tex_basenames & dirnames:
             logger.warning("<BOLD>'<YELLOW>{texpath!s}<BLACK>' "
                 "got screened by '{dirpath}'<RESET>"
@@ -359,7 +391,8 @@ class InrecordReviewer:
         return inrecord
 
     asy_use_pattern = re.compile(
-        r'(?m)^// use (?P<original_name>[-.a-zA-Z0-9/]*?\.asy) as (?P<used_name>[-a-zA-Z0-9]*?\.asy)$' )
+        r'(?m)^// use (?P<original_name>[-.a-zA-Z0-9/]*?\.asy) '
+        r'as (?P<used_name>[-a-zA-Z0-9]*?\.asy)$' )
 
     def review_eps_inrecord(self, inname, inrecord):
         assert inrecord is None or 'no review' not in inrecord

@@ -4,7 +4,10 @@ def pure_join(*paths):
     """
     Join PurePaths, resolving '..' parts.
 
-    Assert unexistance of directory symlinks.
+    Resolve any appearence of 'whatever/..' to ''.
+    The resulting path must not contain '..' parts.
+    The leading '/', if any, will be stripped from the result
+    (but not from the argument paths).
     """
     path = PurePath(*paths)
     if path.is_absolute():
@@ -21,12 +24,12 @@ def pure_relative(fromdir, absolute):
     """
     Compute relative PurePath, with '..' parts.
 
-    Assert unexistance of directory symlinks.
-    Both arguments should be absolute (ValueError) and lack '..' parts
-    (not checked).
+    Both arguments must be absolute PurePath's and lack '..' parts.
     """
     if not absolute.is_absolute(): raise ValueError(absolute)
     if not fromdir.is_absolute(): raise ValueError(fromdir)
+    if any('..' in path.parts for path in (absolute, fromdir)):
+        raise ValueError(absolute, fromdir)
     upstairs = 0
     absolute_parents = set(absolute.parents())
     while fromdir not in absolute_parents:

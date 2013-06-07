@@ -1,16 +1,15 @@
 from pathlib import PurePosixPath as PurePath
 
-from .course import Driver as CourseDriver, RecordNotFoundError
+from .course import CourseDriver RecordNotFoundError
 from jeolm.utils import pure_join
-
 
 import logging
 logger = logging.getLogger(__name__)
 
 def produce_metarecords(targets, inrecords, outrecords):
-    return Driver(inrecords, outrecords).produce_metarecords(targets)
+    return TournDriver(inrecords, outrecords).produce_metarecords(targets)
 
-class Driver(CourseDriver):
+class TournDriver(CourseDriver):
 
     ##########
     # Record-level functions

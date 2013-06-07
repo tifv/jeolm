@@ -13,7 +13,6 @@ from pathlib import Path, PurePath
 
 from jeolm.utils import pure_relative
 
-# Logging and warning
 import logging
 import warnings
 logger = logging.getLogger(__name__)
@@ -426,11 +425,16 @@ class LaTeXNode(FileNode):
                     '{exc.cmd} returned code {exc.returncode}<RESET>'
                     .format(node=self, exc=exception) )
                 raise
-            self.print_latex_output(output)
-            if logpath is not None:
-                self.print_overfulls(logpath)
+            if not self.print_latex_output(output):
+                if logpath is not None:
+                    self.print_overfulls(logpath)
 
     def print_latex_output(self, output, force=False):
+        """
+        Print output if it is interesting.
+
+        Return False if output was not interesting.
+        """
         output = output.decode(self.latexlog_encoding)
         if force or self.interesting_latexlog_pattern.search(output):
             print(output)

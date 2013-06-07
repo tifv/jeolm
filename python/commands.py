@@ -40,26 +40,26 @@ def archive(root, target='archive', archive_name='archive.tar.gz'):
 
     from pathlib import PurePath
 
-    import jeolm.builder as buildermodule
-    builder = buildermodule.Builder(root)
-    builder.build([target])
+    from jeolm.builder import Builder
+    builder = Builder([target], root=root)
+    builder.prebuild(); builder.update()
+
+    def join(*args): return str(PurePath(*args))
 
     with tarfile.open(str(root[archive_name]), 'w:gz') as af:
         for name, node in builder.source_nodes.items():
-            af.add(str(node.path), str(PurePath('source', name)))
+            af.add(str(node.path), join('source', name))
         for metaname, node in builder.pdf_nodes.items():
-            af.add(str(node.path), str(PurePath('pdf', metaname + '.pdf')))
+            af.add(str(node.path), join('pdf', metaname + '.pdf'))
         for metaname, node in builder.autosource_nodes.items():
-            af.add(
-                str(node.path),
-                str(PurePath('autosource', metaname + '.tex')) )
+            af.add(str(node.path), join('autosource', metaname + '.tex'))
         for figname, node in builder.eps_nodes.items():
-            af.add(str(node.path), str(PurePath('eps', figname + '.eps')))
+            af.add(str(node.path), join('eps', figname + '.eps'))
 
         af.add(str(root['meta/in.yaml']), 'meta/in.yaml')
         af.add(str(root['meta/out.yaml']), 'meta/out.yaml')
         af.add(str(root['meta/local.sty']), 'meta/local.sty')
-        if 'local.py' in root['meta']:
+        if root['meta/local.py'].exists():
             af.add(str(root['meta/local.py']), 'meta/local.py')
 
 def shell(root):

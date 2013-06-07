@@ -5,7 +5,7 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 required_directories = frozenset(('meta', 'source', 'build', ))
-required_meta_files = frozenset(('in.yaml', 'out.yaml', ))
+required_meta_files = frozenset(('in.yaml', 'out.yaml', 'local.sty', ))
 
 # It is expected that nothing but this directories will be found on the
 # toplevel.
@@ -13,7 +13,7 @@ expected_directories = required_directories.union(('misc', ))
 
 # It is expected that nothing but this files will be found in the
 # meta/ directory.
-expected_meta_files = required_meta_files.union(('local.sty', 'local.py', ))
+expected_meta_files = required_meta_files.union(('local.py', ))
 expected_meta_dirs = frozenset(('__pycache__', ))
 
 def check_root(root):

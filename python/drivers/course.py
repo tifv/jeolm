@@ -14,21 +14,27 @@ class RecordNotFoundError(ValueError):
     pass
 
 def produce_metarecords(targets, inrecords, outrecords):
-    return Driver(inrecords, outrecords).produce_metarecords(targets)
+    return CourseDriver(inrecords, outrecords).produce_metarecords(targets)
 
 class Substitutioner(type):
-    def __new__(cls, name, bases, namespace, **kwds):
-        ns_upd = {}
+    """
+    Metaclass for a driver.
+
+    For any *_template attribute create substitute_* attribute, like
+    cls.substitute_* = Template(cls.*_template).substitute
+    """
+    def __new__(cls, cls_name, cls_bases, namespace, **kwds):
+        namespace_upd = {}
         for key, value in namespace.items():
             if key.endswith('_template'):
                 substitute_key = 'substitute_' + key[:-len('_template')]
-                ns_upd[substitute_key] = Template(value).substitute
-        namespace.update(ns_upd)
-        return super().__new__(cls, name, bases, namespace, **kwds)
+                namespace_upd[substitute_key] = Template(value).substitute
+        namespace.update(namespace_upd)
+        return super().__new__(cls, cls_name, cls_bases, namespace, **kwds)
 
-class Driver(metaclass=Substitutioner):
+class CourseDriver(metaclass=Substitutioner):
     """
-    Driver.
+    Driver for course-like projects.
     """
 
     ##########

@@ -1,14 +1,13 @@
-import argparse
-import logging
-
 from pathlib import Path
 
+import logging
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 logger.addHandler(logging.NullHandler())
 
 def get_parser():
-    parser = argparse.ArgumentParser(description='Automated build system')
+    from argparse import ArgumentParser
+    parser = ArgumentParser(description='Automated build system')
     parser.add_argument(
         '-R', '--root', help='explicit root path of a jeolm project')
     parser.add_argument(
@@ -65,7 +64,7 @@ def main():
     filesystem.load_localmodule(root)
 
     if args.review is not None:
-        inrecords.review(Path.cwd(), args.review, root=root)
+        inrecords.review(args.review, viewpoint=Path.cwd(), root=root)
         return
     if args.clean:
         if args.clean == 1:

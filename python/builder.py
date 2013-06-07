@@ -1,5 +1,4 @@
 from collections import OrderedDict as ODict
-import logging
 
 from pathlib import Path, PurePath
 
@@ -7,33 +6,41 @@ from .nodes import (
     Node, DatedNode, FileNode, DirectoryNode, LinkNode, LaTeXNode )
 from . import filesystem, drivers, yaml
 
+import logging
 logger = logging.getLogger(__name__)
 
 def build(targets, *, root):
-    Builder(root).build(targets)
+    builder = Builder(targets, root=root)
+    builder.prebuild()
+    builder.update()
 
 class Builder:
-    def __new__(cls, root):
-        instance = super().__new__(cls)
+    shipout_format = 'pdf'
 
-        instance.root = root
-        instance.inpath = root['meta/in.yaml']
-        instance.outpath = root['meta/out.yaml']
-        instance.cachepath = root['build/cache.yaml']
-        instance.cachepath_new = root['build/cache.yaml.new']
-
-        instance.source_nodes = dict()
-
-        instance.driver = drivers.get_driver()
-
-        return instance
-
-    def build(self, targets):
+    def __init__(self, targets, *, root):
+        self.root = root
         self.targets = targets
 
+        self.metapaths = {
+            'in' : root['meta/in.yaml'], 'out' : root['meta/out.yaml'],
+            'cache' : root['build/cache.yaml'],
+        }
+        self.source_nodes = ODict()
+        self.autosource_nodes = ODict()
+        self.eps_nodes = ODict()
+        self.ps_nodes = ODict()
+        self.pdf_nodes = ODict()
+        self.shipout_ps_nodes = ODict()
+        self.shipout_pdf_nodes = ODict()
+        self.shipout_node = Node(name='shipout')
+
+        self.driver = drivers.get_driver()
+
+    def prebuild(self):
         self.load_meta_files()
         self.meta_mtime = max(
-            self.inpath.st_mtime_ns, self.outpath.st_mtime_ns)
+            self.metapaths['in'].st_mtime_ns,
+            self.metapaths['out'].st_mtime_ns )
         self.metarecords, self.figrecords = \
             self.driver.produce_metarecords(
                 self.targets, self.inrecords, self.outrecords )
@@ -48,31 +55,35 @@ class Builder:
             self.root['build/figures'], name='build/figures/' ))
         self.prebuild_documents(DirectoryNode(
             self.root['build/latex'], name='build/latex/' ))
-        self.shipout()
+        self.prebuild_shipout()
+
+    def update(self):
+        self.shipout_node.update()
 
     def load_meta_files(self):
-        with self.inpath.open() as f:
+        with self.metapaths['in'].open() as f:
             self.inrecords = yaml.load(f) or ODict()
-        with self.outpath.open() as g:
+        with self.metapaths['out'].open() as g:
             self.outrecords = yaml.load(g) or {}
-        if self.cachepath.exists():
-            with self.cachepath.open() as h:
+        if self.metapaths['cache'].exists():
+            with self.metapaths['cache'].open() as h:
                 self.metarecords_cache = yaml.load(h)
         else:
             self.metarecords_cache = {'cache mtimes' : {}}
 
     def dump_meta_cache(self):
         s = yaml.dump(self.metarecords_cache, default_flow_style=False)
-        with open(str(self.cachepath_new), 'w') as f:
+        meta_cache_new = Path('.cache.yaml.new')
+        with meta_cache_new.open('w') as f:
             f.write(s)
-        self.cachepath_new.rename(self.cachepath)
+        meta_cache_new.rename(self.metapaths['cache'])
 
     def create_metanode(self, metaname, metarecord):
         metanode = DatedNode(name='meta:{}'.format(metaname))
         metanode.record = metarecord
         cache = self.metarecords_cache
         if metaname not in cache:
-            logger.debug("Metanode '{}' was not found in cache"
+            logger.debug("Metanode {} was not found in cache"
                 .format(metaname) )
             cache['cache mtimes'][metaname] = metanode.mtime = self.meta_mtime
             cache[metaname] = metarecord
@@ -91,7 +102,7 @@ class Builder:
 
     def prebuild_figures(self, builddir_node):
         builddir = builddir_node.path
-        eps_nodes = self.eps_nodes = ODict()
+        eps_nodes = self.eps_nodes
         for figname, figrecord in self.figrecords.items():
             eps_nodes[figname] = self.prebuild_figure(
                 figname, figrecord,
@@ -131,9 +142,6 @@ class Builder:
     def prebuild_documents(self, builddir_node):
         self.local_sty = FileNode(self.root['meta/local.sty'], name='local.sty')
         builddir = builddir_node.path
-        self.autosource_nodes = ODict()
-        self.ps_nodes = ODict()
-        self.pdf_nodes = ODict()
         for metaname, metarecord in self.metarecords.items():
             self.prebuild_document(
                 metaname, metarecord,
@@ -142,7 +150,9 @@ class Builder:
 
     def prebuild_document(self, metaname, metarecord, builddir_node):
         """
-        Return nothing. Update self.pdf_nodes, self.ps_a4_nodes, self
+        Return nothing. Update self.*_nodes.
+
+        Update self.autosource_nodes, self.pdf_nodes, self.ps_nodes.
         """
         builddir = builddir_node.path
         metanode = self.metanodes[metaname]
@@ -154,7 +164,6 @@ class Builder:
 
         log_name = metaname + '.log'
 
-    # self.autosource_nodes
         tex_node = self.autosource_nodes[metaname] = FileNode(
             builddir[tex_name], needs=(metanode, builddir_node),
             name='build/latex:{}:tex'.format(metaname))
@@ -185,41 +194,48 @@ class Builder:
             for figname in metarecord['fignames'] )
         dvi_node.add_latex_rule(tex_name, cwd=builddir, logpath=builddir[log_name])
 
-    # self.ps_nodes
-        ps_node = self.ps_nodes[metaname] = FileNode(
-            builddir[ps_name], needs=(dvi_node,),
-            name='build/latex:{}:ps'.format(metaname))
-        ps_node.add_subprocess_rule(
-            ('dvips', dvi_name, '-o', ps_name), cwd=builddir )
+        if 'ps' in self.shipout_format:
+            ps_node = self.ps_nodes[metaname] = FileNode(
+                builddir[ps_name], needs=(dvi_node,),
+                name='build/latex:{}:ps'.format(metaname))
+            ps_node.add_subprocess_rule(
+                ('dvips', dvi_name, '-o', ps_name), cwd=builddir )
 
-    # self.pdf_nodes
-        pdf_node = self.pdf_nodes[metaname] = FileNode(
-            builddir[pdf_name], needs=(dvi_node,),
-            name='build/latex:{}:pdf'.format(metaname) )
-        pdf_node.add_subprocess_rule(
-            ('dvipdf', dvi_name, pdf_name), cwd=builddir )
+        if 'pdf' in self.shipout_format:
+            pdf_node = self.pdf_nodes[metaname] = FileNode(
+                builddir[pdf_name], needs=(dvi_node,),
+                name='build/latex:{}:pdf'.format(metaname) )
+            pdf_node.add_subprocess_rule(
+                ('dvipdf', dvi_name, pdf_name), cwd=builddir )
 
-    def shipout(self):
-        shipout_ps_nodes = self.shipout_ps_nodes = ODict()
-        shipout_pdf_nodes = self.shipout_pdf_nodes = ODict()
+    def prebuild_shipout(self):
+        if 'ps' in self.shipout_format:
+            self.prebuild_shipout_ps()
+        if 'pdf' in self.shipout_format:
+            self.prebuild_shipout_pdf()
+
+    def prebuild_shipout_ps(self):
+        shipout_ps_nodes = self.shipout_ps_nodes
         for metaname in self.metarecords:
             shipout_ps_nodes[metaname] = LinkNode(
                 self.ps_nodes[metaname], self.root[metaname + '.ps'],
                 name='shipout:{}:ps'.format(metaname))
+        self.shipout_node.extend_needs(shipout_ps_nodes.values())
+
+    def prebuild_shipout_pdf(self):
+        shipout_pdf_nodes = self.shipout_pdf_nodes
+        for metaname in self.metarecords:
             shipout_pdf_nodes[metaname] = LinkNode(
                 self.pdf_nodes[metaname], self.root[metaname + '.pdf'],
                 name='shipout:{}:pdf'.format(metaname))
-        supernode = self.supernode = Node(name='supernode')
-#        supernode.extend_needs(shipout_ps_nodes.values())
-        supernode.extend_needs(shipout_pdf_nodes.values())
-        supernode.update()
+        self.shipout_node.extend_needs(shipout_pdf_nodes.values())
 
-    def get_source_node(self, name):
-        assert isinstance(name, PurePath), repr(name)
-        assert not name.is_absolute(), name
-        if name in self.source_nodes:
-            return self.source_nodes[name]
-        node = self.source_nodes[name] = \
-            FileNode(self.root['source'][name])
+    def get_source_node(self, path):
+        assert isinstance(path, PurePath), repr(path)
+        assert not path.is_absolute(), path
+        if path in self.source_nodes:
+            return self.source_nodes[path]
+        node = self.source_nodes[path] = \
+            FileNode(Path(self.root, 'source', path))
         return node
 
