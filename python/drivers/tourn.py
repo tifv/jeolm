@@ -14,6 +14,18 @@ class TournDriver(CourseDriver):
     ##########
     # Record-level functions
 
+    # Extension
+    # Mimic non-delegations:
+    # * some-contest/{problems,solutions,complete}
+    # * some-contest-league/whatever
+    # * some-regatta/{problems,solutions,complete}
+    # Mimic delegations
+    # * some-contest/whatever ->
+    #       [some-contest-league/whatever for each league]
+    # * some-regatta/whatever ->
+    #       [some-regatta-league/whatever for each league]
+    # * some-regatta-league/jury ->
+    #       [some-regatta-league/subject/jury for each subject ]
     def _trace_delegators(self, target, resolved_path, record, *, seen_targets):
         if not record.get('$mimic', False):
             yield from super()._trace_delegators(target, resolved_path, record,
@@ -57,6 +69,7 @@ class TournDriver(CourseDriver):
     tourn_fluid_targets = frozenset(PurePath(p) for p in
         ('problems', 'solutions', 'complete') )
 
+    # Extension
     def list_protorecord_methods(self):
         yield self.produce_mimic_protorecord
         yield from super().list_protorecord_methods()
@@ -328,6 +341,7 @@ class TournDriver(CourseDriver):
                 yield self.substitute_end_problems()
                 yield self.substitute_hrule()
 
+    # Extension
     def produce_fluid_protorecord(self, target, record, **kwargs):
         if record is None or '$mimic' not in record:
             return super().produce_fluid_protorecord(target, record, **kwargs)
@@ -351,6 +365,14 @@ class TournDriver(CourseDriver):
     ##########
     # Record accessors
 
+    # Extension
+    # If e.g 'a/the-contest/$contest' outrecord exists and accessor is
+    # requested a path 'a/the-contest/b/c' which does not exist, than the
+    # return value will contain the following keys:
+    # * $contest = <mimicvalue> = <value of /a/the-contest/$contest>
+    # * $mimic = "$contest"
+    # * $mimic$root = a/the-contest
+    # * $mimic$path = b/c
     class OutrecordAccessor(CourseDriver.OutrecordAccessor):
         mimickeys = frozenset((
             '$contest', '$contest$league',
@@ -389,11 +411,13 @@ class TournDriver(CourseDriver):
     ##########
     # LaTeX-level functions
 
+    # Extension
     def constitute_input(self, inpath, alias, inrecord, figname_map, *,
         select=None, number=None
     ):
         if select is None:
-            return super().constitute_input(inpath, alias, inrecord, figname_map)
+            return super().constitute_input(
+                inpath, alias, inrecord, figname_map )
 
         if number == '$fluid':
             numeration = self.substitute_fuild_numeration()

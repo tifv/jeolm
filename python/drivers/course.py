@@ -167,6 +167,9 @@ class CourseDriver(metaclass=Substitutioner):
         yield from self._trace_delegators(target, resolved_path, record,
             seen_targets=seen_targets )
 
+    # This supplementary function makes use of resolved_path and record
+    # arguments, computed by trace_delegators.
+    # Useful for overriding.
     def _trace_delegators(self, target, resolved_path, record,
         *, seen_targets
     ):
