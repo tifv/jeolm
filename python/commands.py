@@ -35,7 +35,7 @@ def _unbuild_recursive(builddir):
             continue
         x.unlink()
 
-def archive(root, target='archive', archive_name='archive.tar.gz'):
+def archive(root, target='archive', archive_name='archive.tar.xz', compression='xz'):
     import tarfile
 
     from pathlib import PurePath
@@ -46,7 +46,7 @@ def archive(root, target='archive', archive_name='archive.tar.gz'):
 
     def join(*args): return str(PurePath(*args))
 
-    with tarfile.open(str(root[archive_name]), 'w:gz') as af:
+    with tarfile.open(str(root[archive_name]), 'w:' + compression) as af:
         for name, node in builder.source_nodes.items():
             af.add(str(node.path), join('source', name))
         for metaname, node in builder.pdf_nodes.items():

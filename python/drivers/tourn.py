@@ -1,6 +1,6 @@
 from pathlib import PurePosixPath as PurePath
 
-from .course import CourseDriver RecordNotFoundError
+from .course import CourseDriver, RecordNotFoundError
 from jeolm.utils import pure_join
 
 import logging
