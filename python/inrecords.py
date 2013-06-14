@@ -11,33 +11,45 @@ from jeolm.utils import pure_join
 import logging
 logger = logging.getLogger(__name__)
 
-def review(reviewed, *, root, viewpoint):
+def review(inroots, *, root, viewpoint):
     """
-    Review inrecords for the given paths.
+    Review inrecords.
 
-    viewpoint [Path]
-        probably Path.cwd()
-    reviewed [str or PurePath]
-        items sheduled for review. Considered to be relative to the
-        viewpoint.
-    root [Path]
-        jeolm root directory
+    root
+        Path, jeolm root directory
+    viewpoint
+        Path, probably Path.cwd()
     """
 
-    if any('..' in PurePath(inname).parts for inname in reviewed):
-        raise ValueError("'..' parts in reviewed items are not allowed")
-
-    sourceroot = root['source']
-    reviewed = [
-        PurePath(viewpoint, inname).relative_to(sourceroot)
-        for inname in reviewed ]
-    if not reviewed:
-        reviewed = [PurePath('')]
+    inroots = resolve_inpaths(inroots, root=root, viewpoint=viewpoint)
 
     reviewer = InrecordReviewer(root)
     reviewer.load_inrecords()
-    reviewer.review(reviewed)
+    for inroot in inroots:
+        reviewer.review(inroot)
     reviewer.dump_inrecords()
+
+def print_inpaths(inroots, ext, *, root, viewpoint):
+    inroots = resolve_inpaths(inroots, root=root, viewpoint=viewpoint)
+
+    reviewer = InrecordReviewer(root)
+    reviewer.load_inrecords()
+    for inroot in inroots:
+        for inpath in reviewer.iter_inpaths(inroot, ext=ext):
+            print(str(inpath))
+
+def resolve_inpaths(inpaths, *, root, viewpoint):
+    inpaths = [PurePath(inpath) for inpath in inpaths]
+    if any('..' in inpath.parts for inpath in inpaths):
+        raise ValueError("'..' parts are not allowed", inpaths)
+
+    sourceroot = root['source']
+    inpaths = [
+        PurePath(viewpoint, inpath).relative_to(sourceroot)
+        for inpath in inpaths ]
+    if not inpaths:
+        inpaths = [PurePath('')]
+    return inpaths
 
 class InrecordReviewer:
     __slots__ = ['root', 'inrecords']
@@ -49,11 +61,23 @@ class InrecordReviewer:
     def metapath(self):
         return self.root['meta/in.yaml']
 
-    def review(self, reviewed):
-        for inname in reviewed:
-            inrecord = self.get_inrecord(inname)
-            inrecord = self.review_inrecord(inname, inrecord)
-            self.set_inrecord(inname, inrecord)
+    def review(self, inroot):
+        inrecord = self.get_inrecord(inroot)
+        inrecord = self.review_inrecord(inroot, inrecord)
+        self.set_inrecord(inroot, inrecord)
+
+    def iter_inpaths(self, inroot, *, ext, inrecord=None):
+        if inrecord is None:
+            inrecord = self.get_inrecord(inroot)
+            if inrecord is None:
+                return
+        assert isinstance(inrecord, dict), (inroot, inrecord)
+        for subname, subrecord in inrecord.items():
+            inpath = PurePath(inroot, subname)
+            if inpath.ext == ext:
+                yield inpath
+            if inpath.ext == '':
+                yield from self.iter_inpaths(inpath, ext=ext, inrecord=subrecord)
 
     def load_inrecords(self):
         with self.metapath.open('r') as f:
@@ -270,7 +294,7 @@ class InrecordReviewer:
     nocaption_pattern = re.compile(
         r'(?m)^% no caption$' )
     caption_pattern = re.compile(
-        r'(?m)^% (?P<caption>[^ ].*?)$' )
+        r'(?m)^% (?! )(?P<caption>.+)$' )
 
     def review_tex_date(self, inname, inrecord, s):
         if self.nodate_pattern.search(s) is not None:
@@ -308,6 +332,9 @@ class InrecordReviewer:
             logger.debug("{!s}: figures review skipped due to explicit "
                 "'no figures' in the file".format(inname) )
             return
+        if self.includegraphics_pattern.search(s) is not None:
+            logger.warning("<BOLD><MAGENTA>{!s}<BALCK>: "
+                "<YELLOW>\\includegraphics<BLACK> command found<RESET>")
 
         new_figures = self.unique(
             match.group('figure')
@@ -338,7 +365,9 @@ class InrecordReviewer:
     nofigures_pattern = re.compile(
         r'(?m)^% no figures$' )
     figure_pattern = re.compile(
-        r'\\jeolmfigure(\[.*?\])?\{(?P<figure>.*?)\}' )
+        r'\\jeolmfigure(?:\[.*?\])?\{(?P<figure>.*?)\}' )
+    includegraphics_pattern = re.compile(
+        r'\\includegraphics')
 
     def review_asy_inrecord(self, inname, inrecord):
         assert inrecord is None or 'no review' not in inrecord

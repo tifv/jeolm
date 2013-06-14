@@ -7,37 +7,37 @@ logger.addHandler(logging.NullHandler())
 
 def get_parser():
     from argparse import ArgumentParser
-    parser = ArgumentParser(description='Automated build system')
-    parser.add_argument(
-        '-R', '--root', help='explicit root path of a jeolm project')
-    parser.add_argument(
-        '-v', '--verbose',
-        action='store_true',
-        help='explicit root path of a jeolm project')
+    parser = ArgumentParser(
+        description='Automated build system for course-like projects' )
+    parser.add_argument('-R', '--root',
+        help='explicit root path of a jeolm project', )
+    parser.add_argument('-v', '--verbose',
+        help='make debug messages to stdout',
+        action='store_true', )
     command = parser.add_mutually_exclusive_group()
-    command.add_argument(
-        '-r', '--review',
-        nargs='*',
-        help='review infiles' )
-    command.add_argument(
-        '-c', '--clean',
-        action='count',
-        help=
-            'clean toplevel links to build/**.pdf; '
-            'clean *.yaml and *.tex in build/; '
-            'clean all in build/' )
-    command.add_argument(
-        '-a', '--archive',
-        action='store_true',
-        help='create project archive, including some intermediate files' )
-    command.add_argument(
-        '-i', '--interactive',
-        action='store_true',
-        help='get targets in the interactive prompt and build them' )
-    command.add_argument(
-        'targets',
-        nargs='*', default=[],
-        help='build specified targets' )
+    command.add_argument('-r', '--review',
+        help='review given inrecords (defaults to all inrecords)',
+        nargs='*', metavar='INROOT', )
+    command.add_argument('--list-tex',
+        help='list all TeX infiles in given inrecords '
+            '(defaults to all infiles); file paths are relative to cwd',
+        nargs='*', metavar='INROOT', )
+    command.add_argument('--list-asy',
+        help='list all Asymptote infiles in given inrecords '
+            '(defaults to all infiles); file paths are relative to cwd',
+        nargs='*', metavar='INROOT', )
+    command.add_argument('-c', '--clean',
+        help='clean toplevel links to build/**.pdf; clean **.tex in build/',
+        action='count', )
+    command.add_argument('-a', '--archive',
+        help='create project archive, including some intermediate files',
+        action='store_true', )
+    command.add_argument('-i', '--interactive',
+        help='get targets in the interactive prompt and build them',
+        action='store_true', )
+    command.add_argument('targets',
+        help='build specified targets',
+        nargs='*', default=[], )
     return parser
 
 def main():
@@ -64,29 +64,31 @@ def main():
     filesystem.load_localmodule(root)
 
     if args.review is not None:
-        inrecords.review(args.review, viewpoint=Path.cwd(), root=root)
-        return
-    if args.clean:
+        return inrecords.review(args.review, viewpoint=Path.cwd(), root=root)
+    if args.list_tex is not None:
+        return inrecords.print_inpaths(args.list_tex, '.tex',
+            viewpoint=Path.cwd(), root=root )
+    if args.list_asy is not None:
+        return inrecords.print_inpaths(args.list_asy, '.asy',
+            viewpoint=Path.cwd(), root=root )
+    if args.clean > 0:
         if args.clean == 1:
-            commands.cleanview(root=root)
-        elif args.clean >= 2:
-            commands.unbuild(root=root)
-        return
+            return commands.cleanview(root=root)
+        if args.clean > 1:
+            return commands.unbuild(root=root)
     if args.archive:
-        commands.archive(root=root)
-        return
-    if args.interactive or not args.targets:
-        commands.shell(root=root)
-        return
+        return commands.archive(root=root)
+    if not args.targets:
+        return commands.shell(root=root)
 
-    builder.build(args.targets, root=root)
+    return builder.build(args.targets, root=root)
 
 def setup_logging(verbose):
     import sys
     handler = logging.StreamHandler()
     handler.setLevel(logging.INFO if not verbose else logging.DEBUG)
     handler.setFormatter(FancyFormatter("%(name)s: %(message)s",
-        fancy=sys.stdout.isatty() ))
+        fancy=sys.stderr.isatty() ))
     logger.addHandler(handler)
 
 def setup_file_logging(root):
