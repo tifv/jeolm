@@ -71,7 +71,8 @@ def main():
     if args.list_asy is not None:
         return inrecords.print_inpaths(args.list_asy, '.asy',
             viewpoint=Path.cwd(), root=root )
-    if args.clean > 0:
+    if args.clean is not None:
+        assert args.clean >= 1
         if args.clean == 1:
             return commands.cleanview(root=root)
         if args.clean > 1:
