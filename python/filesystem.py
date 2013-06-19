@@ -58,18 +58,27 @@ def check_root(root):
             )) )
     return True
 
-def find_root():
-    root = Path.cwd()
-    if not check_root(root):
-        while len(root.parts) > 2:
-            root, tail = root.parent(), root.name
-            if tail not in expected_directories:
-                continue
-            if check_root(root):
-                break
-        else:
+def find_root(proposal=None):
+    if proposal is not None:
+        try:
+            root = Path(proposal).resolve()
+        except FileNotFoundError:
             return None
-    return root
+        else:
+            if not check_root(root):
+                return None
+        return root
+    root = Path.cwd()
+    if check_root(root):
+        return root
+    while len(root.parts) > 2: # jeolm root can never be a filesystem root
+        root, tail = root.parent(), root.name
+        if tail not in expected_directories:
+            continue
+        if check_root(root):
+            return root
+    else:
+        return None
 
 def load_localmodule(root, *, module_name='jeolm.local'):
     module_path = root['meta/local.py']
@@ -84,5 +93,8 @@ def load_localmodule(root, *, module_name='jeolm.local'):
     return localmodule
 
 def repr_required():
-    return ', '.join(["'{}/'".format(d) for d in required_directories] + ["'meta/{}'".format(f) for f in required_meta_files])
+    return ', '.join(
+        ["'{}/'".format(d) for d in required_directories] +
+        ["'meta/{}'".format(f) for f in required_meta_files]
+    )
 

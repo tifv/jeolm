@@ -41,16 +41,13 @@ def get_parser():
     return parser
 
 def main():
+    args = get_parser().parse_args()
+
     from jeolm import filesystem, builder, inrecords, commands
 
-    args = get_parser().parse_args()
     setup_logging(args.verbose)
-    if args.root is None:
-        root = filesystem.find_root()
-    else:
-        root = Path(args.root).resolve()
-        if not filesystem.check_root(root):
-            root = None
+    root = filesystem.find_root(
+        proposal=None if args.root is None else Path(args.root) )
     if root is None:
         logger.critical(
             '<BOLD><RED>Missing directory and file layout '
