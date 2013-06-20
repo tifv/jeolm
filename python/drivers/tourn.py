@@ -419,32 +419,31 @@ class TournDriver(CourseDriver):
             return super().constitute_input(
                 inpath, alias, inrecord, figname_map )
 
-        if number == '$fluid':
-            numeration = self.substitute_fuild_numeration()
-        else:
-            numeration = self.substitute_rigid_numeration(number=number)
+        assert number is not None, (inpath, number)
+        numeration = self.substitute_rigid_numeration(number=number)
 
         if select == 'problem':
-            body = self.substitute_input_problem(filename=alias)
+            body = self.substitute_input_problem(
+                filename=alias, numeration=numeration )
         elif select == 'solution':
-            body = self.substitute_input_solution(filename=alias)
+            body = self.substitute_input_solution(
+                filename=alias, numeration=numeration )
         elif select == 'both':
-            body = self.substitute_input_both(filename=alias)
+            body = self.substitute_input_both(
+                filename=alias, numeration=numeration )
         else:
             raise AssertionError(inpath, select)
 
-        body = numeration + '\n' + body
         if figname_map:
             body = self.constitute_figname_map(figname_map) + '\n' + body
         return body
 
     rigid_numeration_template = r'\itemy{$number}'
-    fluid_numeration_template = r'\item'
 
     input_template = r'\input{$filename}'
-    input_problem_template = r'\probleminput{$filename}'
-    input_solution_template = r'\solutioninput{$filename}'
-    input_both_template = r'\problemsolutioninput{$filename}'
+    input_problem_template = r'\probleminput{$numeration}{$filename}'
+    input_solution_template = r'\solutioninput{$numeration}{$filename}'
+    input_both_template = r'\problemsolutioninput{$numeration}{$filename}'
 
     @classmethod
     def constitute_section(cls, caption, *, level=0, select='problems'):

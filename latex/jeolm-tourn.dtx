@@ -201,25 +201,37 @@ This work has the LPPL maintenance status `author-maintained'.
 % \subsection{Problem/solution segregation}
 %
 %    \begin{macrocode}
-\newcommand\probleminput[1]{\begingroup
+\def\fetchproblemsolution#1{\begingroup
 \CatchFileDef{\theinput}{#1}{}%
-\expandafter\@probleminput\theinput\endinput
+\expandafter\parseproblemsolution\theinput\endproblem
 \endgroup}
-\newcommand\solutioninput[1]{\begingroup
-\CatchFileDef{\theinput}{#1}{}%
-\expandafter\@solutioninput\theinput\endinput
-\endgroup}
-\newcommand\problemsolutioninput[1]{\begingroup
-\CatchFileDef{\theinput}{#1}{}%
-\expandafter\@problemsolutioninput\theinput\endinput
-\endgroup}
+\long\def\parseproblemsolution#1\solution#2\endproblem{%
+\@ifnextchar[{\parsepreproblem}{\parseproblem}#1\endproblem
+\@ifnextchar[{\parsepresolution}{\parsesolution}#2\endsolution}
+\long\def\parsepreproblem[#1]#2\endproblem{%
+    \global\def\preproblem@fetched{#1}%
+    \global\def\problem@fetched{#2}}
+\long\def\parseproblem#1\endproblem{%
+    \global\def\preproblem@fetched{}%
+    \global\def\problem@fetched{#1}}
+\long\def\parsepresolution[#1]#2\endsolution{%
+    \global\def\presolution@fetched{#1}%
+    \global\def\solution@fetched{#2}}
+\long\def\parsesolution#1\endsolution{%
+    \global\def\presolution@fetched{}%
+    \global\def\solution@fetched{#1}}
 %    \end{macrocode}
 %
 %    \begin{macrocode}
-\long\def\@probleminput#1\solution#2\endinput{#1}
-\long\def\@solutioninput#1\solution#2\endinput{#2}
-\long\def\@problemsolutioninput#1\solution#2\endinput{#1\solution@delimiter#2}
-\def\solution@delimiter{}
+\newcommand\problemsolutioninput[2]{\fetchproblemsolution{#2}%
+%{\preproblem@fetched\presolution@fetched}%
+{\preproblem@fetched\presolution@fetched}%
+#1\problem@fetched\solution@delimiter\solution@fetched}
+\newcommand\probleminput[2]{\fetchproblemsolution{#2}%
+\preproblem@fetched#1\problem@fetched}
+\newcommand\solutioninput[2]{\fetchproblemsolution{#2}%
+\presolution@fetched#1\solution@fetched}
+\newcommand\solution@delimiter{}
 %    \end{macrocode}
 %
 %    \begin{macrocode}
