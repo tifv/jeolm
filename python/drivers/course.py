@@ -16,6 +16,10 @@ class RecordNotFoundError(ValueError):
 def produce_metarecords(targets, inrecords, outrecords):
     return CourseDriver(inrecords, outrecords).produce_metarecords(targets)
 
+def list_targets(inrecords, outrecords):
+    return sorted(set(
+        CourseDriver(inrecords, outrecords).list_targets() ))
+
 class Substitutioner(type):
     """
     Metaclass for a driver.
@@ -66,6 +70,10 @@ class CourseDriver(metaclass=Substitutioner):
             for figname in fignames }
 
         return metarecords, figrecords
+
+    def list_targets(self):
+        yield from self.inrecords.list_targets()
+        yield from self.outrecords.list_targets()
 
     def form_metarecord(self, target):
         """
@@ -392,6 +400,19 @@ class CourseDriver(metaclass=Substitutioner):
                 path = path.parent()[path.name + with_ext]
             return super().get_item(path)
 
+        def list_targets(self, inpath=PurePath(), inrecord=None):
+            """List some targets based on inrecords."""
+            if inrecord is None:
+                inrecord = self.records
+            for subname, subrecord in inrecord.items():
+                subpath = inpath[subname]
+                if subpath.ext == '.tex':
+                    yield inpath[subname[:-len('.tex')]]
+                    continue
+                elif subpath.ext == '':
+                    yield subpath
+                    yield from self.list_targets(subpath, subrecord)
+
     class OutrecordAccessor(RecordAccessor):
         def get_item(self, path, *, seen_aliases=frozenset()):
             assert isinstance(path, PurePath) and not path.is_absolute(), path
@@ -424,6 +445,22 @@ class CourseDriver(metaclass=Substitutioner):
                 raise ValueError(alias_path)
             return self.get_item(alias_path,
                 seen_aliases=seen_aliases.union((alias_path,)) )
+
+        def list_targets(self, outpath=PurePath(), outrecord=None):
+            """List some targets based on outrecords."""
+            if outrecord is None:
+                outrecord = self.records
+            for subname, subrecord in outrecord.items():
+                if '$' in subname:
+                    continue
+                subpath = outpath[subname]
+                yield subpath
+                if '$alias' in subrecord:
+                    continue
+                if '$delegate' in subrecord:
+                    for delegator in subrecord.get('$delegate'):
+                        yield pure_join(subpath, delegator)
+                yield from self.list_targets(subpath, subrecord)
 
     ##########
     # LaTeX-level functions

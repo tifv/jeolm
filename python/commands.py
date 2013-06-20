@@ -62,32 +62,3 @@ def archive(root, target='archive', archive_name='archive.tar.xz', compression='
         if root['meta/local.py'].exists():
             af.add(str(root['meta/local.py']), 'meta/local.py')
 
-def shell(root):
-    import readline
-    from . import completion
-    completer = completion.Completer(root)
-    readline.set_completer(completer.readline_completer)
-    readline.set_completer_delims('')
-    readline.parse_and_bind('tab: complete')
-
-    targets = []
-    clear = 0
-    try:
-        while True:
-            target = input('> ')
-            if target == '':
-                clear += 1
-                if clear >= 2:
-                    targets = []
-            else:
-                clear = 0
-                targets.append(target)
-            print(targets)
-    except EOFError:
-        print()
-    except KeyboardInterrupt:
-        raise SystemExit
-
-    from . import builder
-    builder.build(targets, root=root)
-

@@ -9,6 +9,9 @@ logger = logging.getLogger(__name__)
 def produce_metarecords(targets, inrecords, outrecords):
     return TournDriver(inrecords, outrecords).produce_metarecords(targets)
 
+def list_targets(inrecords, outrecords):
+    return sorted(set(TournDriver(inrecords, outrecords).list_targets() ))
+
 class TournDriver(CourseDriver):
 
     ##########
@@ -378,6 +381,8 @@ class TournDriver(CourseDriver):
             '$contest', '$contest$league',
             '$regatta', '$regatta$league'
         ))
+        mimictargets = frozenset((
+            'problems', 'solutions', 'complete', 'jury' ))
 
         def get_child(self, parent_path, parent_record, name, **kwargs):
             path, record = super().get_child(
@@ -405,6 +410,26 @@ class TournDriver(CourseDriver):
             record['$mimic$root'] = parent_record['$mimic$root']
             record['$mimic$path'] = parent_record['$mimic$path'][name]
             return path, record
+
+        def list_targets(self, outpath=PurePath(), outrecord=None):
+            if outrecord is None:
+                outrecord = self.records
+            yield from super().list_targets(outpath, outrecord)
+            if '$contest' in outrecord:
+                for key in self.mimictargets:
+                    yield outpath[key]
+            elif '$contest$league' in outrecord:
+                for key in self.mimictargets:
+                    yield outpath[key]
+            elif '$regatta' in outrecord:
+                for key in self.mimictargets:
+                    yield outpath[key]
+            elif '$regatta$league' in outrecord:
+                for key in self.mimictargets:
+                    yield outpath[key]
+                for subject in outrecord['$regatta$league']['subjects']:
+                    for key in self.mimictargets:
+                        yield outpath[subject][key]
 
     mimickeys = OutrecordAccessor.mimickeys
 

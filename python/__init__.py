@@ -32,9 +32,6 @@ def get_parser():
     command.add_argument('-a', '--archive',
         help='create project archive, including some intermediate files',
         action='store_true', )
-    command.add_argument('-i', '--interactive',
-        help='get targets in the interactive prompt and build them',
-        action='store_true', )
     command.add_argument('targets',
         help='build specified targets',
         nargs='*', default=[], )
@@ -77,7 +74,8 @@ def main():
     if args.archive:
         return commands.archive(root=root)
     if not args.targets:
-        return commands.shell(root=root)
+        logger.info('Nothing to do.')
+        return
 
     return builder.build(args.targets, root=root)
 

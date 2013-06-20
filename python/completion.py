@@ -1,23 +1,99 @@
 from collections import OrderedDict as ODict
-import logging
-
 from pathlib import Path, PurePath
-from . import filesystem, yaml
 
+import logging
 logger = logging.getLogger(__name__)
+
+long_options = (
+    '--review', '--root', '--verbose',
+    '--clean', '--archive',
+    '--list-tex', '--list-asy',
+)
+short_options = {
+    '-r' : '--review', '-R' : '--root', '-v' : '--verbose',
+    '-c' : '--clean', '-a' : '--archive'
+}
+pathlist_accepting_options = ('-r', '--review', '--list-tex', '--list-asy')
+
+def main():
+    import sys
+    n = int(sys.argv[1]) - 1
+    args = sys.argv[3:]
+    current = args[n]
+    previous = args[n-1] if n > 0 else None
+    preceding = args[:n]
+
+    if current.startswith('-'):
+        if current in short_options:
+            print(short_options[current])
+            return
+        for option in long_options:
+            if option.startswith(current):
+                print(arg)
+        return
+
+    if previous is not None:
+        if previous == '--root':
+            # Request for directory completion
+            sys.exit(101)
+    if any(arg in preceding for arg in pathlist_accepting_options):
+        # Request for filename completion
+        sys.exit(100)
+
+    # Jeolm root detection
+    from . import filesystem
+    root = None
+    while '--root' in args:
+        if args.index('--root') < len(args) - 1:
+            root = Path(args[args.index('--root')+1])
+        args[args.index('--root')] = '--whatever'
+    root = filesystem.find_root(proposal=root)
+    if root is None:
+        raise SystemExit
+
+    completer = Completer(root)
+
+    completions = list(completer.complete(current))
+    print('\n'.join(completions))
 
 class Completer:
     def __init__(self, root):
-        with root['meta/in.yaml'].open() as f:
-            inrecords = yaml.load(f) or ODict()
-        with root['meta/out.yaml'].open() as g:
-            outrecords = yaml.load(g) or {}
-        self.accessor = Accessor(inrecords, outrecords)
+        self.root = root
+        self.metapaths = {
+            'in' : root['meta/in.yaml'], 'out' : root['meta/out.yaml'],
+            'cache' : root['build/completion.cache.list'],
+        }
+        self.load_targetlist()
+
+    def load_targetlist(self):
+        self.meta_mtime = max(
+            self.metapaths['in'].st_mtime_ns,
+            self.metapaths['out'].st_mtime_ns )
+        if not self.metapaths['cache'].exists() or \
+                self.metapaths['cache'].st_mtime_ns < self.meta_mtime:
+            from jeolm import filesystem, yaml, drivers
+            filesystem.load_localmodule(self.root)
+            with self.metapaths['in'].open() as f:
+                inrecords = yaml.load(f) or ODict()
+            with self.metapaths['out'].open() as g:
+                outrecords = yaml.load(g) or {}
+            driver = drivers.get_driver()
+            self.targetlist = driver.list_targets(inrecords, outrecords)
+            cache_new = Path('.completion.cache.list.new')
+            with cache_new.open('w') as h:
+                for target in self.targetlist:
+                    print(str(target), file=h)
+            cache_new.rename(self.metapaths['cache'])
+        else:
+            with self.metapaths['cache'].open() as h:
+                self.targetlist = [
+                    PurePath(x)
+                    for x in h.read().split('\n') if x != '' ]
 
     def complete(self, uncompleted_arg):
+        """Return an iterator over completions."""
         if '.' in uncompleted_arg or ' ' in uncompleted_arg:
             return
-        whatever, plus, uncompleted_arg = uncompleted_arg.rpartition('+')
 
         uncompleted_path = PurePath(uncompleted_arg)
         if uncompleted_path.is_absolute():
@@ -30,29 +106,20 @@ class Completer:
         elif uncompleted_arg.endswith('/'):
             uncompleted_parent = uncompleted_path
             uncompleted_name = ''
+            if uncompleted_parent in self.targetlist:
+                yield str(uncompleted_parent) + '/'
         else:
             uncompleted_parent = uncompleted_path.parent()
             uncompleted_name = uncompleted_path.name
 
-        parent_record = self.accessor[uncompleted_parent]
-        if parent_record is None:
-            return
-        assert isinstance(parent_record, dict), parent_record
-        for name in sorted(parent_record.keys()):
-            if '$' in name:
+        for path in self.targetlist:
+            if uncompleted_parent != path.parent():
                 continue
+            name = path.name
+            assert path.ext == ''
             if not name.startswith(uncompleted_name):
                 continue
-            if name == uncompleted_name:
-                yield (whatever + plus +
-                    str(uncompleted_parent[uncompleted_name]) + '/' )
-            elif name.endswith('.asy'):
-                continue
-            elif name.endswith('.tex'):
-                yield (whatever + plus +
-                    str(uncompleted_parent[name[:-4]]) + '/' )
-            else:
-                yield whatever + plus + str(uncompleted_parent[name]) + '/'
+            yield str(uncompleted_parent[name]) + '/'
 
     def readline_completer(self, text, state):
         if not hasattr(self, 'saved_text') or self.saved_text != text:
@@ -62,71 +129,6 @@ class Completer:
             return self.saved_completion[state]
         else:
             return None
-
-class RecordAccessor:
-    def __init__(self, records):
-        self.records = records
-
-    def __getitem__(self, path):
-        assert isinstance(path, PurePath) and not path.is_absolute(), path
-
-        record = self.records
-        missing = False
-        for part in path.parts:
-            assert '+' not in part and ' ' not in part, path
-            if missing or (part not in record):
-                missing = True; record = None
-            else:
-                record = record[part]
-        if missing:
-            return self.default_factory()
-        return record
-
-    def __contains__(self, path):
-        assert isinstance(path, PurePath) and not path.is_absolute(), path
-
-        record = self.records
-        missing = False
-        for part in path.parts:
-            assert '+' not in part and ' ' not in part, path
-            if missing or (part not in record):
-                missing = True; record = None
-            else:
-                record = record[part]
-        return not missing
-
-    @staticmethod
-    def default_factory():
-        return None
-
-class Accessor:
-    def __init__(self, inrecords, outrecords):
-        self.inrecords = RecordAccessor(inrecords)
-        self.outrecords = RecordAccessor(outrecords)
-
-    def __getitem__(self, path):
-        inrecord = self.inrecords[path]
-        outrecord = self.outrecords[path]
-        if inrecord is not None and not isinstance(inrecord, ODict):
-            inrecord = {}
-        if outrecord is not None and not isinstance(outrecord, dict):
-            outrecord = {}
-        if inrecord is None:
-            return outrecord
-        if outrecord is None:
-            return dict(inrecord)
-        ans = dict()
-        ans.update(inrecord)
-        ans.update(outrecord)
-        return ans
-
-def main():
-    import sys
-    root = filesystem.find_root()
-
-    completer = Completer(root)
-
-    print('\n'.join(Completer.complete(sys.argv[2])))
 
 if __name__ == '__main__':
     main()
