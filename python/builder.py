@@ -23,7 +23,7 @@ class Builder:
 
         self.metapaths = {
             'in' : root['meta/in.yaml'], 'out' : root['meta/out.yaml'],
-            'cache' : root['build/cache.yaml'],
+            'meta.cache' : root['build/meta.cache.yaml'],
         }
         self.source_nodes = ODict()
         self.autosource_nodes = ODict()
@@ -65,18 +65,18 @@ class Builder:
             self.inrecords = yaml.load(f) or ODict()
         with self.metapaths['out'].open() as g:
             self.outrecords = yaml.load(g) or {}
-        if self.metapaths['cache'].exists():
-            with self.metapaths['cache'].open() as h:
+        if self.metapaths['meta.cache'].exists():
+            with self.metapaths['meta.cache'].open() as h:
                 self.metarecords_cache = yaml.load(h)
         else:
             self.metarecords_cache = {'cache mtimes' : {}}
 
     def dump_meta_cache(self):
         s = yaml.dump(self.metarecords_cache, default_flow_style=False)
-        meta_cache_new = Path('.cache.yaml.new')
+        meta_cache_new = Path('.meta.cache.yaml.new')
         with meta_cache_new.open('w') as f:
             f.write(s)
-        meta_cache_new.rename(self.metapaths['cache'])
+        meta_cache_new.rename(self.metapaths['meta.cache'])
 
     def create_metanode(self, metaname, metarecord):
         metanode = DatedNode(name='meta:{}'.format(metaname))

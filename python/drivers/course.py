@@ -185,12 +185,12 @@ class CourseDriver(metaclass=Substitutioner):
             yield target
             return;
 
-        delegator = record.get('$delegate')
-        if not isinstance(delegator, list):
-            raise TypeError(delegator)
-        for d in delegator:
+        delegators = record.get('$delegate')
+        if not isinstance(delegators, list):
+            raise TypeError(delegators)
+        for delegator in delegators:
             yield from self.trace_delegators(
-                pure_join(resolved_path, d),
+                pure_join(resolved_path, delegator),
                 seen_targets=seen_targets )
 
     def list_protorecord_methods(self):
@@ -393,6 +393,7 @@ class CourseDriver(metaclass=Substitutioner):
             return self[path] is not None
 
     class InrecordAccessor(RecordAccessor):
+        # Convenience extension
         def get_item(self, path, *, with_ext=None):
             if with_ext is not None:
                 assert with_ext.startswith('.')
@@ -433,9 +434,9 @@ class CourseDriver(metaclass=Substitutioner):
             record = parent_record.get(name)
             if record is None:
                 return path, None
+            if not isinstance(record, dict):
+                raise TypeError(path, record)
             if '$alias' not in record:
-                if not isinstance(record, dict):
-                    raise TypeError(path, record)
                 return path, record
             if len(record) > 1:
                 raise ValueError(record)

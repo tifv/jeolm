@@ -29,7 +29,9 @@ class TournDriver(CourseDriver):
     #       [some-regatta-league/whatever for each league]
     # * some-regatta-league/jury ->
     #       [some-regatta-league/subject/jury for each subject ]
-    def _trace_delegators(self, target, resolved_path, record, *, seen_targets):
+    def _trace_delegators(self, target, resolved_path, record,
+        *, seen_targets
+    ):
         if not record.get('$mimic', False):
             yield from super()._trace_delegators(target, resolved_path, record,
                 seen_targets=seen_targets )
@@ -378,9 +380,7 @@ class TournDriver(CourseDriver):
     # * $mimic$path = b/c
     class OutrecordAccessor(CourseDriver.OutrecordAccessor):
         mimickeys = frozenset((
-            '$contest', '$contest$league',
-            '$regatta', '$regatta$league'
-        ))
+            '$contest', '$contest$league', '$regatta', '$regatta$league' ))
         mimictargets = frozenset((
             'problems', 'solutions', 'complete', 'jury' ))
 
