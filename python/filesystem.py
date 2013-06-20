@@ -27,12 +27,12 @@ def check_root(root):
         if not x.name.startswith('.') }
     broken_links = {x.name for x in root if not x.exists()}
     if not required_directories.issubset(directories):
-        return False
-    meta_paths = {p for p in root['meta'] if not p.name.startswith('.')}
+        return False;
+    meta_paths = {p for p in root/'meta' if not p.name.startswith('.')}
     meta_items = {i.name for i in meta_paths}
     meta_files = {i.name for i in meta_paths if i.is_file()}
     if not required_meta_files.issubset(meta_files):
-        return False
+        return False;
     unexpected_directories = directories - expected_directories
     unexpected_meta_items = \
         (meta_files - expected_meta_files) | \
@@ -56,41 +56,41 @@ def check_root(root):
                 "'<YELLOW>{}<BLACK>'".format(x)
                 for x in sorted(unexpected_meta_items)
             )) )
-    return True
+    return True;
 
 def find_root(proposal=None):
     if proposal is not None:
         try:
             root = Path(proposal).resolve()
         except FileNotFoundError:
-            return None
+            return None;
         else:
             if not check_root(root):
-                return None
-        return root
+                return None;
+        return root;
     root = Path.cwd()
     if check_root(root):
-        return root
+        return root;
     while len(root.parts) > 2: # jeolm root can never be a filesystem root
         root, tail = root.parent(), root.name
         if tail not in expected_directories:
-            continue
+            continue;
         if check_root(root):
-            return root
+            return root;
     else:
-        return None
+        return None;
 
 def load_localmodule(root, *, module_name='jeolm.local'):
-    module_path = root['meta/local.py']
+    module_path = root/'meta/local.py'
     if not module_path.exists():
-        return None
+        return None;
 
     import importlib.machinery
     localmodule = importlib.machinery.SourceFileLoader(
         module_name, str(module_path)
     ).load_module()
     logger.debug("Loaded 'meta/local.py' as {} module".format(module_name))
-    return localmodule
+    return localmodule;
 
 def repr_required():
     return ', '.join(

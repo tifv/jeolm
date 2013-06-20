@@ -128,7 +128,7 @@ class CourseDriver(metaclass=Substitutioner):
 
         inrecord_figures = self.inrecords[inpath].get('figures')
         if inrecord_figures is None:
-            return {}
+            return {};
         if not isinstance(inrecord_figures, dict):
             raise TypeError(inrecord_figures)
         return OrderedDict(
@@ -146,7 +146,7 @@ class CourseDriver(metaclass=Substitutioner):
             alt_inpath = self.figrecords[figname]['source']
             if alt_inpath != inpath:
                 raise ValueError(figname, inpath, alt_inpath)
-            return figname
+            return figname;
 
         figrecord = self.figrecords[figname] = dict()
         figrecord['figname'] = figname
@@ -159,7 +159,7 @@ class CourseDriver(metaclass=Substitutioner):
             if len(used) != len(used_items):
                 raise ValueError(inpath, used_items)
 
-        return figname
+        return figname;
 
     ##########
     # Record-level functions
@@ -213,9 +213,9 @@ class CourseDriver(metaclass=Substitutioner):
                 break;
             except RecordNotFoundError as error:
                 if error.args != (target,):
-                    raise
+                    raise;
         else:
-            raise RecordNotFoundError(target)
+            raise RecordNotFoundError(target);
 
         if not isinstance(protorecord['body'], list):
             protorecord['body'] = list(protorecord['body'])
@@ -228,7 +228,7 @@ class CourseDriver(metaclass=Substitutioner):
     ):
         """Return protorecord with 'body'."""
         if record is None or '$rigid' not in record:
-            raise RecordNotFoundError(target)
+            raise RecordNotFoundError(target);
         protorecord = dict()
         protorecord.update(record.get('$rigid$opt', ()))
         if 'date' in protorecord:
@@ -260,20 +260,20 @@ class CourseDriver(metaclass=Substitutioner):
             yield self.substitute_clearpage()
             if not page: # empty page
                 yield self.substitute_phantom()
-                continue
+                continue;
             for item in page:
                 if isinstance(item, dict):
                     yield self.constitute_special(item)
-                    continue
+                    continue;
                 if not isinstance(item, str):
                     raise TypeError(target, item)
 
                 yield self.substitute_jeolmheader()
                 subpath = self.outrecords.resolve(pure_join(target, item))
-                inpath, inrecord = \
-                    self.inrecords.get_item(subpath, with_ext='.tex')
+                inpath, inrecord = self.inrecords.get_item(
+                    subpath.with_suffix('.tex') )
                 if inrecord is None:
-                    raise RecordNotFoundError(inpath, target)
+                    raise RecordNotFoundError(inpath, target);
                 inpath_set.add(inpath)
                 date = inrecord.get('date')
                 if date is not None:
@@ -285,9 +285,9 @@ class CourseDriver(metaclass=Substitutioner):
             fluid = self.generate_autofluid(target)
         if fluid is None:
             inpath, inrecord = self.inrecords.get_item(
-                target, with_ext='.tex' )
+                target.with_suffix('.tex') )
             if inrecord is None:
-                raise RecordNotFoundError(target)
+                raise RecordNotFoundError(target);
             inpath_set.add(inpath)
             if 'date' in inrecord:
                 date_set.add(inrecord['date'])
@@ -296,7 +296,7 @@ class CourseDriver(metaclass=Substitutioner):
         for item in fluid:
             if isinstance(item, dict):
                 yield self.constitute_special(item)
-                continue
+                continue;
             if not isinstance(item, str):
                 raise TypeError(target, item)
 
@@ -310,14 +310,16 @@ class CourseDriver(metaclass=Substitutioner):
     def generate_autofluid(self, target):
         inrecord = self.inrecords[target]
         if inrecord is None:
-            return None
+            return None;
         subnames = []
         for subname in inrecord:
-            ext = PurePath(subname).ext
-            if ext == '':
+            subnamepath = PurePath(subname)
+            suffix = subnamepath.suffix
+            if suffix == '':
                 subnames.append(subname)
-            elif ext == '.tex':
-                subnames.append(subname[:-len('.tex')])
+            elif suffix == '.tex':
+                subnames.append(str(subnamepath.with_suffix('')))
+            else: pass
         return subnames
 
     def find_figure_inrecord(self, figpath):
@@ -326,26 +328,27 @@ class CourseDriver(metaclass=Substitutioner):
 
         figtype is one of 'asy', 'eps'.
         """
-        for figtype, ext in (('asy', '.asy'), ('eps', '.eps')):
-            inpath, inrecord = self.inrecords.get_item(figpath, with_ext=ext)
+        for figtype, suffix in (('asy', '.asy'), ('eps', '.eps')):
+            inpath, inrecord = self.inrecords.get_item(
+                figpath.with_suffix(suffix) )
             if inrecord is None:
-                continue
+                continue;
             if not isinstance(inrecord, dict):
                 raise TypeError(inpath, inrecord)
-            return figtype, inpath, inrecord
-        raise RecordNotFoundError(figpath, 'figure')
+            return figtype, inpath, inrecord;
+        raise RecordNotFoundError(figpath, 'figure');
 
     def trace_figure_used(self, inpath, *, seen_paths=frozenset()):
         if inpath in seen_paths:
             raise ValueError(path)
         seen_paths = seen_paths.union((inpath,))
-        assert inpath.ext == '.asy', inpath
+        assert inpath.suffix == '.asy', inpath
         inrecord = self.inrecords[inpath]
         if inrecord is None:
-            raise RecordNotFoundError(inpath)
+            raise RecordNotFoundError(inpath);
         used = inrecord.get('used')
         if used is None:
-            return
+            return;
         for used_name, original_path in used.items():
             yield used_name, original_path
             yield from self.trace_figure_used(original_path,
@@ -369,17 +372,17 @@ class CourseDriver(metaclass=Substitutioner):
             return the_path, the_record
 
         def get_child(self, parent_path, parent_record, name):
-            path = parent_path[name]
+            path = parent_path/name
             if parent_record is None:
-                return path, None
-            assert isinstance(parent_record, dict), \
-                (parent_path, parent_record)
+                return path, None;
+            assert isinstance(parent_record, dict), (
+                parent_path, parent_record )
             record = parent_record.get(name)
             if record is None:
-                return path, None
+                return path, None;
             if not isinstance(record, dict):
                 raise TypeError(path, record)
-            return path, record
+            return path, record;
 
         def resolve(self, path):
             the_path, the_record = self.get_item(path)
@@ -393,24 +396,16 @@ class CourseDriver(metaclass=Substitutioner):
             return self[path] is not None
 
     class InrecordAccessor(RecordAccessor):
-        # Convenience extension
-        def get_item(self, path, *, with_ext=None):
-            if with_ext is not None:
-                assert with_ext.startswith('.')
-                assert path.ext == ''
-                path = path.parent()[path.name + with_ext]
-            return super().get_item(path)
-
         def list_targets(self, inpath=PurePath(), inrecord=None):
             """List some targets based on inrecords."""
             if inrecord is None:
                 inrecord = self.records
             for subname, subrecord in inrecord.items():
-                subpath = inpath[subname]
-                if subpath.ext == '.tex':
-                    yield inpath[subname[:-len('.tex')]]
-                    continue
-                elif subpath.ext == '':
+                subpath = inpath/subname
+                if subpath.suffix == '.tex':
+                    yield subpath.with_suffix('')
+                    continue;
+                elif subpath.suffix == '':
                     yield subpath
                     yield from self.list_targets(subpath, subrecord)
 
@@ -426,18 +421,18 @@ class CourseDriver(metaclass=Substitutioner):
             return the_path, the_record
 
         def get_child(self, parent_path, parent_record, name, *, seen_aliases):
-            path = parent_path[name]
+            path = parent_path/name
             if parent_record is None:
-                return path, None
-            assert isinstance(parent_record, dict), \
-                (parent_path, parent_record)
+                return path, None;
+            assert isinstance(parent_record, dict), (
+                parent_path, parent_record )
             record = parent_record.get(name)
             if record is None:
-                return path, None
+                return path, None;
             if not isinstance(record, dict):
                 raise TypeError(path, record)
             if '$alias' not in record:
-                return path, record
+                return path, record;
             if len(record) > 1:
                 raise ValueError(record)
             alias_path = pure_join(path, record['$alias'])
@@ -445,7 +440,7 @@ class CourseDriver(metaclass=Substitutioner):
             if alias_path in seen_aliases:
                 raise ValueError(alias_path)
             return self.get_item(alias_path,
-                seen_aliases=seen_aliases.union((alias_path,)) )
+                seen_aliases=seen_aliases.union((alias_path,)) );
 
         def list_targets(self, outpath=PurePath(), outrecord=None):
             """List some targets based on outrecords."""
@@ -453,11 +448,11 @@ class CourseDriver(metaclass=Substitutioner):
                 outrecord = self.records
             for subname, subrecord in outrecord.items():
                 if '$' in subname:
-                    continue
-                subpath = outpath[subname]
+                    continue;
+                subpath = outpath/subname
                 yield subpath
                 if '$alias' in subrecord:
-                    continue
+                    continue;
                 if '$delegate' in subrecord:
                     for delegator in subrecord.get('$delegate'):
                         yield pure_join(subpath, delegator)
@@ -526,7 +521,7 @@ class CourseDriver(metaclass=Substitutioner):
     @classmethod
     def constitute_preamble_line(cls, metaline):
         if isinstance(metaline, str):
-            return metaline
+            return metaline;
         package = metaline['package']
         options = metaline.get('options', None)
         options = cls.constitute_options(options)
@@ -539,7 +534,7 @@ class CourseDriver(metaclass=Substitutioner):
     @classmethod
     def constitute_options(cls, options):
         if not options:
-            return ''
+            return '';
         if not isinstance(options, str):
             options = ','.join(options)
         return '[' + options + ']'
@@ -548,6 +543,7 @@ class CourseDriver(metaclass=Substitutioner):
         aliases, inrecords, figname_maps = ( metarecord[key]
             for key in ('aliases', 'inrecords', 'figname maps') )
 
+        # Extension of self.consistute_input()
         def constitute_input(item):
             assert isinstance(item, dict), item
             assert 'inpath' in item, item
@@ -595,7 +591,7 @@ class CourseDriver(metaclass=Substitutioner):
     @classmethod
     def constitute_date(cls, date):
         if not isinstance(date, datetime.date):
-            return str(date)
+            return str(date);
         return cls.substitute_date(
             year=date.year,
             month=cls.ru_monthes[date.month-1],
@@ -643,10 +639,10 @@ class CourseDriver(metaclass=Substitutioner):
         datetime_date_set = {date for date in date_set
             if isinstance(date, datetime.date) }
         if datetime_date_set:
-            return min(datetime_date_set)
+            return min(datetime_date_set);
         elif len(date_set) == 1:
             date, = date_set
-            return date
+            return date;
         else:
-            return None
+            return None;
 

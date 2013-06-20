@@ -58,26 +58,26 @@ def main():
     filesystem.load_localmodule(root)
 
     if args.review is not None:
-        return inrecords.review(args.review, viewpoint=Path.cwd(), root=root)
+        return inrecords.review(args.review, viewpoint=Path.cwd(), root=root);
     if args.list_tex is not None:
         return inrecords.print_inpaths(args.list_tex, '.tex',
-            viewpoint=Path.cwd(), root=root )
+            viewpoint=Path.cwd(), root=root );
     if args.list_asy is not None:
         return inrecords.print_inpaths(args.list_asy, '.asy',
-            viewpoint=Path.cwd(), root=root )
+            viewpoint=Path.cwd(), root=root );
     if args.clean is not None:
         assert args.clean >= 1
         if args.clean == 1:
-            return commands.cleanview(root=root)
+            return commands.cleanview(root=root);
         if args.clean > 1:
-            return commands.unbuild(root=root)
+            return commands.unbuild(root=root);
     if args.archive:
-        return commands.archive(root=root)
+        return commands.archive(root=root);
     if not args.targets:
         logger.info('Nothing to do.')
-        return
+        return;
 
-    return builder.build(args.targets, root=root)
+    return builder.build(args.targets, root=root);
 
 def setup_logging(verbose):
     import sys
@@ -88,7 +88,7 @@ def setup_logging(verbose):
     logger.addHandler(handler)
 
 def setup_file_logging(root):
-    handler = logging.FileHandler(str(root['jeolm.log']))
+    handler = logging.FileHandler(str(root/'jeolm.log'))
     handler.setLevel(logging.DEBUG)
     handler.setFormatter(FancyFormatter("%(name)s: %(message)s", fancy=False))
     logger.addHandler(handler)

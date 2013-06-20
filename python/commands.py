@@ -1,8 +1,8 @@
 import os
-import logging
 
 from pathlib import Path
 
+import logging
 logger = logging.getLogger(__name__)
 
 def cleanview(root):
@@ -12,9 +12,9 @@ def cleanview(root):
     assert isinstance(root, Path), root
     for x in root:
         if not x.is_symlink():
-            continue
+            continue;
         target = os.readlink(str(x))
-        if target.startswith((str(root['build']) + '/', 'build/')):
+        if target.startswith('build/'):
             x.unlink()
 
 def unbuild(root):
@@ -22,17 +22,17 @@ def unbuild(root):
     Run cleanview() plus remove all generated build/**.tex files
     """
     cleanview(root)
-    _unbuild_recursive(root['build'])
+    _unbuild_recursive(root/'build')
 
 def _unbuild_recursive(builddir):
     for x in builddir:
         if x.is_symlink():
-            continue
+            continue;
         if x.is_dir():
             _unbuild_recursive(x)
-            continue
-        if x.ext != '.tex':
-            continue
+            continue;
+        if x.suffix != '.tex':
+            continue;
         x.unlink()
 
 def archive(root, target='archive', archive_name='archive.tar.xz', compression='xz'):
@@ -46,19 +46,21 @@ def archive(root, target='archive', archive_name='archive.tar.xz', compression='
 
     def join(*args): return str(PurePath(*args))
 
-    with tarfile.open(str(root[archive_name]), 'w:' + compression) as af:
+    with tarfile.open(str(root/archive_name), 'w:' + compression) as af:
         for name, node in builder.source_nodes.items():
             af.add(str(node.path), join('source', name))
         for metaname, node in builder.pdf_nodes.items():
-            af.add(str(node.path), join('pdf', metaname + '.pdf'))
+            af.add(str(node.path), join('pdf', metaname+'.pdf'))
         for metaname, node in builder.autosource_nodes.items():
-            af.add(str(node.path), join('autosource', metaname + '.tex'))
+            af.add(str(node.path), join('autosource', metaname+'.tex'))
         for figname, node in builder.eps_nodes.items():
-            af.add(str(node.path), join('eps', figname + '.eps'))
+            af.add(str(node.path), join('eps', figname+'.eps'))
 
-        af.add(str(root['meta/in.yaml']), 'meta/in.yaml')
-        af.add(str(root['meta/out.yaml']), 'meta/out.yaml')
-        af.add(str(root['meta/local.sty']), 'meta/local.sty')
-        if root['meta/local.py'].exists():
-            af.add(str(root['meta/local.py']), 'meta/local.py')
+        af.add(str(root/'meta/in.yaml'), 'meta/in.yaml')
+        af.add(str(root/'meta/out.yaml'), 'meta/out.yaml')
+        af.add(str(root/'meta/local.sty'), 'meta/local.sty')
+
+        local_py = root/'meta/local.py'
+        if local_py.exists():
+            af.add(str(local_py), 'meta/local.py')
 

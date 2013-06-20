@@ -1,5 +1,6 @@
 from collections import OrderedDict as ODict
-from pathlib import Path, PurePath
+
+from pathlib import Path, PurePosixPath as PurePath
 
 import logging
 logger = logging.getLogger(__name__)
@@ -26,11 +27,11 @@ def main():
     if current.startswith('-'):
         if current in short_options:
             print(short_options[current])
-            return
+            return;
         for option in long_options:
             if option.startswith(current):
                 print(arg)
-        return
+        return;
 
     if previous is not None:
         if previous == '--root':
@@ -49,7 +50,7 @@ def main():
         args[args.index('--root')] = '--whatever'
     root = filesystem.find_root(proposal=root)
     if root is None:
-        raise SystemExit
+        raise SystemExit;
 
     completer = Completer(root)
 
@@ -60,8 +61,9 @@ class Completer:
     def __init__(self, root):
         self.root = root
         self.metapaths = {
-            'in' : root['meta/in.yaml'], 'out' : root['meta/out.yaml'],
-            'cache' : root['build/completion.cache.list'],
+            'in' : root/'meta/in.yaml',
+            'out' : root/'meta/out.yaml',
+            'cache' : root/'build/completion.cache.list',
         }
         self.load_targetlist()
 
@@ -93,11 +95,11 @@ class Completer:
     def complete(self, uncompleted_arg):
         """Return an iterator over completions."""
         if '.' in uncompleted_arg or ' ' in uncompleted_arg:
-            return
+            return;
 
         uncompleted_path = PurePath(uncompleted_arg)
         if uncompleted_path.is_absolute():
-            return
+            return;
 
         if uncompleted_path == PurePath('.'):
             assert uncompleted_arg == ''
@@ -114,21 +116,21 @@ class Completer:
 
         for path in self.targetlist:
             if uncompleted_parent != path.parent():
-                continue
+                continue;
             name = path.name
-            assert path.ext == ''
+            assert path.suffix == ''
             if not name.startswith(uncompleted_name):
-                continue
-            yield str(uncompleted_parent[name]) + '/'
+                continue;
+            yield str(uncompleted_parent/name) + '/'
 
     def readline_completer(self, text, state):
         if not hasattr(self, 'saved_text') or self.saved_text != text:
             self.saved_completion = list(self.complete(text))
             self.saved_text = text
         if state < len(self.saved_completion):
-            return self.saved_completion[state]
+            return self.saved_completion[state];
         else:
-            return None
+            return None;
 
 if __name__ == '__main__':
     main()

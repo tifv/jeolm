@@ -6,8 +6,7 @@ def pure_join(*paths):
 
     Resolve any appearence of 'whatever/..' to ''.
     The resulting path must not contain '..' parts.
-    The leading '/', if any, will be stripped from the result
-    (but not from the argument paths).
+    The leading '/', if any, will be stripped from the result.
     """
     path = PurePath(*paths)
     if path.is_absolute():
@@ -26,8 +25,10 @@ def pure_relative(fromdir, absolute):
 
     Both arguments must be absolute PurePath's and lack '..' parts.
     """
-    if not absolute.is_absolute(): raise ValueError(absolute)
-    if not fromdir.is_absolute(): raise ValueError(fromdir)
+    if not absolute.is_absolute():
+        raise ValueError(absolute)
+    if not fromdir.is_absolute():
+        raise ValueError(fromdir)
     if any('..' in path.parts for path in (absolute, fromdir)):
         raise ValueError(absolute, fromdir)
     upstairs = 0
@@ -36,5 +37,5 @@ def pure_relative(fromdir, absolute):
         fromdir = fromdir.parts[:-1]
         upstairs += 1
     return PurePath(*
-        ['..'] * upstairs + [absolute.relative_to(fromdir)] )
+        ['..'] * upstairs + [absolute.relative(fromdir)] )
 

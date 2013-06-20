@@ -82,7 +82,7 @@ class TournDriver(CourseDriver):
     def produce_mimic_protorecord(self, target, record,
         *, inpath_set, date_set ):
         if record is None or '$mimic' not in record:
-            raise RecordNotFoundError(target)
+            raise RecordNotFoundError(target);
         mimic = record['$mimic']
 
 
@@ -92,18 +92,18 @@ class TournDriver(CourseDriver):
             inpath_set=inpath_set, date_set=date_set )
         if mimic == '$contest':
             return self.produce_contest_protorecord(target, record=record,
-                contest=record['$contest'], **kwargs )
+                contest=record['$contest'], **kwargs );
         elif mimic == '$contest$league':
             return self.produce_contest_league_protorecord(target,
                 record=record, contest=self.find_contest(record),
-                league=record['$contest$league'], **kwargs )
+                league=record['$contest$league'], **kwargs );
         elif mimic == '$regatta':
             return self.produce_regatta_protorecord(target, record=record,
-                regatta=record['$regatta'], **kwargs )
+                regatta=record['$regatta'], **kwargs );
         elif mimic == '$regatta$league':
             return self.produce_regatta_league_protorecord(target,
                 record=record, regatta=self.find_regatta(record),
-                league=record['$regatta$league'], **kwargs )
+                league=record['$regatta$league'], **kwargs );
         else:
             raise AssertionError(mimic)
 
@@ -114,9 +114,9 @@ class TournDriver(CourseDriver):
         if subtarget in self.tourn_fluid_targets:
             subtarget, = subtarget.parts
             return {'body' : self.generate_contest_body(
-                subroot, subtarget, contest, inpath_set=inpath_set )}
+                subroot, subtarget, contest, inpath_set=inpath_set )};
         logger.debug('Tourn record not found: {!s}'.format(target))
-        raise RecordNotFoundError(target)
+        raise RecordNotFoundError(target);
 
     def produce_contest_league_protorecord(self, target, subroot, subtarget,
         record, contest, league, contained=False,
@@ -126,16 +126,16 @@ class TournDriver(CourseDriver):
             subtarget, = subtarget.parts
             return {'body' : self.generate_fluid_contest_league_body(
                 subroot, subtarget,
-                contest, league, contained, inpath_set=inpath_set )}
+                contest, league, contained, inpath_set=inpath_set )};
         assert not contained
         if subtarget == PurePath():
             rigid = record['$rigid']
             protorecord = {'body' : self.generate_rigid_contest_league_body(
                 subroot, contest, league, rigid, inpath_set=inpath_set )}
             protorecord.update(record.get('$rigid$opt', ()))
-            return protorecord
+            return protorecord;
         logger.debug('Tourn record not found: {!s}'.format(target))
-        raise RecordNotFoundError(target)
+        raise RecordNotFoundError(target);
 
     contest_league_fluid_targets = tourn_fluid_targets | {PurePath('jury')}
 
@@ -146,9 +146,9 @@ class TournDriver(CourseDriver):
         if subtarget in self.tourn_fluid_targets:
             subtarget, = subtarget.parts
             return {'body' : self.generate_regatta_body(
-                subroot, subtarget, regatta, inpath_set=inpath_set )}
+                subroot, subtarget, regatta, inpath_set=inpath_set )};
         logger.debug('Tourn record not found: {!s}'.format(target))
-        raise RecordNotFoundError(target)
+        raise RecordNotFoundError(target);
 
     def produce_regatta_league_protorecord(self, target, subroot, subtarget,
         record, regatta, league, contained=False,
@@ -158,28 +158,28 @@ class TournDriver(CourseDriver):
             subtarget, = subtarget.parts
             return {'body' : self.generate_fluid_regatta_league_body(
                 subroot, subtarget,
-                regatta, league, contained, inpath_set=inpath_set )}
+                regatta, league, contained, inpath_set=inpath_set )};
         if subtarget == PurePath():
             assert not contained
             protorecord = {'body' : self.generate_rigid_regatta_league_body(
                 subroot, regatta, league, inpath_set=inpath_set )}
             protorecord.update(record.get('$rigid$opt', ()))
-            return protorecord
+            return protorecord;
         subjectkey, subtarget = subtarget.parts[0], subtarget.parts[1:]
         if subjectkey in league['subjects']:
             if subtarget == PurePath('jury'):
                 assert not contained
                 return {'body' : self.generate_fluid_regatta_jury_body(
                     subroot, subjectkey,
-                    regatta, league, inpath_set=inpath_set )}
+                    regatta, league, inpath_set=inpath_set )};
             if subtarget in self.regatta_league_fluid_targets:
                 assert contained
                 subtarget, = subtarget.parts
                 return {'body' : self.generate_fluid_regatta_subject_body(
                     subroot, subjectkey, subtarget,
-                    regatta, league, inpath_set=inpath_set )}
+                    regatta, league, inpath_set=inpath_set )};
         logger.debug('Tourn record not found: {!s}'.format(target))
-        raise RecordNotFoundError(target)
+        raise RecordNotFoundError(target);
 
     regatta_league_fluid_targets = tourn_fluid_targets
 
@@ -192,7 +192,7 @@ class TournDriver(CourseDriver):
                 pure_join(subroot, leaguekey) )
             league = leaguerecord['$contest$league']
             subprotorecord = self.produce_contest_league_protorecord(
-                leagueroot[subtarget], leagueroot, PurePath(subtarget),
+                leagueroot/subtarget, leagueroot, PurePath(subtarget),
                 {}, contest, league, contained=True,
                 inpath_set=inpath_set, date_set=set() )
             yield from subprotorecord['body']
@@ -210,7 +210,7 @@ class TournDriver(CourseDriver):
             'complete' : 'both', 'jury' : 'both'} [subtarget]
         yield self.substitute_begin_problems()
         for i in range(1, 1 + league['problems']):
-            inpath = subroot['{}.tex'.format(i)]
+            inpath = subroot/(str(i)+'.tex')
             if inpath not in self.inrecords:
                 raise RecordNotFoundError(inpath, subroot)
             inpath_set.add(inpath)
@@ -239,7 +239,7 @@ class TournDriver(CourseDriver):
                 yield self.constitute_section(contest['name'])
                 yield self.substitute_begin_problems()
                 for i in range(1, 1 + league['problems']):
-                    inpath = subroot['{}.tex'.format(i)]
+                    inpath = subroot/(str(i)+'.tex')
                     if inpath not in self.inrecords:
                         raise RecordNotFoundError(inpath, subroot)
                     inpath_set.add(inpath)
@@ -258,7 +258,7 @@ class TournDriver(CourseDriver):
                 pure_join(subroot, leaguekey) )
             league = leaguerecord['$regatta$league']
             subprotorecord = self.produce_regatta_league_protorecord(
-                leagueroot[subtarget], leagueroot, PurePath(subtarget),
+                leagueroot/subtarget, leagueroot, PurePath(subtarget),
                 {}, regatta, league, contained=True,
                 inpath_set=inpath_set, date_set=set() )
             yield from subprotorecord['body']
@@ -274,7 +274,7 @@ class TournDriver(CourseDriver):
                 regatta['name'] + '. ' + league['name'], select=subtarget )
         for subjectkey in league['subjects']:
             subprotorecord = self.produce_regatta_league_protorecord(
-                subroot[subjectkey][subtarget],
+                subroot/subjectkey/subtarget,
                 subroot, PurePath(subjectkey, subtarget),
                 {}, regatta, league, contained=True,
                 inpath_set=inpath_set, date_set=set() )
@@ -292,7 +292,7 @@ class TournDriver(CourseDriver):
             select='jury' )
         yield self.substitute_begin_problems()
         for tour in range(1, 1 + len(league['tours'])):
-            inpath = subroot[subjectkey]['{}.tex'.format(tour)]
+            inpath = subroot/subjectkey/(str(tour)+'.tex')
             if inpath not in self.inrecords:
                 raise RecordNotFoundError(inpath, target)
             inpath_set.add(inpath)
@@ -313,7 +313,7 @@ class TournDriver(CourseDriver):
             'complete' : 'both', 'jury' : 'both'} [subtarget]
         yield self.substitute_begin_problems()
         for tour in range(1, 1 + len(league['tours'])):
-            inpath = subroot[subjectkey]['{}.tex'.format(tour)]
+            inpath = subroot/subjectkey/(str(tour)+'.tex')
             if inpath not in self.inrecords:
                 raise RecordNotFoundError(inpath, target)
             inpath_set.add(inpath)
@@ -333,7 +333,7 @@ class TournDriver(CourseDriver):
                 yield self.substitute_jeolmheader_nospace()
                 yield self.substitute_rigid_regatta_caption(
                     caption=regatta['name'], mark=tourvalue['mark'] )
-                inpath = subroot[subjectkey]['{}.tex'.format(tour)]
+                inpath = subroot/subjectkey/(str(tour)+'.tex')
                 if inpath not in self.inrecords:
                     raise RecordNotFoundError(inpath, target)
                 inpath_set.add(inpath)
@@ -349,13 +349,13 @@ class TournDriver(CourseDriver):
     # Extension
     def produce_fluid_protorecord(self, target, record, **kwargs):
         if record is None or '$mimic' not in record:
-            return super().produce_fluid_protorecord(target, record, **kwargs)
+            return super().produce_fluid_protorecord(target, record, **kwargs);
         try:
-            return self.produce_mimic_protorecord(target, record, **kwargs)
+            return self.produce_mimic_protorecord(target, record, **kwargs);
         except RecordNotFoundError as error:
             if error.args != (target,):
                 raise
-        return super().produce_fluid_protorecord(target, record, **kwargs)
+        return super().produce_fluid_protorecord(target, record, **kwargs);
 
     def find_contest(self, record):
         return self.outrecords[pure_join(
@@ -394,13 +394,13 @@ class TournDriver(CourseDriver):
                     record = record.copy()
                     record.update({ '$mimic' : mimickey,
                         '$mimic$root' : path, '$mimic$path' : PurePath() })
-                return path, record
+                return path, record;
             if (
                 parent_record is None or
                 name in parent_record or
                 not (self.mimickeys & parent_record.keys())
             ):
-                return path, record
+                return path, record;
 
             mimickey, = self.mimickeys & parent_record.keys()
             mimicvalue = parent_record[mimickey]
@@ -408,8 +408,8 @@ class TournDriver(CourseDriver):
             record[mimickey] = mimicvalue
             record['$mimic'] = mimickey
             record['$mimic$root'] = parent_record['$mimic$root']
-            record['$mimic$path'] = parent_record['$mimic$path'][name]
-            return path, record
+            record['$mimic$path'] = parent_record['$mimic$path']/name
+            return path, record;
 
         def list_targets(self, outpath=PurePath(), outrecord=None):
             if outrecord is None:
@@ -417,19 +417,19 @@ class TournDriver(CourseDriver):
             yield from super().list_targets(outpath, outrecord)
             if '$contest' in outrecord:
                 for key in self.mimictargets:
-                    yield outpath[key]
+                    yield outpath/key
             elif '$contest$league' in outrecord:
                 for key in self.mimictargets:
-                    yield outpath[key]
+                    yield outpath/key
             elif '$regatta' in outrecord:
                 for key in self.mimictargets:
-                    yield outpath[key]
+                    yield outpath/key
             elif '$regatta$league' in outrecord:
                 for key in self.mimictargets:
-                    yield outpath[key]
+                    yield outpath/key
                 for subject in outrecord['$regatta$league']['subjects']:
                     for key in self.mimictargets:
-                        yield outpath[subject][key]
+                        yield outpath/subject/key
 
     mimickeys = OutrecordAccessor.mimickeys
 
@@ -442,7 +442,7 @@ class TournDriver(CourseDriver):
     ):
         if select is None:
             return super().constitute_input(
-                inpath, alias, inrecord, figname_map )
+                inpath, alias, inrecord, figname_map );
 
         assert number is not None, (inpath, number)
         numeration = self.substitute_rigid_numeration(number=number)

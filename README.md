@@ -8,7 +8,7 @@ complementary LaTeX packages.
 
 - Python 3.3 or greater
 - PyYaml
-- pathlib by Antoine Pitrou
+- pathlib (PEP 428)
 - LaTeX
 - Asymptote (only used for figure generation)
 

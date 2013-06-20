@@ -1,7 +1,7 @@
 """
 get_driver()
-    Return a module (<driver>) containing function
-    produce_metarecords().
+    Return a module (<driver>) containing functions
+    produce_metarecords() and list_targets().
 
 <driver>.produce_metarecords(targets, inrecords, outrecords)
     Return (metarecords, figrecords) where
@@ -15,6 +15,10 @@ get_driver()
     Inpaths are relative PurePath objects. They should be based on
     inrecords, and supposed to be valid subpaths of the '<root>/source/'
     directory.
+
+<driver>.list_targets(inrecords, outrecords)
+    Return a list of some valid targets, that may be used with
+    produce_metarecords().
 
 Metarecords
     Each metarecord must contain the following fields:

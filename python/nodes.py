@@ -61,7 +61,7 @@ class Node:
         if self._locked:
             raise NodeCycleError(self.name)
         if self.updated:
-            return
+            return;
         self.update_needs()
         self.update_self()
         self.updated = True
@@ -74,7 +74,7 @@ class Node:
                     node.update()
                 except NodeCycleError as exception:
                     exception.args += (self.name,)
-                    raise
+                    raise;
         finally:
             self._locked = False
 
@@ -86,17 +86,15 @@ class Node:
         """
         Return True if the node needs building (is obsolete, etc.).
         """
-        if any(
-            node.modified
-            for node in self.needs
-        ):
-            return True
-        return False
+        if any(node.modified for node in self.needs):
+            return True;
+        return False;
 
     def extend_needs(self, needs):
         needs = list(needs)
         for need in needs:
-            if not isinstance(need, Node): raise TypeError(need)
+            if not isinstance(need, Node):
+                raise TypeError(need)
         self.needs.extend(needs)
         return self
 
@@ -131,7 +129,7 @@ class Node:
                     '<BOLD>[<RED>{node.name}<BLACK>] '
                     '{exc.cmd} returned code {exc.returncode}<RESET>'
                     .format(node=self, exc=exception) )
-                raise
+                raise;
 
     @staticmethod
     def print_rule(rule_repr):
@@ -159,16 +157,21 @@ class DatedNode(Node):
         2) some of the needed nodes has mtime newer than self;
         3) for some other reason (see superclasses).
         """
-        if self.mtime is None:
-            return True
         mtime = self.mtime
+        if mtime is None:
+            return True;
         for node in self.needs:
-            if hasattr(node, 'mtime') and \
-                    node.mtime is not None and \
-                    mtime < node.mtime:
-                return True
-        return super().needs_build()
+            if hasattr(node, 'mtime') and self.less(mtime, node.mtime):
+                return True;
+        return super().needs_build();
 
+    @staticmethod
+    def less(x, y):
+        if y is None:
+            return False;
+        if x is None:
+            return True;
+        return x < y;
 
 class PathNode(DatedNode):
     """
@@ -186,7 +189,8 @@ class PathNode(DatedNode):
     def __init__(self, path, *args, **kwargs):
         if not isinstance(path, Path):
             path = Path(path)
-        if not path.is_absolute(): raise ValueError(path)
+        if not path.is_absolute():
+            raise ValueError(path)
         logger.debug("Creating {} for the path '{!s}'"
             .format(self.__class__.__qualname__, path) )
         if path in self.pathpool:
@@ -229,9 +233,7 @@ class PathNode(DatedNode):
             super().run_rules()
         except:
             self.load_mtime()
-            if self.mtime is not None and (
-                mtime is None or mtime < self.mtime
-            ):
+            if self.less(mtime, self.mtime):
                 self.path.unlink()
             raise
         self.load_mtime()
@@ -310,12 +312,13 @@ class LinkNode(PathNode):
         be greater than or equal to source.mtime.
         """
         super().load_mtime()
-        if self.mtime is None:
+        mtime = self.mtime
+        if mtime is None:
             return
         source = self.source
         source.load_mtime()
         source_mtime = source.mtime
-        if source_mtime is not None and source_mtime > self.mtime:
+        if self.less(mtime, source_mtime):
             self.mtime = source_mtime
         if source.modified:
             self.modified = True
