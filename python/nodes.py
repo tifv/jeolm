@@ -191,8 +191,8 @@ class PathNode(DatedNode):
             path = Path(path)
         if not path.is_absolute():
             raise ValueError(path)
-        logger.debug("Creating {} for the path '{!s}'"
-            .format(self.__class__.__qualname__, path) )
+#        logger.debug("Creating {} for the path '{!s}'"
+#            .format(self.__class__.__qualname__, path) )
         if path in self.pathpool:
             warnings.warn(
                 "Duplicate PathNode('{!s}') object may be created"

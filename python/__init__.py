@@ -73,9 +73,6 @@ def main():
             return commands.unbuild(root=root);
     if args.archive:
         return commands.archive(root=root);
-    if not args.targets:
-        logger.info('Nothing to do.')
-        return;
 
     return builder.build(args.targets, root=root);
 

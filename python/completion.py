@@ -30,7 +30,7 @@ def main():
             return;
         for option in long_options:
             if option.startswith(current):
-                print(arg)
+                print(option)
         return;
 
     if previous is not None:

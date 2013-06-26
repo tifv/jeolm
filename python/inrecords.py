@@ -37,7 +37,7 @@ def print_inpaths(inroots, suffix, *, root, viewpoint):
     sourceroot = root/'source'
     for inroot in inroots:
         for inpath in reviewer.iter_inpaths(inroot, suffix=suffix):
-            print(str(sourceroot/inpath))
+            print(str((sourceroot/inpath).relative(viewpoint)))
 
 def resolve_inpaths(inpaths, *, root, viewpoint):
     inpaths = [PurePath(inpath) for inpath in inpaths]
