@@ -6,9 +6,9 @@ complementary LaTeX packages.
 
 ## Dependencies
 
-- Python 3.3 or greater
-- PyYaml
-- pathlib (PEP 428)
-- LaTeX
-- Asymptote (only used for figure generation)
+* Python 3.3 or greater
+* PyYaml
+* pathlib (PEP 428)
+* LaTeX
+* Asymptote (only used for figure generation)
 
