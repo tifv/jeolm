@@ -50,21 +50,25 @@ class CourseDriver(metaclass=Substitutioner):
 
         self.metarecords = OrderedDict()
         self.figrecords = OrderedDict()
+        self.formed_metarecords = dict()
 
     def produce_metarecords(self, targets):
         targets = list(chain.from_iterable(
             self.trace_delegators(self.pathify_target(target))
             for target in targets ))
 
+        # Generate metarecords in self.metarecords
         metanames = [self.form_metarecord(target) for target in targets]
+
+        # Extract requested metarecords
         metarecords = OrderedDict(
             (metaname, self.metarecords[metaname])
             for metaname in metanames )
 
+        # Extract requested figrecords
         fignames = { figname
             for metarecord in metarecords.values()
-            for figname in metarecord['fignames']
-        }
+            for figname in metarecord['fignames'] }
         figrecords = {
             figname : self.figrecords[figname]
             for figname in fignames }
@@ -81,6 +85,8 @@ class CourseDriver(metaclass=Substitutioner):
 
         Update self.metarecords and self.figrecords.
         """
+        if target in self.formed_metarecords:
+            return self.formed_metarecords[target]
 
         metarecord = self.produce_protorecord(target)
 
@@ -117,6 +123,7 @@ class CourseDriver(metaclass=Substitutioner):
 
         metarecord['document'] = self.constitute_document(
             metarecord, metabody=metarecord.pop('body'))
+        self.formed_metarecords[target] = metaname
         return metaname
 
     def produce_figname_map(self, inpath):
@@ -175,7 +182,7 @@ class CourseDriver(metaclass=Substitutioner):
         yield from self._trace_delegators(target, resolved_path, record,
             seen_targets=seen_targets )
 
-    # This supplementary function makes use of resolved_path and record
+    # This supplementary generator makes use of resolved_path and record
     # arguments, computed by trace_delegators.
     # Useful for overriding.
     def _trace_delegators(self, target, resolved_path, record,
@@ -209,7 +216,7 @@ class CourseDriver(metaclass=Substitutioner):
             try:
                 protorecord = method(resolved_path, record,
                     inpath_set=inpath_set, date_set=date_set )
-                # Call is not over! We must iterate over protorecord['body']
+                # Call is not over! We must fix 'body', 'date' and 'inpath set'
                 break;
             except RecordNotFoundError as error:
                 if error.args != (target,):
@@ -235,8 +242,8 @@ class CourseDriver(metaclass=Substitutioner):
             date_set.add(protorecord['date']); date_set = set()
         rigid = record['$rigid']
 
-        protorecord['body'] = self.generate_rigid_body(
-            target, rigid, inpath_set=inpath_set, date_set=date_set )
+        protorecord['body'] = list(self.generate_rigid_body(
+            target, rigid, inpath_set=inpath_set, date_set=date_set ))
         return protorecord
 
     def produce_fluid_protorecord(self, target, record,
@@ -251,8 +258,8 @@ class CourseDriver(metaclass=Substitutioner):
             date_set.add(protorecord['date']); date_set = set()
         fluid = record.get('$fluid')
 
-        protorecord['body'] = self.generate_fluid_body(
-            target, fluid, inpath_set=inpath_set, date_set=date_set )
+        protorecord['body'] = list(self.generate_fluid_body(
+            target, fluid, inpath_set=inpath_set, date_set=date_set ))
         return protorecord
 
     def generate_rigid_body(self, target, rigid, *, inpath_set, date_set):
@@ -275,22 +282,21 @@ class CourseDriver(metaclass=Substitutioner):
                 if inrecord is None:
                     raise RecordNotFoundError(inpath, target);
                 inpath_set.add(inpath)
-                date = inrecord.get('date')
-                if date is not None:
-                    date_set.add(inrecord['date'])
+                date_set.add(inrecords.get('date'))
                 yield {'inpath' : inpath}
 
     def generate_fluid_body(self, target, fluid, *, inpath_set, date_set):
         if fluid is None:
+            # No outrecords fluid - generate fluid from inrecords
             fluid = self.generate_autofluid(target)
         if fluid is None:
+            # Try single file inrecord
             inpath, inrecord = self.inrecords.get_item(
                 target.with_suffix('.tex') )
             if inrecord is None:
                 raise RecordNotFoundError(target);
             inpath_set.add(inpath)
-            if 'date' in inrecord:
-                date_set.add(inrecord['date'])
+            date_set.add(inrecord.get('date'))
             yield {'inpath' : inpath}
             return;
         for item in fluid:
@@ -363,7 +369,6 @@ class CourseDriver(metaclass=Substitutioner):
 
         def get_item(self, path):
             assert isinstance(path, PurePath) and not path.is_absolute(), path
-
             the_record = self.records
             the_path = PurePath()
             for part in path.parts:
@@ -410,9 +415,10 @@ class CourseDriver(metaclass=Substitutioner):
                     yield from self.list_targets(subpath, subrecord)
 
     class OutrecordAccessor(RecordAccessor):
+
+        # Override
         def get_item(self, path, *, seen_aliases=frozenset()):
             assert isinstance(path, PurePath) and not path.is_absolute(), path
-
             the_record = self.records
             the_path = PurePath()
             for part in path.parts:
@@ -420,27 +426,24 @@ class CourseDriver(metaclass=Substitutioner):
                     the_path, the_record, part, seen_aliases=seen_aliases )
             return the_path, the_record
 
-        def get_child(self, parent_path, parent_record, name, *, seen_aliases):
-            path = parent_path/name
-            if parent_record is None:
-                return path, None;
-            assert isinstance(parent_record, dict), (
-                parent_path, parent_record )
-            record = parent_record.get(name)
+        # Extension
+        def get_child(self, parent_path, parent_record, name,
+            *, seen_aliases
+        ):
+            path, record = super().get_child(parent_path, parent_record, name)
             if record is None:
                 return path, None;
-            if not isinstance(record, dict):
-                raise TypeError(path, record)
             if '$alias' not in record:
                 return path, record;
             if len(record) > 1:
-                raise ValueError(record)
-            alias_path = pure_join(path, record['$alias'])
-            assert not alias_path.is_absolute(), alias_path
-            if alias_path in seen_aliases:
-                raise ValueError(alias_path)
-            return self.get_item(alias_path,
-                seen_aliases=seen_aliases.union((alias_path,)) );
+                raise ValueError(
+                    '{!s}: $alias must be the only content of the record.'
+                    .format(path) )
+            if path in seen_aliases:
+                raise ValueError('{!s}: alias cycle detected.')
+            aliased_path = pure_join(path, record['$alias'])
+            return self.get_item(aliased_path,
+                seen_aliases=seen_aliases.union((path,)) );
 
         def list_targets(self, outpath=PurePath(), outrecord=None):
             """List some targets based on outrecords."""
@@ -451,6 +454,8 @@ class CourseDriver(metaclass=Substitutioner):
                     continue;
                 subpath = outpath/subname
                 yield subpath
+                if not isinstance(subrecord, dict):
+                    continue;
                 if '$alias' in subrecord:
                     continue;
                 if '$delegate' in subrecord:
@@ -498,7 +503,8 @@ class CourseDriver(metaclass=Substitutioner):
     def generate_metapreamble(self, metarecord):
         yield {'package' : 'local'}
         yield {'package' : 'pgfpages'}
-        yield self.substitute_pgfpages_resize(options='a4paper')
+        yield {'verbatim' :
+            self.substitute_pgfpages_resize(options='a4paper') }
 #        yield { 'package' : 'hyperref', 'options' : [
 #            'dvips', 'setpagesize=false',
 #            'pdftitle={{{}}}'.format(metarecord['metaname'])
@@ -514,20 +520,27 @@ class CourseDriver(metaclass=Substitutioner):
 
     @classmethod
     def constitute_preamble(cls, metapreamble):
-        return '\n'.join(
-            cls.constitute_preamble_line(metaline)
-            for metaline in metapreamble )
+        lines = []
+        for metaline in metapreamble:
+            if not isinstance(metaline, dict):
+                raise TypeError(metaline)
+            lines.append(cls.constitute_preamble_line(metaline))
+        return '\n'.join(lines)
 
     @classmethod
     def constitute_preamble_line(cls, metaline):
-        if isinstance(metaline, str):
-            return metaline;
-        package = metaline['package']
-        options = metaline.get('options', None)
-        options = cls.constitute_options(options)
-        return cls.substitute_usepackage(
-            package=package,
-            options=options )
+        assert isinstance(metaline, dict)
+        if 'verbatim' in metaline:
+            return str(metaline['verbatim'])
+        if 'package' in metaline:
+            package = metaline['package']
+            options = metaline.get('options', None)
+            options = cls.constitute_options(options)
+            return cls.substitute_usepackage(
+                package=package,
+                options=options )
+        else:
+            raise ValueError(metaline)
 
     usepackage_template = r'\usepackage$options{$package}'
 
@@ -627,9 +640,10 @@ class CourseDriver(metaclass=Substitutioner):
     @staticmethod
     def pathify_target(target):
         assert isinstance(target, str), target
-        if not target or set(target) & {' ', '.'}:
+        if not target or ' ' in target:
             raise ValueError(target)
         path = PurePath(target)
+        path = PurePath(*(part for part in path.parts if '.' not in part))
         if path.is_absolute():
             raise ValueError(target)
         return path

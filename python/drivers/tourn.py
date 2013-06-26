@@ -1,3 +1,5 @@
+from collections import OrderedDict as ODict
+
 from pathlib import PurePosixPath as PurePath
 
 from .course import CourseDriver, RecordNotFoundError
@@ -12,360 +14,653 @@ def produce_metarecords(targets, inrecords, outrecords):
 def list_targets(inrecords, outrecords):
     return sorted(set(TournDriver(inrecords, outrecords).list_targets() ))
 
+def pathset(*strings):
+    return frozenset(map(PurePath, strings))
+
 class TournDriver(CourseDriver):
+
+    # contest DELEGATE
+    #     contest/league for each league
+    # contest/problems FLUID
+    #     contest/league/problems for each league
+    # contest/solutions FLUID
+    #     contest/league/solutions for each league
+    # contest/complete FLUID
+    #     contest/league/complete for each league
+    # contest/jury DELEGATE
+    #     contest/league/jury for each league
+    # contest/jury FLUID
+    #     contest/league/jury for each league
+
+    # contest/league RIGID
+    # contest/league/problems FLUID
+    # contest/league/solutions FLUID
+    # contest/league/complete FLUID
+    # contest/league/jury FLUID
+
+    # contest/league/problem FLUID
+
+    # regatta DELEGATE
+    #     regatta/league for each league
+    # regatta/problems FLUID
+    #     regatta/league/problems for each league
+    # regatta/solutions FLUID
+    #     regatta/league/solutions for each league
+    # regatta/complete FLUID
+    #     regatta/league/complete for each league
+    # regatta/jury DELEGATE
+    #     regatta/league/jury for each league
+    # regatta/jury FLUID
+    #     regatta/league/jury for each league
+
+    # regatta/league DELEGATE
+    #     regatta/league/subject for each subject
+    # regatta/league/problems FLUID
+    #     regatta/league/tour/problems for each tour
+    # regatta/league/solutions FLUID
+    #     regatta/league/tour/solutions for each tour
+    # regatta/league/complete FLUID
+    #     regatta/league/tour/complete for each tour
+    # regatta/league/jury DELEGATE
+    #     regatta/league/subject/jury for each subject
+    # regatta/league/jury FLUID
+    #     regatta/league/tour/jury for each subject
+
+    # regatta/league/subject RIGID
+    # regatta/league/subject/problems FLUID
+    # regatta/league/subject/solutions FLUID
+    # regatta/league/subject/complete FLUID
+    # regatta/league/subject/jury FLUID
+
+    # regatta/league/tour DELEGATE
+    #     regatta/league/tour/complete
+    # regatta/league/tour/problems FLUID
+    # regatta/league/tour/solutions FLUID
+    # regatta/league/tour/complete FLUID
+
+    # regatta/league/subject/problem FLUID
 
     ##########
     # Record-level functions
 
     # Extension
-    # Mimic non-delegations:
-    # * some-contest/{problems,solutions,complete}
-    # * some-contest-league/whatever
-    # * some-regatta/{problems,solutions,complete}
-    # Mimic delegations
-    # * some-contest/whatever ->
-    #       [some-contest-league/whatever for each league]
-    # * some-regatta/whatever ->
-    #       [some-regatta-league/whatever for each league]
-    # * some-regatta-league/jury ->
-    #       [some-regatta-league/subject/jury for each subject ]
     def _trace_delegators(self, target, resolved_path, record,
         *, seen_targets
     ):
-        if not record.get('$mimic', False):
+        if not '$mimic$key' in record:
             yield from super()._trace_delegators(target, resolved_path, record,
                 seen_targets=seen_targets )
             return;
 
+        mimickey = record['$mimic$key']
         mimicroot = record['$mimic$root']
         mimicpath = record['$mimic$path']
-        if '$contest' in record:
+
+        if mimickey == '$contest':
             contest = record['$contest']
-            if mimicpath in self.tourn_fluid_targets:
-                yield target
-            else:
+            if mimicpath == PurePath(''):
                 for league in contest['leagues']:
                     yield from self.trace_delegators(
-                        pure_join(mimicroot, league, mimicpath),
+                        pure_join(mimicroot, league),
                         seen_targets=seen_targets )
-        elif '$contest$league' in record:
-            yield target
-        elif '$regatta' in record:
-            regatta = record['$regatta']
-            if mimicpath in self.tourn_fluid_targets:
-                yield target
+            elif mimicpath == PurePath('jury'):
+                for league in contest['leagues']:
+                    yield from self.trace_delegators(
+                        pure_join(mimicroot, league, 'jury'),
+                        seen_targets=seen_targets )
             else:
+                yield target
+        elif mimickey == '$contest$league':
+            yield target
+        elif mimickey == '$regatta':
+            regatta = record['$regatta']
+            if mimicpath == PurePath(''):
                 for league in regatta['leagues']:
                     yield from self.trace_delegators(
-                        pure_join(mimicroot, league, mimicpath),
+                        pure_join(mimicroot, league),
                         seen_targets=seen_targets )
-        elif '$regatta$league' in record:
-            league = record['$regatta$league']
-            if mimicpath != PurePath('jury'):
-                yield target
+            elif mimicpath == PurePath('jury'):
+                for league in regatta['leagues']:
+                    yield from self.trace_delegators(
+                        pure_join(mimicroot, league, 'jury'),
+                        seen_targets=seen_targets )
             else:
+                yield target
+        elif mimickey == '$regatta$league':
+            league = record['$regatta$league']
+            if mimicpath == PurePath(''):
+                for subjectkey in league['subjects']:
+                    yield from self.trace_delegators(
+                        pure_join(mimicroot, subjectkey),
+                        seen_targets=seen_targets )
+            elif mimicpath == PurePath('jury'):
                 for subjectkey in league['subjects']:
                     yield from self.trace_delegators(
                         pure_join(mimicroot, subjectkey, 'jury'),
                         seen_targets=seen_targets )
+            else:
+                yield target
+        elif mimickey == '$regatta$subject':
+            yield target
+        elif mimickey == '$regatta$tour':
+            tour = record['$regatta$tour']
+            if mimicpath == PurePath(''):
+                yield from self.trace_delegators(
+                    mimicroot/'complete',
+                    seen_targets=seen_targets )
+            else:
+                yield target
         else:
-            raise AssertionError(record)
-
-    tourn_fluid_targets = frozenset(PurePath(p) for p in
-        ('problems', 'solutions', 'complete') )
+            raise AssertionError(mimickey, target)
 
     # Extension
-    def list_protorecord_methods(self):
-        yield self.produce_mimic_protorecord
-        yield from super().list_protorecord_methods()
+    def produce_rigid_protorecord(self, target, record,
+        *, inpath_set, date_set
+    ):
+        kwargs = dict(inpath_set=inpath_set, date_set=date_set)
+        if record is None or '$mimic$key' not in record:
+            return super().produce_rigid_protorecord(target, record, **kwargs)
 
-    def produce_mimic_protorecord(self, target, record,
-        *, inpath_set, date_set ):
-        if record is None or '$mimic' not in record:
+        mimickey = record['$mimic$key']
+        subroot = kwargs['subroot'] = record['$mimic$root']
+        subtarget = kwargs['subtarget'] = record['$mimic$path']
+
+        if mimickey == '$contest':
             raise RecordNotFoundError(target);
-        mimic = record['$mimic']
-
-
-        kwargs = dict(
-            subroot=record['$mimic$root'],
-            subtarget=record['$mimic$path'],
-            inpath_set=inpath_set, date_set=date_set )
-        if mimic == '$contest':
-            return self.produce_contest_protorecord(target, record=record,
-                contest=record['$contest'], **kwargs );
-        elif mimic == '$contest$league':
-            return self.produce_contest_league_protorecord(target,
-                record=record, contest=self.find_contest(record),
-                league=record['$contest$league'], **kwargs );
-        elif mimic == '$regatta':
-            return self.produce_regatta_protorecord(target, record=record,
-                regatta=record['$regatta'], **kwargs );
-        elif mimic == '$regatta$league':
-            return self.produce_regatta_league_protorecord(target,
-                record=record, regatta=self.find_regatta(record),
-                league=record['$regatta$league'], **kwargs );
+        elif mimickey == '$contest$league':
+            if subtarget == PurePath(''):
+                return self.produce_rigid_contest_league_protorecord(
+                    target, record, rigid=record['$rigid'],
+                    contest=self.find_contest(record),
+                    league=self.find_contest_league(record),
+                    **kwargs );
+            raise RecordNotFoundError(target);
+        elif mimickey == '$regatta':
+            raise RecordNotFoundError(target);
+        elif mimickey == '$regatta$league':
+            raise RecordNotFoundError(target);
+        elif mimickey == '$regatta$subject':
+            if subtarget == PurePath(''):
+                return self.produce_rigid_regatta_subject_protorecord(
+                    target, record,
+                    regatta=self.find_regatta(record),
+                    league=self.find_regatta_league(record),
+                    subject=self.find_regatta_subject(record),
+                    **kwargs );
+            raise RecordNotFoundError(target);
+        elif mimickey == '$regatta$tour':
+            raise RecordNotFoundError(target);
         else:
-            raise AssertionError(mimic)
+            raise AssertionError(mimickey, target)
 
-    def produce_contest_protorecord(self, target, subroot, subtarget,
-        record, contest,
+    # Extension
+    def produce_fluid_protorecord(self, target, record,
         *, inpath_set, date_set
     ):
-        if subtarget in self.tourn_fluid_targets:
-            subtarget, = subtarget.parts
-            return {'body' : self.generate_contest_body(
-                subroot, subtarget, contest, inpath_set=inpath_set )};
-        logger.debug('Tourn record not found: {!s}'.format(target))
-        raise RecordNotFoundError(target);
+        kwargs = dict(inpath_set=inpath_set, date_set=date_set)
+        if record is None or '$mimic$key' not in record:
+            return super().produce_fluid_protorecord(target, record, **kwargs)
 
-    def produce_contest_league_protorecord(self, target, subroot, subtarget,
-        record, contest, league, contained=False,
+        mimickey = record['$mimic$key']
+        subroot = kwargs['subroot'] = record['$mimic$root']
+        subtarget = kwargs['subtarget'] = record['$mimic$path']
+
+        if mimickey == '$contest':
+            # contest/{problems,solutions,complete,jury}
+            if subtarget in self.outrecords.contest_fluid_targets:
+                return self.produce_fluid_contest_protorecord(target, record,
+                    contest=self.find_contest(record), **kwargs )
+            raise RecordNotFoundError(target)
+        elif mimickey == '$contest$league':
+            # contest/league/{problems,solutions,complete,jury}
+            if subtarget in self.outrecords.contest_league_fluid_targets:
+                return self.produce_fluid_contest_league_protorecord(
+                    target, record,
+                    contest=self.find_contest(record),
+                    league=self.find_contest_league(record), **kwargs )
+            # contest/league/<problem number>
+            elif str(subtarget).isnumeric():
+                return self.produce_fluid_contest_problem_protorecord(
+                    target, record,
+                    contest=self.find_contest(record),
+                    league=self.find_contest_league(record),
+                    problem=int(str(subtarget)), **kwargs )
+            raise RecordNotFoundError(target)
+        elif mimickey == '$regatta':
+            # regatta/{problems,solutions,complete,jury}
+            if subtarget in self.outrecords.regatta_fluid_targets:
+                return self.produce_fluid_regatta_protorecord(target, record,
+                    regatta=self.find_regatta(record), **kwargs )
+            raise RecordNotFoundError(target)
+        elif mimickey == '$regatta$league':
+            # regatta/league/{problems,solutions,complete,jury}
+            if subtarget in self.outrecords.regatta_league_fluid_targets:
+                return self.produce_fluid_regatta_league_protorecord(
+                    target, record,
+                    regatta=self.find_regatta(record),
+                    league=self.find_regatta_league(record), **kwargs )
+            raise RecordNotFoundError(target)
+        elif mimickey == '$regatta$subject':
+            # regatta/league/subject/{problems,solutions,complete,jury}
+            if subtarget in self.outrecords.regatta_subject_fluid_targets:
+                return self.produce_fluid_regatta_subject_protorecord(
+                    target, record,
+                    regatta=self.find_regatta(record),
+                    league=self.find_regatta_league(record),
+                    subject=self.find_regatta_subject(record), **kwargs )
+            # regatta/league/subject/<tour number>
+            elif str(subtarget).isnumeric():
+                return self.produce_fluid_regatta_problem_protorecord(
+                    target, record,
+                    regatta=self.find_regatta(record),
+                    league=self.find_regatta_league(record),
+                    subject=self.find_regatta_subject(record),
+                    tournum=int(str(subtarget)), **kwargs )
+            raise RecordNotFoundError(target)
+        elif mimickey == '$regatta$tour':
+            if subtarget in self.outrecords.regatta_tour_fluid_targets:
+                return self.produce_fluid_regatta_tour_protorecord(
+                    target, record,
+                    regatta=self.find_regatta(record),
+                    league=self.find_regatta_league(record),
+                    tour=self.find_regatta_tour(record), **kwargs )
+            raise RecordNotFoundError(target)
+
+    def produce_rigid_contest_league_protorecord(self,
+        target, record,
+        subroot, subtarget, rigid,
+        contest, league,
         *, inpath_set, date_set
     ):
-        if subtarget in self.contest_league_fluid_targets:
-            subtarget, = subtarget.parts
-            return {'body' : self.generate_fluid_contest_league_body(
-                subroot, subtarget,
-                contest, league, contained, inpath_set=inpath_set )};
-        assert not contained
-        if subtarget == PurePath():
-            rigid = record['$rigid']
-            protorecord = {'body' : self.generate_rigid_contest_league_body(
-                subroot, contest, league, rigid, inpath_set=inpath_set )}
-            protorecord.update(record.get('$rigid$opt', ()))
-            return protorecord;
-        logger.debug('Tourn record not found: {!s}'.format(target))
-        raise RecordNotFoundError(target);
+        body = []; append = body.append
+        contest_record = self.outrecords[subroot.parent()]
+        for page in rigid:
+            append(self.substitute_clearpage())
+            if not page: # empty page
+                append(self.substitute_phantom())
+                continue;
+            for item in page:
+                if isinstance(item, dict):
+                    append(self.constitute_special(item))
+                    continue;
+                if item != '.':
+                    raise ValueError(item, target)
 
-    contest_league_fluid_targets = tourn_fluid_targets | {PurePath('jury')}
+                append(self.substitute_jeolmheader())
+                append(self.constitute_section(contest['name']))
+                append(self.substitute_begin_problems())
+                for i in range(1, 1 + league['problems']):
+                    inpath = subroot/(str(i)+'.tex')
+                    if inpath not in self.inrecords:
+                        raise RecordNotFoundError(inpath, target)
+                    inpath_set.add(inpath)
+                    append({ 'inpath' : inpath,
+                        'select' : 'problem', 'number' : str(i) })
+                append(self.substitute_end_problems())
+                append(self.substitute_postword())
+        protorecord = {'body' : body}
+        protorecord.update(contest_record.get('$rigid$opt', ()))
+        protorecord.update(record.get('$rigid$opt', ()))
+        protorecord['preamble'] = preamble = list(
+            protorecord.get('preamble', ()) )
+        preamble.append({'league' : league['name']})
+        return protorecord
 
-    def produce_regatta_protorecord(self, target, subroot, subtarget,
-        record, regatta,
+    def produce_rigid_regatta_subject_protorecord(self,
+        target, record,
+        subroot, subtarget,
+        regatta, league, subject,
         *, inpath_set, date_set
     ):
-        if subtarget in self.tourn_fluid_targets:
-            subtarget, = subtarget.parts
-            return {'body' : self.generate_regatta_body(
-                subroot, subtarget, regatta, inpath_set=inpath_set )};
-        logger.debug('Tourn record not found: {!s}'.format(target))
-        raise RecordNotFoundError(target);
+        body = []; append = body.append
+        league_record = self.outrecords[subroot.parent()]
+        regatta_record = self.outrecords[subroot.parent(2)]
+        tourrecords = self.find_regatta_tour_records(league_record)
+        for tournum, tourrecord in enumerate(tourrecords, 1):
+            tour = tourrecord['$regatta$tour']
+            append(self.substitute_clearpage())
+            append(self.substitute_jeolmheader_nospace())
+            append(self.substitute_rigid_regatta_caption(
+                caption=regatta['name'], mark=tour['mark'] ))
+            inpath = subroot/(str(tournum)+'.tex')
+            if inpath not in self.inrecords:
+                raise RecordNotFoundError(inpath, target)
+            inpath_set.add(inpath)
+            append(self.substitute_begin_problems())
+            append({ 'inpath' : inpath,
+                'select' : 'problem',
+                'number' : self.substitute_regatta_number(
+                    subject_index=subject['index'],
+                    tour_index=tour['index'] )
+            })
+            append(self.substitute_end_problems())
+            append(self.substitute_hrule())
+        protorecord = {'body' : body}
+        protorecord.update(regatta_record.get('$rigid$opt', ()))
+        protorecord.update(league_record.get('$rigid$opt', ()))
+        protorecord.update(record.get('$rigid$opt', ()))
+        preamble = protorecord.setdefault('preamble', [])
+        preamble.append({'league' : league['name']})
+        return protorecord
 
-    def produce_regatta_league_protorecord(self, target, subroot, subtarget,
-        record, regatta, league, contained=False,
+    def produce_fluid_contest_protorecord(self,
+        target, record,
+        subroot, subtarget, contest,
         *, inpath_set, date_set
     ):
-        if subtarget in self.regatta_league_fluid_targets:
-            subtarget, = subtarget.parts
-            return {'body' : self.generate_fluid_regatta_league_body(
-                subroot, subtarget,
-                regatta, league, contained, inpath_set=inpath_set )};
-        if subtarget == PurePath():
-            assert not contained
-            protorecord = {'body' : self.generate_rigid_regatta_league_body(
-                subroot, regatta, league, inpath_set=inpath_set )}
-            protorecord.update(record.get('$rigid$opt', ()))
-            return protorecord;
-        subjectkey, subtarget = subtarget.parts[0], subtarget.parts[1:]
-        if subjectkey in league['subjects']:
-            if subtarget == PurePath('jury'):
-                assert not contained
-                return {'body' : self.generate_fluid_regatta_jury_body(
-                    subroot, subjectkey,
-                    regatta, league, inpath_set=inpath_set )};
-            if subtarget in self.regatta_league_fluid_targets:
-                assert contained
-                subtarget, = subtarget.parts
-                return {'body' : self.generate_fluid_regatta_subject_body(
-                    subroot, subjectkey, subtarget,
-                    regatta, league, inpath_set=inpath_set )};
-        logger.debug('Tourn record not found: {!s}'.format(target))
-        raise RecordNotFoundError(target);
+        body = []
+        body.append(self.constitute_section(contest['name'],
+            select=str(subtarget) ))
+        league_records = self.find_contest_league_records(record)
+        for leaguekey, leaguerecord in league_records.items():
+            subprotorecord = self.produce_fluid_contest_league_protorecord(
+                subroot/leaguekey/subtarget, leaguerecord,
+                subroot/leaguekey, subtarget,
+                contest, leaguerecord['$contest$league'],
+                contained=1,
+                inpath_set=inpath_set, date_set=date_set
+            )
+            body.extend(subprotorecord['body'])
+        protorecord = {'body' : body}
+        return protorecord
 
-    regatta_league_fluid_targets = tourn_fluid_targets
-
-    def generate_contest_body(self, subroot, subtarget, contest,
-        *, inpath_set
+    def produce_fluid_contest_league_protorecord(self,
+        target, record,
+        subroot, subtarget,
+        contest, league,
+        *, contained=False, inpath_set, date_set
     ):
-        yield self.constitute_section(contest['name'], select=subtarget)
-        for leaguekey in contest['leagues']:
-            leagueroot, leaguerecord = self.outrecords.get_item(
-                pure_join(subroot, leaguekey) )
-            league = leaguerecord['$contest$league']
-            subprotorecord = self.produce_contest_league_protorecord(
-                leagueroot/subtarget, leagueroot, PurePath(subtarget),
-                {}, contest, league, contained=True,
-                inpath_set=inpath_set, date_set=set() )
-            yield from subprotorecord['body']
-
-    def generate_fluid_contest_league_body(self, subroot, subtarget,
-        contest, league, contained,
-        *, inpath_set
-    ):
+        body = []; append = body.append
+        select = str(subtarget)
         if contained:
-            yield self.constitute_section(league['name'], level=1)
+            append(self.constitute_section(league['name'], level=contained))
         else:
-            yield self.constitute_section(
-                contest['name'] + '. ' + league['name'], select=subtarget )
-        select = {'problems' : 'problem', 'solutions' : 'solution',
-            'complete' : 'both', 'jury' : 'both'} [subtarget]
-        yield self.substitute_begin_problems()
+            append(self.constitute_section(
+                contest['name'] + '. ' + league['name'],
+                select=select ))
+        append(self.substitute_begin_problems())
         for i in range(1, 1 + league['problems']):
             inpath = subroot/(str(i)+'.tex')
             if inpath not in self.inrecords:
                 raise RecordNotFoundError(inpath, subroot)
             inpath_set.add(inpath)
-            yield { 'inpath' : inpath,
-                'select' : select,
-                'number' : str(i) }
-        yield self.substitute_end_problems()
+            append({ 'inpath' : inpath,
+                'select' : select, 'number' : str(i) })
+        append(self.substitute_end_problems())
+        protorecord = {'body' : body}
+        return protorecord
 
-    def generate_rigid_contest_league_body(self, subroot,
-        contest, league, rigid,
-        *, inpath_set
+    def produce_fluid_contest_problem_protorecord(self,
+        target, record,
+        subroot, subtarget,
+        contest, league, problem,
+        *, inpath_set, date_set
     ):
-        for page in rigid:
-            yield self.substitute_clearpage()
-            if not page: # empty page
-                yield self.substitute_phantom()
-                continue;
-            for item in page:
-                if isinstance(item, dict):
-                    yield self.constitute_special(item)
-                    continue;
-                if item != '.':
-                    raise ValueError(subroot, item)
+        body = []; append = body.append
+        if not 1 <= problem <= league['problems']:
+            return super().produce_fluid_protorecord(target, record,
+                inpath_set=inpath_set, date_set=date_set )
+        inpath = subroot/(str(problem)+'.tex')
+        if inpath not in self.inrecords:
+            raise RecordNotFoundError(inpath, subroot)
+        inpath_set.add(inpath)
+        append(self.substitute_begin_problems())
+        append({ 'inpath' : inpath,
+            'select' : 'complete', 'number' : str(problem) })
+        append(self.substitute_end_problems())
+        protorecord = {'body' : body}
+        return protorecord
 
-                yield self.substitute_jeolmheader()
-                yield self.constitute_section(contest['name'])
-                yield self.substitute_begin_problems()
-                for i in range(1, 1 + league['problems']):
-                    inpath = subroot/(str(i)+'.tex')
-                    if inpath not in self.inrecords:
-                        raise RecordNotFoundError(inpath, subroot)
-                    inpath_set.add(inpath)
-                    yield { 'inpath' : inpath,
-                        'select' : 'problem',
-                        'number' : str(i) }
-                yield self.substitute_end_problems()
-                yield self.substitute_postword()
-
-    def generate_regatta_body(self, subroot, subtarget, regatta,
-        *, inpath_set
+    def produce_fluid_regatta_protorecord(self,
+        target, record,
+        subroot, subtarget, regatta,
+        *, inpath_set, date_set
     ):
-        yield self.constitute_section(regatta['name'], select=subtarget)
-        for leaguekey in regatta['leagues']:
-            leagueroot, leaguerecord = self.outrecords.get_item(
-                pure_join(subroot, leaguekey) )
-            league = leaguerecord['$regatta$league']
-            subprotorecord = self.produce_regatta_league_protorecord(
-                leagueroot/subtarget, leagueroot, PurePath(subtarget),
-                {}, regatta, league, contained=True,
-                inpath_set=inpath_set, date_set=set() )
-            yield from subprotorecord['body']
+        body = []
+        body.append(self.constitute_section(regatta['name'],
+            select=str(subtarget) ))
+        league_records = self.find_regatta_league_records(record)
+        for leaguekey, leaguerecord in league_records.items():
+            subprotorecord = self.produce_fluid_regatta_league_protorecord(
+                subroot/leaguekey/subtarget, leaguerecord,
+                subroot/leaguekey, subtarget,
+                regatta, leaguerecord['$regatta$league'],
+                contained=1,
+                inpath_set=inpath_set, date_set=date_set
+            )
+            body.extend(subprotorecord['body'])
+        protorecord = {'body' : body}
+        return protorecord
 
-    def generate_fluid_regatta_league_body(self, subroot, subtarget,
-        regatta, league, contained,
-        *, inpath_set
-    ):
-        if contained:
-            yield self.constitute_section(league['name'], level=1)
-        else:
-            yield self.constitute_section(
-                regatta['name'] + '. ' + league['name'], select=subtarget )
-        for subjectkey in league['subjects']:
-            subprotorecord = self.produce_regatta_league_protorecord(
-                subroot/subjectkey/subtarget,
-                subroot, PurePath(subjectkey, subtarget),
-                {}, regatta, league, contained=True,
-                inpath_set=inpath_set, date_set=set() )
-            yield from subprotorecord['body']
-
-    def generate_fluid_regatta_jury_body(self, subroot, subjectkey,
+    def produce_fluid_regatta_league_protorecord(self,
+        target, record,
+        subroot, subtarget,
         regatta, league,
-        *, inpath_set
+        *, contained=False, inpath_set, date_set
     ):
-        subject = league['subjects'][subjectkey]
-        yield self.constitute_section(
-            '. '.join((
-                regatta['name'], league['name'],
-                subject['name'] )),
-            select='jury' )
-        yield self.substitute_begin_problems()
-        for tour in range(1, 1 + len(league['tours'])):
-            inpath = subroot/subjectkey/(str(tour)+'.tex')
-            if inpath not in self.inrecords:
-                raise RecordNotFoundError(inpath, target)
-            inpath_set.add(inpath)
-            yield { 'inpath' : inpath,
-                'select' : 'both',
-                'number' : self.substitute_regatta_number(
-                    subject_index=subject['index'], tour=tour )
-            }
-        yield self.substitute_end_problems()
+        body = []; append = body.append
+        if contained:
+            append(self.constitute_section(league['name'], level=contained))
+        else:
+            append(self.constitute_section(
+                regatta['name'] + '. ' + league['name'],
+                select=str(subtarget) ))
+        tour_records = self.find_regatta_tour_records(record)
+        for tournum, tourrecord in enumerate(tour_records, 1):
+            subprotorecord = self.produce_fluid_regatta_tour_protorecord(
+                subroot/str(tournum)/subtarget, tourrecord,
+                subroot/str(tournum), subtarget,
+                regatta, league, tourrecord['$regatta$tour'],
+                contained=contained+1,
+                inpath_set=inpath_set, date_set=date_set
+            )
+            body.extend(subprotorecord['body'])
+        protorecord = {'body' : body}
+        return protorecord
 
-    def generate_fluid_regatta_subject_body(self,
-        subroot, subjectkey, subtarget, regatta, league,
-        *, inpath_set
+    def produce_fluid_regatta_subject_protorecord(self,
+        target, record,
+        subroot, subtarget,
+        regatta, league, subject,
+        *, contained=False, inpath_set, date_set
     ):
-        subject = league['subjects'][subjectkey]
-        yield self.constitute_section(subject['name'], level=2)
-        select = {'problems' : 'problem', 'solutions' : 'solution',
-            'complete' : 'both', 'jury' : 'both'} [subtarget]
-        yield self.substitute_begin_problems()
-        for tour in range(1, 1 + len(league['tours'])):
-            inpath = subroot/subjectkey/(str(tour)+'.tex')
+        body = []; append = body.append
+        select = str(subtarget)
+        if contained:
+            append(self.constitute_section(subject['name'], level=contained))
+        else:
+            append(self.constitute_section(
+                '{}. {}. {}'.format(
+                    regatta['name'], league['name'], subject['name'] ),
+                select=select ))
+        tour_records = self.find_regatta_tour_records(record)
+        append(self.substitute_begin_problems())
+        for tournum, tourrecord in enumerate(tour_records, 1):
+            inpath = subroot/(str(tournum)+'.tex')
             if inpath not in self.inrecords:
-                raise RecordNotFoundError(inpath, target)
+                raise RecordNotFoundError(inpath, subroot)
             inpath_set.add(inpath)
-            yield { 'inpath' : inpath,
+            append({ 'inpath' : inpath,
                 'select' : select,
                 'number' : self.substitute_regatta_number(
-                    subject_index=subject['index'], tour=tour )
-            }
-        yield self.substitute_end_problems()
+                    subject_index=subject['index'],
+                    tour_index=tourrecord['$regatta$tour']['index'] )
+            })
+        append(self.substitute_end_problems())
+        protorecord = {'body' : body}
+        return protorecord
 
-    def generate_rigid_regatta_league_body(self, subroot, regatta, league,
-        *, inpath_set
+    def produce_fluid_regatta_tour_protorecord(self,
+        target, record,
+        subroot, subtarget,
+        regatta, league, tour,
+        *, contained=False, inpath_set, date_set
     ):
-        for subjectkey, subject in league['subjects'].items():
-            for tour, tourvalue in enumerate(league['tours'], 1):
-                yield self.substitute_clearpage()
-                yield self.substitute_jeolmheader_nospace()
-                yield self.substitute_rigid_regatta_caption(
-                    caption=regatta['name'], mark=tourvalue['mark'] )
-                inpath = subroot/subjectkey/(str(tour)+'.tex')
-                if inpath not in self.inrecords:
-                    raise RecordNotFoundError(inpath, target)
-                inpath_set.add(inpath)
-                yield self.substitute_begin_problems()
-                yield { 'inpath' : inpath,
-                    'select' : 'problem',
+        body = []; append = body.append
+        select = str(subtarget)
+        if contained:
+            append(self.constitute_section(tour['name'], level=contained))
+        else:
+            append(self.constitute_section(
+                '{}. {}. {}'.format(
+                    regatta['name'], league['name'], tour['name'] ),
+                select=str(subtarget) ))
+        subject_records = self.find_regatta_subject_records(record)
+        leagueroot = subroot.parent()
+        tournum = int(subroot.name)
+        append(self.substitute_begin_problems())
+        for subjectkey, subjectrecord in subject_records.items():
+            inpath = leagueroot/subjectkey/(str(tournum)+'.tex')
+            if inpath not in self.inrecords:
+                raise RecordNotFoundError(inpath, subroot)
+            inpath_set.add(inpath)
+            append({ 'inpath' : inpath,
+                'select' : select,
                 'number' : self.substitute_regatta_number(
-                    subject_index=subject['index'], tour=tour )
-                }
-                yield self.substitute_end_problems()
-                yield self.substitute_hrule()
+                    subject_index=subjectrecord['$regatta$subject']['index'],
+                    tour_index=tour['index'] )
+            })
+        append(self.substitute_end_problems())
+        protorecord = {'body' : body}
+        return protorecord
 
-    # Extension
-    def produce_fluid_protorecord(self, target, record, **kwargs):
-        if record is None or '$mimic' not in record:
-            return super().produce_fluid_protorecord(target, record, **kwargs);
-        try:
-            return self.produce_mimic_protorecord(target, record, **kwargs);
-        except RecordNotFoundError as error:
-            if error.args != (target,):
-                raise
-        return super().produce_fluid_protorecord(target, record, **kwargs);
+    def produce_fluid_regatta_problem_protorecord(self,
+        target, record,
+        subroot, subtarget,
+        regatta, league, subject, tournum,
+        *, inpath_set, date_set
+    ):
+        body = []; append = body.append
+        if not 1 <= tournum <= league['tours']:
+            return super().produce_fluid_protorecord(target, record,
+                inpath_set=inpath_set, date_set=date_set )
+        tourrecord = self.find_regatta_tour_records(record)[tournum-1]
+        tour = tourrecord['$regatta$tour']
+        inpath = subroot/(str(tournum)+'.tex')
+        if inpath not in self.inrecords:
+            raise RecordNotFoundError(inpath, subroot)
+        inpath_set.add(inpath)
+        append(self.substitute_begin_problems())
+        append({ 'inpath' : inpath,
+            'select' : 'complete',
+            'number' : self.substitute_regatta_number(
+                subject_index=subject['index'],
+                tour_index=tour['index'] )
+        })
+        append(self.substitute_end_problems())
+        protorecord = {'body' : body}
+        return protorecord
 
     def find_contest(self, record):
-        return self.outrecords[pure_join(
-            record['$mimic$root'], record['$contest$league']['contest']
-        )]['$contest']
+        mimickey = record['$mimic$key']
+        if mimickey == '$contest':
+            return record['$contest']
+        elif mimickey == '$contest$league':
+            league = record['$contest$league']
+            return self.find_contest(self.outrecords[
+                record['$mimic$root'].parent() ])
+        else:
+            raise AssertionError(mimickey, record)
+
+    def find_contest_league(self, record):
+        mimickey = record['$mimic$key']
+        if mimickey == '$contest$league':
+            return record['$contest$league']
+        else:
+            raise AssertionError(mimickey, record)
+
+    def find_contest_league_records(self, record):
+        mimickey = record['$mimic$key']
+        if mimickey == '$contest':
+            return ODict(
+                (leaguekey, self.outrecords[record['$mimic$root']/leaguekey])
+                for leaguekey in record['$contest']['leagues'] )
+        else:
+            raise AssertionError(mimickey, record)
 
     def find_regatta(self, record):
-        return self.outrecords[pure_join(
-            record['$mimic$root'], record['$regatta$league']['regatta']
-        )]['$regatta']
+        mimickey = record['$mimic$key']
+        if mimickey == '$regatta':
+            return record['$regatta']
+        elif mimickey == '$regatta$league':
+            league = record['$regatta$league']
+            return self.find_regatta(self.outrecords[
+                record['$mimic$root'].parent() ])
+        elif mimickey == '$regatta$subject':
+            subject = record['$regatta$subject']
+            return self.find_regatta(self.outrecords[
+                record['$mimic$root'].parent(2) ])
+        elif mimickey == '$regatta$tour':
+            tour = record['$regatta$tour']
+            return self.find_regatta(self.outrecords[
+                record['$mimic$root'].parent(2) ])
+        else:
+            raise AssertionError(mimickey, record)
+
+    def find_regatta_league(self, record):
+        mimickey = record['$mimic$key']
+        if mimickey == '$regatta$league':
+            return record['$regatta$league']
+        elif mimickey == '$regatta$subject':
+            subject = record['$regatta$subject']
+            return self.find_regatta_league(self.outrecords[
+                record['$mimic$root'].parent() ])
+        elif mimickey == '$regatta$tour':
+            tour = record['$regatta$tour']
+            return self.find_regatta_league(self.outrecords[
+                record['$mimic$root'].parent() ])
+        else:
+            raise AssertionError(mimickey, record)
+
+    def find_regatta_league_records(self, record):
+        mimickey = record['$mimic$key']
+        if mimickey == '$regatta':
+            return ODict(
+                (leaguekey, self.outrecords[record['$mimic$root']/leaguekey])
+                for leaguekey in record['$regatta']['leagues'] )
+        else:
+            raise AssertionError(mimickey, record)
+
+    def find_regatta_subject(self, record):
+        mimickey = record['$mimic$key']
+        if mimickey == '$regatta$subject':
+            return record['$regatta$subject']
+        else:
+            raise AssertionError(mimickey, record)
+
+    def find_regatta_subject_records(self, record):
+        mimickey = record['$mimic$key']
+        if mimickey == '$regatta$league':
+            return ODict(
+                (subjectkey, self.outrecords[record['$mimic$root']/subjectkey])
+                for subjectkey in record['$regatta$league']['subjects'] )
+        elif mimickey == '$regatta$tour':
+            return self.find_regatta_subject_records(self.outrecords[
+                record['$mimic$root'].parent() ])
+        else:
+            raise AssertionError(mimickey, record)
+
+    def find_regatta_tour(self, record):
+        mimickey = record['$mimic$key']
+        if mimickey == '$regatta$tour':
+            return record['$regatta$tour']
+        else:
+            raise AssertionError(mimickey, record)
+
+    def find_regatta_tour_records(self, record):
+        assert '$mimic$key' in record, record
+        mimickey = record['$mimic$key']
+        if mimickey == '$regatta$league':
+            return [
+                self.outrecords[record['$mimic$root']/str(tournum)]
+                for tournum
+                in range(1, 1 + record['$regatta$league']['tours'])
+            ]
+        elif mimickey == '$regatta$subject':
+            return self.find_regatta_tour_records(self.outrecords[
+                record['$mimic$root'].parent() ])
+        else:
+            raise AssertionError(mimickey, record)
 
     ##########
     # Record accessors
@@ -375,15 +670,16 @@ class TournDriver(CourseDriver):
     # requested a path 'a/the-contest/b/c' which does not exist, than the
     # return value will contain the following keys:
     # * $contest = <mimicvalue> = <value of /a/the-contest/$contest>
-    # * $mimic = "$contest"
+    # * $mimic$key = "$contest"
     # * $mimic$root = a/the-contest
     # * $mimic$path = b/c
     class OutrecordAccessor(CourseDriver.OutrecordAccessor):
         mimickeys = frozenset((
-            '$contest', '$contest$league', '$regatta', '$regatta$league' ))
-        mimictargets = frozenset((
-            'problems', 'solutions', 'complete', 'jury' ))
+            '$contest', '$contest$league',
+            '$regatta', '$regatta$league',
+            '$regatta$subject', '$regatta$tour', ))
 
+        # Extension
         def get_child(self, parent_path, parent_record, name, **kwargs):
             path, record = super().get_child(
                 parent_path, parent_record, name, **kwargs )
@@ -392,44 +688,58 @@ class TournDriver(CourseDriver):
                 if mimickeys:
                     mimickey, = mimickeys
                     record = record.copy()
-                    record.update({ '$mimic' : mimickey,
-                        '$mimic$root' : path, '$mimic$path' : PurePath() })
+                    record.update({
+                        '$mimic$key' : mimickey,
+                        '$mimic$root' : path,
+                        '$mimic$path' : PurePath() })
                 return path, record;
-            if (
-                parent_record is None or
-                name in parent_record or
-                not (self.mimickeys & parent_record.keys())
+            if not (
+                parent_record is not None and
+                name not in parent_record and
+                '$mimic$key' in parent_record
             ):
                 return path, record;
 
-            mimickey, = self.mimickeys & parent_record.keys()
-            mimicvalue = parent_record[mimickey]
-            record = {}
-            record[mimickey] = mimicvalue
-            record['$mimic'] = mimickey
-            record['$mimic$root'] = parent_record['$mimic$root']
-            record['$mimic$path'] = parent_record['$mimic$path']/name
+            mimickey = parent_record['$mimic$key']
+            record = {
+                mimickey : parent_record[mimickey],
+                '$mimic$key' : mimickey,
+                '$mimic$root' : parent_record['$mimic$root'],
+                '$mimic$path' : parent_record['$mimic$path']/name,
+            }
             return path, record;
+
+        contest_fluid_targets = \
+        contest_league_fluid_targets = \
+        regatta_fluid_targets = \
+        regatta_league_fluid_targets = \
+        regatta_subject_fluid_targets = \
+            pathset('problems', 'solutions', 'complete', 'jury' )
+        regatta_tour_fluid_targets = \
+            pathset('problems', 'solutions', 'complete')
 
         def list_targets(self, outpath=PurePath(), outrecord=None):
             if outrecord is None:
                 outrecord = self.records
             yield from super().list_targets(outpath, outrecord)
             if '$contest' in outrecord:
-                for key in self.mimictargets:
+                for key in self.contest_fluid_targets:
                     yield outpath/key
             elif '$contest$league' in outrecord:
-                for key in self.mimictargets:
+                for key in self.contest_league_fluid_targets:
                     yield outpath/key
             elif '$regatta' in outrecord:
-                for key in self.mimictargets:
+                for key in self.regatta_fluid_targets:
                     yield outpath/key
             elif '$regatta$league' in outrecord:
-                for key in self.mimictargets:
+                for key in self.regatta_league_fluid_targets:
                     yield outpath/key
-                for subject in outrecord['$regatta$league']['subjects']:
-                    for key in self.mimictargets:
-                        yield outpath/subject/key
+            elif '$regatta$subject' in outrecord:
+                for key in self.regatta_subject_fluid_targets:
+                    yield outpath/key
+            elif '$regatta$tour' in outrecord:
+                for key in self.regatta_tour_fluid_targets:
+                    yield outpath/key
 
     mimickeys = OutrecordAccessor.mimickeys
 
@@ -447,13 +757,13 @@ class TournDriver(CourseDriver):
         assert number is not None, (inpath, number)
         numeration = self.substitute_rigid_numeration(number=number)
 
-        if select == 'problem':
+        if select in {'problem', 'problems'}:
             body = self.substitute_input_problem(
                 filename=alias, numeration=numeration )
-        elif select == 'solution':
+        elif select in {'solution', 'solutions'}:
             body = self.substitute_input_solution(
                 filename=alias, numeration=numeration )
-        elif select == 'both':
+        elif select in {'both', 'complete', 'jury'}:
             body = self.substitute_input_both(
                 filename=alias, numeration=numeration )
         else:
@@ -493,6 +803,18 @@ class TournDriver(CourseDriver):
         'jury' : ' (версия для жюри)',
     }
 
+    @classmethod
+    def constitute_preamble_line(cls, metaline):
+        if 'league' in metaline:
+            return cls.substitute_leaguedef(league=metaline['league'])
+        elif 'postword' in metaline:
+            return cls.substitute_postworddef(postword=metaline['postword'])
+        else:
+            return super().constitute_preamble_line(metaline)
+
+    leaguedef_template = r'\def\jeolmheaderleague{$league}'
+    postworddef_template = r'\def\postword{\jeolmpostword$postword}'
+
     begin_problems_template = r'\begin{problems}'
     end_problems_template = r'\end{problems}'
     postword_template = r'\postword'
@@ -501,5 +823,5 @@ class TournDriver(CourseDriver):
     rigid_regatta_caption_template = r'\regattacaption{$caption}{$mark}'
     hrule_template = r'\medskip\hrule'
 
-    regatta_number_template = r'$tour$subject_index'
+    regatta_number_template = r'$tour_index$subject_index'
 
