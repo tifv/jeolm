@@ -1,4 +1,5 @@
 from collections import OrderedDict as ODict
+from hashlib import md5
 
 from pathlib import Path, PurePosixPath as PurePath
 
@@ -70,7 +71,7 @@ class Builder:
             with self.metapaths['meta.cache'].open() as h:
                 self.metarecords_cache = yaml.load(h)
         else:
-            self.metarecords_cache = {'cache mtimes' : {}}
+            self.metarecords_cache = {}
 
     def dump_meta_cache(self):
         s = yaml.dump(self.metarecords_cache, default_flow_style=False)
@@ -83,22 +84,24 @@ class Builder:
         metanode = DatedNode(name='meta:{}'.format(metaname))
         metanode.record = metarecord
         cache = self.metarecords_cache
+        metarecord_hash = self.metarecord_hash(metarecord)
         if metaname not in cache:
             logger.debug("Metanode {} was not found in cache"
                 .format(metaname) )
-            cache['cache mtimes'][metaname] = metanode.mtime = self.meta_mtime
-            cache[metaname] = metarecord
+            cache[metaname] = {'hash' : metarecord_hash, 'mtime' : self.meta_mtime}
+            metanode.mtime = self.meta_mtime
+            metanode.modified = True
             self.cache_updated = True
-        elif cache[metaname] != metarecord:
+        elif cache[metaname]['hash'] != metarecord_hash:
             logger.debug("Metanode {} was found obsolete in cache"
                 .format(metaname) )
-            cache['cache mtimes'][metaname] = metanode.mtime = self.meta_mtime
-            cache[metaname] = metarecord
+            cache[metaname] = {'hash' : metarecord_hash, 'mtime' : self.meta_mtime}
+            metanode.mtime = self.meta_mtime
             metanode.modified = True
             self.cache_updated = True
         else:
             logger.debug("Metanode {} was found in cache".format(metaname))
-            metanode.mtime = cache['cache mtimes'][metaname]
+            metanode.mtime = cache[metaname]['mtime']
         return metanode
 
     def prebuild_figures(self, builddir_node):
@@ -241,4 +244,8 @@ class Builder:
         node = self.source_nodes[path] = \
             FileNode(self.root/'source'/path)
         return node;
+
+    @staticmethod
+    def metarecord_hash(metarecord):
+        return md5(yaml.dump(metarecord).encode('utf-8')).hexdigest()
 
