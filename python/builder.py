@@ -27,6 +27,9 @@ class Builder:
             'out' : root/'meta/out.yaml',
             'meta.cache' : root/'build/meta.cache.yaml',
         }
+        self.load_meta_files()
+        self.driver = drivers.Driver(self.inrecords, self.outrecords)
+
         self.source_nodes = ODict()
         self.autosource_nodes = ODict()
         self.eps_nodes = ODict()
@@ -36,16 +39,9 @@ class Builder:
         self.shipout_pdf_nodes = ODict()
         self.shipout_node = Node(name='shipout')
 
-        self.driver = drivers.get_driver()
-
     def prebuild(self):
-        self.load_meta_files()
-        self.meta_mtime = max(
-            self.metapaths['in'].st_mtime_ns,
-            self.metapaths['out'].st_mtime_ns )
         self.metarecords, self.figrecords = \
-            self.driver.produce_metarecords(
-                self.targets, self.inrecords, self.outrecords )
+            self.driver.produce_metarecords(self.targets)
         self.cache_updated = False
         self.metanodes = ODict(
             (metaname, self.create_metanode(metaname, metarecord))
@@ -72,6 +68,9 @@ class Builder:
                 self.metarecords_cache = yaml.load(h)
         else:
             self.metarecords_cache = {}
+        self.meta_mtime = max(
+            self.metapaths['in'].st_mtime_ns,
+            self.metapaths['out'].st_mtime_ns )
 
     def dump_meta_cache(self):
         s = yaml.dump(self.metarecords_cache, default_flow_style=False)

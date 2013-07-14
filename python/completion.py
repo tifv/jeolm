@@ -79,8 +79,8 @@ class Completer:
                 inrecords = yaml.load(f) or ODict()
             with self.metapaths['out'].open() as g:
                 outrecords = yaml.load(g) or {}
-            driver = drivers.get_driver()
-            self.targetlist = driver.list_targets(inrecords, outrecords)
+            driver = drivers.Driver(inrecords, outrecords)
+            self.targetlist = driver.list_targets()
             cache_new = Path('.completion.cache.list.new')
             with cache_new.open('w') as h:
                 for target in self.targetlist:

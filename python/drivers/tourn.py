@@ -8,12 +8,6 @@ from jeolm.utils import pure_join
 import logging
 logger = logging.getLogger(__name__)
 
-def produce_metarecords(targets, inrecords, outrecords):
-    return TournDriver(inrecords, outrecords).produce_metarecords(targets)
-
-def list_targets(inrecords, outrecords):
-    return sorted(set(TournDriver(inrecords, outrecords).list_targets() ))
-
 def pathset(*strings):
     return frozenset(map(PurePath, strings))
 
@@ -438,25 +432,44 @@ class TournDriver(CourseDriver):
         regatta, league,
         *, contained=False, inpath_set, date_set
     ):
-        body = []; append = body.append
+        body = []
         if contained:
-            append(self.constitute_section(league['name'], level=contained))
+            body.append(
+                self.constitute_section(league['name'], level=contained) )
         else:
-            append(self.constitute_section(
+            body.append(self.constitute_section(
                 regatta['name'] + '. ' + league['name'],
                 select=str(subtarget) ))
-        tour_records = self.find_regatta_tour_records(record)
-        for tournum, tourrecord in enumerate(tour_records, 1):
-            subprotorecord = self.produce_fluid_regatta_tour_protorecord(
-                subroot/str(tournum)/subtarget, tourrecord,
-                subroot/str(tournum), subtarget,
-                regatta, league, tourrecord['$regatta$tour'],
-                contained=contained+1,
-                inpath_set=inpath_set, date_set=date_set
-            )
-            body.extend(subprotorecord['body'])
+        if self.regatta_fluid_group_by == 'tour':
+            tour_records = self.find_regatta_tour_records(record)
+            for tournum, tourrecord in enumerate(tour_records, 1):
+                subprotorecord = self.produce_fluid_regatta_tour_protorecord(
+                    subroot/str(tournum)/subtarget, tourrecord,
+                    subroot/str(tournum), subtarget,
+                    regatta, league, tourrecord['$regatta$tour'],
+                    contained=contained+1,
+                    inpath_set=inpath_set, date_set=date_set
+                )
+                body.extend(subprotorecord['body'])
+        elif self.regatta_fluid_group_by == 'subject':
+            subject_records = self.find_regatta_subject_records(record)
+            for subjectkey, subjectrecord in subject_records.items():
+                subprotorecord = \
+                self.produce_fluid_regatta_subject_protorecord(
+                    subroot/subjectkey/subtarget, subjectrecord,
+                    subroot/subjectkey, subtarget,
+                    regatta, league, subjectrecord['$regatta$subject'],
+                    contained=contained+1,
+                    inpath_set=inpath_set, date_set=date_set
+                )
+                body.extend(subprotorecord['body'])
+        else:
+            raise AssertionError(self.regatta_fluid_group_by)
         protorecord = {'body' : body}
         return protorecord
+
+    # Possible values are 'tour', 'subject'
+    regatta_fluid_group_by = 'tour'
 
     def produce_fluid_regatta_subject_protorecord(self,
         target, record,
@@ -666,13 +679,6 @@ class TournDriver(CourseDriver):
     # Record accessors
 
     # Extension
-    # If e.g 'a/the-contest/$contest' outrecord exists and accessor is
-    # requested a path 'a/the-contest/b/c' which does not exist, than the
-    # return value will contain the following keys:
-    # * $contest = <mimicvalue> = <value of /a/the-contest/$contest>
-    # * $mimic$key = "$contest"
-    # * $mimic$root = a/the-contest
-    # * $mimic$path = b/c
     class OutrecordAccessor(CourseDriver.OutrecordAccessor):
         mimickeys = frozenset((
             '$contest', '$contest$league',

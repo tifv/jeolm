@@ -46,7 +46,7 @@ def resolve_inpaths(inpaths, *, root, viewpoint):
 
     sourceroot = root/'source'
     inpaths = [
-        PurePath(viewpoint, inpath).relative_to(sourceroot)
+        PurePath(viewpoint, inpath).relative(sourceroot)
         for inpath in inpaths ]
     if not inpaths:
         inpaths = [PurePath('')]
@@ -129,10 +129,10 @@ class InrecordReviewer:
             logger.info('<BOLD><GREEN>{!s}<RESET>: inrecord added'
                 .format(inpath) )
             if inpath.suffix == '':
-                inrecords[inpath.name] = OrderedDict()
+                superrecord[inpath.name] = OrderedDict()
             else:
-                inrecords[inpath.name] = dict()
-        inrecord = inrecords[inpath.name]
+                superrecord[inpath.name] = dict()
+        inrecord = superrecord[inpath.name]
         if not isinstance(inrecord, dict):
             raise TypeError("{!s}: dictionary expected, found {!r}"
                 .format(inpath, type(inrecord)) )

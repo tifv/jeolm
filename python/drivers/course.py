@@ -13,13 +13,6 @@ logger = logging.getLogger(__name__)
 class RecordNotFoundError(ValueError):
     pass
 
-def produce_metarecords(targets, inrecords, outrecords):
-    return CourseDriver(inrecords, outrecords).produce_metarecords(targets)
-
-def list_targets(inrecords, outrecords):
-    return sorted(set(
-        CourseDriver(inrecords, outrecords).list_targets() ))
-
 class Substitutioner(type):
     """
     Metaclass for a driver.
@@ -294,6 +287,7 @@ class CourseDriver(metaclass=Substitutioner):
             inpath, inrecord = self.inrecords.get_item(
                 target.with_suffix('.tex') )
             if inrecord is None:
+                # Fail
                 raise RecordNotFoundError(target);
             inpath_set.add(inpath)
             date_set.add(inrecord.get('date'))

@@ -1,9 +1,10 @@
 """
-get_driver()
-    Return a module (<driver>) containing functions
-    produce_metarecords() and list_targets().
+Driver(inrecords, outrecords)
+    Given a target, Driver can produce corresponding LaTeX code, along
+    with dependency list. It is Driver which ultimately knows how to
+    deal with inrecords and outrecords.
 
-<driver>.produce_metarecords(targets, inrecords, outrecords)
+driver.produce_metarecords(targets)
     Return (metarecords, figrecords) where
     metarecords = ODict(metaname : metarecord for some metanames)
     figrecords = ODict(figname : figrecord for some fignames)
@@ -12,13 +13,10 @@ get_driver()
     outrecords. They must not contain any '/' slashes and should not
     contain any extensions.
 
-    Inpaths are relative PurePath objects. They should be based on
-    inrecords, and supposed to be valid subpaths of the '<root>/source/'
-    directory.
-
-<driver>.list_targets(inrecords, outrecords)
+driver.list_targets()
     Return a list of some valid targets, that may be used with
-    produce_metarecords().
+    produce_metarecords(). This list is not (actually, can not be)
+    guaranteed to be complete.
 
 Metarecords
     Each metarecord must contain the following fields:
@@ -56,13 +54,13 @@ Figrecords
         {used_name : inpath for each used inpath}
         where used_name is a filename with '.asy' extension,
         and inpath has '.asy' extension
+
+Inpaths
+    Inpaths are relative PurePath objects. They should be based on
+    inrecords, and supposed to be valid subpaths of the '<root>/source/'
+    directory.
+
 """
 
-def get_driver():
-    from . import course
-    return course
-
-def get_tourn_driver():
-    from . import tourn
-    return tourn
+from .course import CourseDriver as Driver
 
