@@ -25,7 +25,7 @@
 %<package>\NeedsTeXFormat{LaTeX2e}[2009/09/24]
 %<package>\ProvidesPackage{jeolm-tourn}
 %<*package>
-    [2013/03/22 v0.3 Jeolm LaTeX routines (tournament macros)]
+    [2013/07/22 v0.4 Jeolm LaTeX routines (tournament macros)]
 %</package>
 %
 %<*batchfile>
@@ -40,7 +40,7 @@
 
 This is a generated file.
 
-Copyright 2012 July Tikhonov <july.tikh@gmail.com>.
+Copyright 2013 July Tikhonov <july.tikh@gmail.com>.
 
 This work may be distributed and/or modified under the
 conditions of the LaTeX Project Public License, either version 1.3
@@ -224,7 +224,6 @@ This work has the LPPL maintenance status `author-maintained'.
 %
 %    \begin{macrocode}
 \newcommand\problemsolutioninput[2]{\fetchproblemsolution{#2}%
-%{\preproblem@fetched\presolution@fetched}%
 {\preproblem@fetched\presolution@fetched}%
 #1\problem@fetched\solution@delimiter\solution@fetched}
 \newcommand\probleminput[2]{\fetchproblemsolution{#2}%

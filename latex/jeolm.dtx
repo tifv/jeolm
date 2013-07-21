@@ -25,7 +25,7 @@
 %<package>\NeedsTeXFormat{LaTeX2e}[2009/09/24]
 %<package>\ProvidesPackage{jeolm}
 %<*package>
-    [2013/03/18 v0.2 Jeolm LaTeX routines]
+    [2013/07/22 v0.4 Jeolm LaTeX routines]
 %</package>
 %
 %<*batchfile>
@@ -202,7 +202,7 @@ This work has the LPPL maintenance status `author-maintained'.
 % \problem
 % \subproblem for |\subproblem|;
 % \quad
-% \subproblemx{*} for |\subproblem{*}|.
+% \subproblemx{*} for |\subproblemx{*}|.
 % \\
 % Macros |\sbp| and |\sbpx| are corresponding |\let| aliases for |\subproblem|
 % and |\subproblemx|.
@@ -240,6 +240,20 @@ This work has the LPPL maintenance status `author-maintained'.
 %
 % Problems are not the only structural elements of course.
 % Others include |\definition|, |\theorem|, |\lemma|, and some more.
+%
+% The basic command is |\claim|\marg{caption}.
+%
+% \theorem
+% For |\theorem|.
+%
+% \theoremof{Ван Обеля}
+% For |\theoremof{Ван Обеля}|, referencing next theorem \ref{a theorem}.
+%
+% \theoremnum\label{a theorem}%
+% For |\theoremnum|.
+%
+% \claim{Лемма Фату}
+% For |\claim{Лемма Фату}|.
 %
 % \StopEventually{\newpage\PrintIndex}
 %
@@ -282,6 +296,8 @@ This work has the LPPL maintenance status `author-maintained'.
 %
 % \begin{macro}{\jeolmfiguremap}
 % \begin{macro}{\jeolmfigure}
+% Use the |\csname| to create a macro.
+% The set of such macros will define a mapping.
 %    \begin{macrocode}
 \newcommand\jeolmfiguremap[2]{%
 \expandafter\def\csname jeolmfiguremap@#1\endcsname{#2}}
@@ -293,9 +309,10 @@ This work has the LPPL maintenance status `author-maintained'.
 %
 % \subsection{Headers}
 %
-% \begin{macro}{\jeolmheadertemplate}
 % \begin{macro}{\jeolmheaderset}
 % \begin{macro}{\jeolmheader}
+% To use |\jeolmheader|, macro |\jeolmheaderset|\marg{institution}\marg{group}
+% should be called exactly once in preambule.
 %    \begin{macrocode}
 \newcommand\jeolmheadertemplate[2]{%
 \vspace{1.5em}%
@@ -308,16 +325,14 @@ This work has the LPPL maintenance status `author-maintained'.
 %    \end{macrocode}
 % \end{macro}
 % \end{macro}
-% \end{macro}
 %
 % \subsection{Problem numbering}
 %
 % \subsubsection{Public definitions}
 %
 % \begin{macro}{\problem}
-% \begin{macro}{\problemx}
-% \begin{macro}{\problemy}
-% \begin{macro}{\problemyx}
+% These macros boil down to |\problem@x| and |\problem@yx|, which are defined
+% later.
 %    \begin{macrocode}
 \newcommand\problem{\problemx{}}
 \newcommand\problemx[1]{\problem@x{#1}\problem@space\ignorespaces}
@@ -325,14 +340,10 @@ This work has the LPPL maintenance status `author-maintained'.
 \newcommand\problemyx[2]{\problem@yx{#1}{#2}\problem@space\ignorespaces}
 %    \end{macrocode}
 % \end{macro}
-% \end{macro}
-% \end{macro}
-% \end{macro}
 %
 % \begin{macro}{\subproblem}
-% \begin{macro}{\subproblemx}
 % \begin{macro}{\sbp}
-% \begin{macro}{\sbpx}
+% These macros boil down to |\subproblem@x|, which is defined later.
 %    \begin{macrocode}
 \newcommand\subproblem{\subproblemx{}}
 \newcommand\subproblemx[1]{\subproblem@x{#1}\subproblem@space\ignorespaces}
@@ -341,38 +352,52 @@ This work has the LPPL maintenance status `author-maintained'.
 %    \end{macrocode}
 % \end{macro}
 % \end{macro}
-% \end{macro}
-% \end{macro}
 %
 % \subsubsection{Numbering}
 %
 % \begin{macro}{\setproblem}
 % \begin{macro}{\resetproblem}
+% Underlying counters.
 %    \begin{macrocode}
 \newcounter{jeolmproblem}
 \newcommand\setproblem[1]{\setcounter{jeolmproblem}{#1}}
 \newcommand\resetproblem{\setcounter{jeolmproblem}{0}}
-%    \end{macrocode}
-% \end{macro}
-% \end{macro}
-%
-%    \begin{macrocode}
 \newcounter{jeolmsubproblem}
 %    \end{macrocode}
+% \end{macro}
+% \end{macro}
 %
+% \begin{macro}{\problem@x}
+% \begin{macro}{\problem@yx}
+% These macros boil down to |\problem@label| and |\problem@format|, which are
+% defined later.
+% The former allows |\label| to be used to reference the problem, while the
+% latter produces the visible output.
 %    \begin{macrocode}
 \newcommand\problem@x[1]{%
 \stepcounter{jeolmproblem}\problem@yx{\arabic{jeolmproblem}}{#1}}
 \newcommand\problem@yx[2]{\problem@label{#1}\problem@format{#1}{#2}}
+%    \end{macrocode}
+% In items of |problem| environment, counter increment and labeling is
+% managed by |\item| command itself.
+%    \begin{macrocode}
 \newcommand\problem@in@item{\problem@yx{\arabic{jeolmproblem}}{}}
 \newcommand\problemx@in@item[1]{\problem@yx{\arabic{jeolmproblem}}{#1}}
 %    \end{macrocode}
+% \end{macro}
+% \end{macro}
 %
+% \begin{macro}{\subproblem@x}
+% These macros boil down to |\subproblem@label| and |\subproblem@format|,
+% which are defined later.
+% The former allows |\label| to be used to reference the subproblem, while the
+% latter produces the visible output.
 %    \begin{macrocode}
 \newcommand\subproblem@x[1]{%
 \stepcounter{jeolmsubproblem}\subproblem@yx{\alph{jeolmsubproblem}}{#1}}
 \newcommand\subproblem@yx[2]{\subproblem@label{#1}\subproblem@format{#1}{#2}}
 %    \end{macrocode}
+% \end{macro}
 %
 % \subsubsection{Labeling}
 %
@@ -391,28 +416,46 @@ This work has the LPPL maintenance status `author-maintained'.
 %
 % \subsubsection{Formatting}
 %
-% \begin{environment}{problems}
-%    \begin{macrocode}
-\newenvironment{problems}{%
-\if@nobreak\vspace{-1.5ex}\fi
-\let\itemx\problem@itemx
-\let\itemy\problem@itemy
-\let\itemyx\problem@itemyx
-\begin{list}{\problem@in@item@current}{%
-\leftmargin=5ex\labelsep=\problem@space@length%
-\@nmbrlisttrue\def\@listctr{jeolmproblem}}%
-}{\end{list}}
-%    \end{macrocode}
-% \end{environment}
-%
+% \begin{macro}{\problem@format}
+% \begin{macro}{\subproblem@format}
 %    \begin{macrocode}
 \newlength\problem@space@length
 \problem@space@length=1.5ex
 \newcommand\problem@space{\hspace{\problem@space@length}}
 \newcommand\problem@format[2]{\textbf{#1.\rlap{\!#2}}}
 \newcommand\subproblem@space{\hspace{1ex}}
-\newcommand\subproblem@format[2]{\textbf{(#1#2)}}
+\newcommand\subproblem@format[2]{{\ttfamily(#1#2)}}
 %    \end{macrocode}
+% \end{macro}
+% \end{macro}
+%
+% \begin{environment}{problems}
+% Environment |problems| is a |list| with counter set to |jeolmproblem|,
+% along with some formatting tuning.
+%    \begin{macrocode}
+\newenvironment{problems}{%
+%    \end{macrocode}
+% This solves the problem of vast space, that occures if the environment is
+% placed immediatly after a section start.
+%    \begin{macrocode}
+\if@nobreak\vspace{-1.5ex}\fi
+%    \end{macrocode}
+% Macros |\itemx|, |\itemy| and |\itemyx| are defined only inside the
+% environment.
+%    \begin{macrocode}
+\let\itemx\problem@itemx
+\let\itemy\problem@itemy
+\let\itemyx\problem@itemyx
+%    \end{macrocode}
+% Macro |\problem@in@item@current| can be redefined on the fly.
+% This is used by |\itemx|.
+%    \begin{macrocode}
+\begin{list}{\problem@in@item@current}{%
+\leftmargin=5ex\labelsep=\problem@space@length%
+\@nmbrlisttrue\def\@listctr{jeolmproblem}}%
+}{\end{list}}
+%    \end{macrocode}
+% \end{environment}
 %
 %    \begin{macrocode}
 \let\problem@in@item@current\problem@in@item
@@ -428,23 +471,21 @@ This work has the LPPL maintenance status `author-maintained'.
 %
 % \subsection{Statements}
 %
-% \begin{macro}{\basestatement}
+% \begin{macro}{\claim}
 %    \begin{macrocode}
-\newcommand\claim[2]{\claim@label{#2}\claim@format{#1}}
-\newcommand\aclaim[1]{\claim@format{#1}}
-\newcommand\claim@label[1]{\edef\@currentlabel{#1}}
+\newcommand\claim[1]{\claim@format{#1}}
 \newcommand\claim@format[1]{\textbf{#1.\ }\ignorespaces}
 %    \end{macrocode}
 % \end{macro}
 %
 % \begin{macro}{\theorem}
 % \begin{macro}{\theoremof}
-% \begin{macro}{\theoremofenum}
+% \begin{macro}{\theoremnum}
 %    \begin{macrocode}
-\newcommand\theorem{\aclaim{Теорема}{}}
-\newcommand\theoremof[1]{\claim{Теорема #1}{#1}}
+\newcommand\theorem{\claim{Теорема}{}}
+\newcommand\theoremof[1]{\claim{Теорема #1}}
 \newcounter{theorem}
-\newcommand\theoremnum{\stepcounter{theorem}\theoremof{\thetheorem}}
+\newcommand\theoremnum{\refstepcounter{theorem}\claim{Теорема \thetheorem}}
 %    \end{macrocode}
 % \end{macro}
 % \end{macro}
@@ -456,11 +497,11 @@ This work has the LPPL maintenance status `author-maintained'.
 % \begin{macro}{\proposition}
 % \begin{macro}{\corollary}
 %    \begin{macrocode}
-\newcommand\definition{\aclaim{Определение}}
-\newcommand\lemma{\aclaim{Лемма}}
-\newcommand\statement{\aclaim{Утверждение}}
-\newcommand\proposition{\aclaim{Предложение}}
-\newcommand\corollary{\aclaim{Следствие}}
+\newcommand\definition{\claim{Определение}}
+\newcommand\lemma{\claim{Лемма}}
+\newcommand\statement{\claim{Утверждение}}
+\newcommand\proposition{\claim{Предложение}}
+\newcommand\corollary{\claim{Следствие}}
 %    \end{macrocode}
 % \end{macro}
 % \end{macro}
@@ -472,9 +513,9 @@ This work has the LPPL maintenance status `author-maintained'.
 % \begin{macro}{\example}
 % \begin{macro}{\solution}
 %    \begin{macrocode}
-\newcommand\observation{\aclaim{Замечание}}
-\newcommand\example{\aclaim{Пример}}
-\newcommand\solution{\aclaim{Решение}}
+\newcommand\observation{\claim{Замечание}}
+\newcommand\example{\claim{Пример}}
+\newcommand\solution{\claim{Решение}}
 %    \end{macrocode}
 % \end{macro}
 % \end{macro}
