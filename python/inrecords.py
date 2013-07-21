@@ -278,15 +278,17 @@ class InrecordReviewer:
                 .format(inpath, caption) )
         elif inrecord['caption'] != caption:
             logger.info("<BOLD><MAGENTA>{!s}<RESET>: "
-                "caption changed from '<BOLD><RED>{}<BLACK>' "
-                "to '<BOLD><GREEN>{}<BLACK>'"
+                "caption changed from '<BOLD><RED>{}<RESET>' "
+                "to '<BOLD><GREEN>{}<RESET>'"
                 .format(inpath, inrecord['caption'], caption) )
         inrecord['caption'] = caption
 
     nocaption_pattern = re.compile(
         r'(?m)^% no caption$' )
-    caption_pattern = re.compile(
-        r'(?m)^% (?! )(?P<caption>.+)$' )
+    caption_pattern = re.compile(r'(?m)^'
+        r'%+\n'
+        r'%+ +(?! )(?P<caption>[^%]+)(?<! ) *(?:%.*)?\n'
+        r'%+$')
 
     def review_tex_date(self, inpath, inrecord, s):
         if self.nodate_pattern.search(s) is not None:
@@ -326,7 +328,7 @@ class InrecordReviewer:
                 "'no figures' in the file".format(inpath) )
             return;
         if self.includegraphics_pattern.search(s) is not None:
-            logger.warning("<BOLD><MAGENTA>{!s}<BALCK>: "
+            logger.warning("<BOLD><MAGENTA>{!s}<BLACK>: "
                 "<YELLOW>\\includegraphics<BLACK> command found<RESET>")
 
         new_figures = self.unique(
