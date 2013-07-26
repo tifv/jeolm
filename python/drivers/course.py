@@ -278,12 +278,16 @@ class CourseDriver(metaclass=Substitutioner):
                 date_set.add(inrecords.get('date'))
                 yield {'inpath' : inpath}
 
-    def generate_fluid_body(self, target, fluid, *, inpath_set, date_set):
+    def generate_fluid_body(self, target, fluid,
+        *, inpath_set, date_set
+    ):
         if fluid is None:
-            # No outrecords fluid - generate fluid from inrecords
+            # No outrecord fluid.
+            # Try directory inrecord.
             fluid = self.generate_autofluid(target)
         if fluid is None:
-            # Try single file inrecord
+            # No outrecord fluid and no directory inrecord.
+            # Try single file inrecord.
             inpath, inrecord = self.inrecords.get_item(
                 target.with_suffix('.tex') )
             if inrecord is None:
@@ -315,11 +319,13 @@ class CourseDriver(metaclass=Substitutioner):
         for subname in inrecord:
             subnamepath = PurePath(subname)
             suffix = subnamepath.suffix
-            if suffix == '':
-                subnames.append(subname)
-            elif suffix == '.tex':
-                subnames.append(str(subnamepath.with_suffix('')))
-            else: pass
+            if suffix == '.tex':
+                subname = str(subnamepath.with_suffix(''))
+            elif suffix == '':
+                pass
+            else:
+                continue;
+            subnames.append(subname)
         return subnames
 
     def find_figure_inrecord(self, figpath):
@@ -569,11 +575,11 @@ class CourseDriver(metaclass=Substitutioner):
 
     def constitute_input(self, inpath, alias, inrecord, figname_map):
         caption = inrecord.get('caption', '(no caption)')
-        date = inrecord.get('date', '(no date)')
-        body = self.substitute_input(
-            caption=caption, date=self.constitute_date(date),
-            filename=alias )
+        body = self.substitute_input(caption=caption, filename=alias)
 
+        if 'date' in inrecord:
+            body = body + self.substitute_datestamp(
+                date=self.constitute_date(inrecord['date']) )
         if figname_map:
             body = self.constitute_figname_map(figname_map) + '\n' + body
         return body
@@ -582,7 +588,8 @@ class CourseDriver(metaclass=Substitutioner):
         r'\section*{$caption%'
          '\n    }'
         r'\resetproblem' '\n'
-        r'\input{$filename}' '\n'
+        r'\input{$filename}' )
+    datestamp_template = (
         r'    \begin{flushright}\small' '\n'
         r'    $date' '\n'
         r'    \end{flushright}'
