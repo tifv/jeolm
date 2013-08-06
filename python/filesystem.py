@@ -5,7 +5,7 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 required_directories = frozenset(('meta', 'source', 'build', ))
-required_meta_files = frozenset(('in.yaml', 'out.yaml', 'local.sty', ))
+required_meta_files = frozenset(('in.yaml', 'out.yaml', ))
 
 # It is expected that nothing but this directories will be found on the
 # toplevel.

@@ -680,7 +680,7 @@ class TournDriver(CourseDriver):
 
     # Extension
     class OutrecordAccessor(CourseDriver.OutrecordAccessor):
-        mimickeys = frozenset((
+        mimic_keys = frozenset((
             '$contest', '$contest$league',
             '$regatta', '$regatta$league',
             '$regatta$subject', '$regatta$tour', ))
@@ -689,30 +689,25 @@ class TournDriver(CourseDriver):
         def get_child(self, parent_path, parent_record, name, **kwargs):
             path, record = super().get_child(
                 parent_path, parent_record, name, **kwargs )
-            if record is not None:
-                mimickeys = self.mimickeys & record.keys()
-                if mimickeys:
-                    mimickey, = mimickeys
-                    record = record.copy()
-                    record.update({
-                        '$mimic$key' : mimickey,
-                        '$mimic$root' : path,
-                        '$mimic$path' : PurePath() })
+            mimic_keys = self.mimic_keys & record.keys()
+            if mimic_keys:
+                mimic_key, = mimic_keys
+                record = record.copy()
+                record.update({
+                    '$mimic$key' : mimic_key,
+                    '$mimic$root' : path,
+                    '$mimic$path' : PurePath() })
                 return path, record;
-            if not (
-                parent_record is not None and
-                name not in parent_record and
-                '$mimic$key' in parent_record
-            ):
-                return path, record;
+            if not record.get('$fake') or '$mimic$key' not in parent_record:
+                return path, record
 
-            mimickey = parent_record['$mimic$key']
-            record = {
-                mimickey : parent_record[mimickey],
-                '$mimic$key' : mimickey,
+            mimic_key = parent_record['$mimic$key']
+            record.update({
+                mimic_key : parent_record[mimic_key],
+                '$mimic$key' : mimic_key,
                 '$mimic$root' : parent_record['$mimic$root'],
                 '$mimic$path' : parent_record['$mimic$path']/name,
-            }
+            })
             return path, record;
 
         contest_fluid_targets = \
@@ -747,7 +742,7 @@ class TournDriver(CourseDriver):
                 for key in self.regatta_tour_fluid_targets:
                     yield outpath/key
 
-    mimickeys = OutrecordAccessor.mimickeys
+#    mimic_keys = OutrecordAccessor.mimic_keys
 
     ##########
     # LaTeX-level functions

@@ -91,8 +91,11 @@ class CourseDriver(metaclass=Substitutioner):
 
         inpath_set = metarecord['inpath set']
         metarecord['aliases'] = {
-            inpath : '-'.join(inpath.parts).replace('.tex', '.in.tex')
+            inpath : self.sluggify_inpath(inpath) + '.in.tex'
             for inpath in inpath_set }
+        metarecord['aliases'].update({
+            inpath : 'local-' + self.sluggify_inpath(inpath) + '.sty'
+            for inpath in metarecord['style'] })
         metarecord['sources'] = {
             alias : inpath
             for inpath, alias in metarecord['aliases'].items() }
@@ -169,9 +172,6 @@ class CourseDriver(metaclass=Substitutioner):
             raise ValueError(target)
         seen_targets = seen_targets.union((target,))
         resolved_path, record = self.outrecords.get_item(target)
-        if record is None:
-            yield target
-            return;
         yield from self._trace_delegators(target, resolved_path, record,
             seen_targets=seen_targets )
 
@@ -221,13 +221,21 @@ class CourseDriver(metaclass=Substitutioner):
             protorecord['body'] = list(protorecord['body'])
         protorecord.setdefault('date', self.min_date(date_set))
         protorecord['inpath set'] = inpath_set
+
+        style = record.get('$style')
+        if style is not None:
+            protorecord['style'] = style
+            assert all(isinstance(inpath, PurePath) for inpath in style), style
+        else:
+            protorecord['style'] = [PurePath('base.sty')]
+
         return protorecord
 
     def produce_rigid_protorecord(self, target, record,
         *, inpath_set, date_set
     ):
         """Return protorecord with 'body'."""
-        if record is None or '$rigid' not in record:
+        if '$rigid' not in record:
             raise RecordNotFoundError(target);
         protorecord = dict()
         protorecord.update(record.get('$rigid$opt', ()))
@@ -243,8 +251,6 @@ class CourseDriver(metaclass=Substitutioner):
         *, inpath_set, date_set
     ):
         """Return protorecord with 'body'."""
-        if record is None:
-            record = {}
         protorecord = dict()
         protorecord.update(record.get('$fluid$opt', ()))
         if 'date' in protorecord:
@@ -367,16 +373,31 @@ class CourseDriver(metaclass=Substitutioner):
         def __init__(self, records):
             self.records = records
 
-        def get_item(self, path):
-            assert isinstance(path, PurePath) and not path.is_absolute(), path
-            the_record = self.records
-            the_path = PurePath()
-            for part in path.parts:
-                the_path, the_record = self.get_child(
-                    the_path, the_record, part )
+        def get_item(self, path, *, seen_aliases=frozenset()):
+            try:
+                the_path, the_record = self.cache[path]
+            except KeyError:
+                if path == PurePath():
+                    return path, self.records
+                the_path, the_record = self.cache[path] = \
+                    self._get_item(path, seen_aliases=seen_aliases)
+            if the_record is not None:
+                the_record = the_record.copy()
             return the_path, the_record
 
-        def get_child(self, parent_path, parent_record, name):
+        def _get_item(self, path, *, seen_aliases):
+            assert isinstance(path, PurePath) and not path.is_absolute(), path
+            the_path, the_record = self.get_item(
+                path.parent(),
+                seen_aliases=seen_aliases)
+            the_path, the_record = self.get_child(
+                the_path, the_record, path.name,
+                seen_aliases=seen_aliases )
+            return the_path, the_record
+
+        def get_child(self, parent_path, parent_record, name,
+            *, seen_aliases
+        ):
             path = parent_path/name
             if parent_record is None:
                 return path, None;
@@ -387,7 +408,7 @@ class CourseDriver(metaclass=Substitutioner):
                 return path, None;
             if not isinstance(record, dict):
                 raise TypeError(path, record)
-            return path, record;
+            return path, record.copy();
 
         def resolve(self, path):
             the_path, the_record = self.get_item(path)
@@ -401,6 +422,8 @@ class CourseDriver(metaclass=Substitutioner):
             return self[path] is not None
 
     class InrecordAccessor(RecordAccessor):
+        cache = dict()
+
         def list_targets(self, inpath=PurePath(), inrecord=None):
             """List some targets based on inrecords."""
             if inrecord is None:
@@ -415,25 +438,27 @@ class CourseDriver(metaclass=Substitutioner):
                     yield from self.list_targets(subpath, subrecord)
 
     class OutrecordAccessor(RecordAccessor):
-
-        # Override
-        def get_item(self, path, *, seen_aliases=frozenset()):
-            assert isinstance(path, PurePath) and not path.is_absolute(), path
-            the_record = self.records
-            the_path = PurePath()
-            for part in path.parts:
-                the_path, the_record = self.get_child(
-                    the_path, the_record, part, seen_aliases=seen_aliases )
-            return the_path, the_record
+        cache = dict()
 
         # Extension
         def get_child(self, parent_path, parent_record, name,
             *, seen_aliases
         ):
-            path, record = super().get_child(parent_path, parent_record, name)
+            path, record = super().get_child(parent_path, parent_record, name,
+                seen_aliases=seen_aliases )
+            parent_style = parent_record.get('$style')
             if record is None:
-                return path, None;
+                record = {'$fake' : True}
             if '$alias' not in record:
+                style = record.get('$style')
+                if style is not None:
+                    style = [
+                        pure_join(path, sty_path).with_suffix('.sty')
+                        for sty_path in style ]
+                else:
+                    style = parent_style
+                if style is not None:
+                    record['$style'] = style
                 return path, record;
             if len(record) > 1:
                 raise ValueError(
@@ -501,7 +526,8 @@ class CourseDriver(metaclass=Substitutioner):
             raise ValueError(font_option)
 
     def generate_metapreamble(self, metarecord):
-        yield {'package' : 'local'}
+        for inpath in metarecord['style']:
+            yield {'local package' : metarecord['aliases'][inpath]}
         yield {'package' : 'pgfpages'}
         yield {'verbatim' :
             self.substitute_pgfpages_resize(options='a4paper') }
@@ -532,13 +558,18 @@ class CourseDriver(metaclass=Substitutioner):
         assert isinstance(metaline, dict)
         if 'verbatim' in metaline:
             return str(metaline['verbatim'])
-        if 'package' in metaline:
+        elif 'package' in metaline:
             package = metaline['package']
             options = metaline.get('options', None)
             options = cls.constitute_options(options)
             return cls.substitute_usepackage(
                 package=package,
                 options=options )
+        elif 'local package' in metaline:
+            packagefile = metaline['local package']
+            assert packagefile.endswith('.sty')
+            return cls.substitute_usepackage(
+                package=packagefile[:-len('.sty')], options='' )
         else:
             raise ValueError(metaline)
 
@@ -660,4 +691,9 @@ class CourseDriver(metaclass=Substitutioner):
             return date;
         else:
             return None;
+
+    @staticmethod
+    def sluggify_inpath(inpath):
+        assert len(inpath.suffixes) == 1, inpath
+        return '-'.join(inpath.with_suffix('').parts)
 

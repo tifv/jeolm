@@ -188,9 +188,6 @@ class Builder:
                 self.get_source_node(inpath), builddir/alias_name,
                 needs=(builddir_node,) )
             for alias_name, inpath in metarecord['sources'].items() )
-        dvi_node.append_needs(
-            LinkNode(self.local_sty, builddir/'local.sty',
-                needs=(builddir_node,) ) )
         dvi_node.extend_needs(
             LinkNode(
                 self.eps_nodes[figname], builddir/(figname+'.eps'),

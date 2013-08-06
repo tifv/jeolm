@@ -105,7 +105,7 @@ class InrecordReviewer:
         """
         if original_inpath is None:
             original_inpath = inpath
-            if inpath.suffix not in {'', '.tex', '.asy', '.eps'}:
+            if inpath.suffix not in {'', '.tex', '.sty', '.asy', '.eps'}:
                 raise ValueError("{!s}: unrecognized extension"
                     .format(original_inpath) )
             if any(parent.suffix != '' for parent in inpath.parents()):
@@ -126,7 +126,7 @@ class InrecordReviewer:
         if inpath.name not in superrecord:
             if not create_path:
                 return None;
-            logger.info('<BOLD><GREEN>{!s}<RESET>: inrecord added'
+            logger.info('<BOLD><GREEN>{!s}: inrecord added<RESET>'
                 .format(inpath) )
             if inpath.suffix == '':
                 superrecord[inpath.name] = OrderedDict()
@@ -168,6 +168,8 @@ class InrecordReviewer:
             return None;
         if inpath.suffix == '.tex':
             return self.review_tex_inrecord(inpath, inrecord);
+        if inpath.suffix == '.sty':
+            return self.review_sty_inrecord(inpath, inrecord);
         elif inpath.suffix == '.asy':
             return self.review_asy_inrecord(inpath, inrecord);
         elif inpath.suffix == '.eps':
@@ -184,7 +186,7 @@ class InrecordReviewer:
         for subname in sorted(subreviewed):
             subpath = inpath/subname
             subsuffix = subpath.suffix
-            if subsuffix not in {'', '.tex', '.asy', '.eps'}:
+            if subsuffix not in {'', '.tex', '.sty', '.asy', '.eps'}:
                 if subname in inrecord:
                     raise ValueError("{!s}: unrecognized extension"
                         .format(subpath) )
@@ -212,11 +214,11 @@ class InrecordReviewer:
 
     def report_screened_names(self, inpath, inrecord):
         """
-        Show warnings if some inrecords are screened by other.
+        Show warnings if some inrecords are screened.
 
-        'Screened' means that there are two files in the inrecords
-        tree, but their names are clashing so in some cases one of them
-        will be inaccessible.
+        'Screened' means that in some cases the file will get
+        inaccessible. One of the reasons can be two files in the
+        inrecords tree with clashing names.
         """
         subpaths = {inpath/subname for subname in inrecord}
         screened_suffixes = (
@@ -329,7 +331,8 @@ class InrecordReviewer:
             return;
         if self.includegraphics_pattern.search(s) is not None:
             logger.warning("<BOLD><MAGENTA>{!s}<BLACK>: "
-                "<YELLOW>\\includegraphics<BLACK> command found<RESET>")
+                "<YELLOW>\\includegraphics<BLACK> command found<RESET>"
+                .format(inpath) )
 
         new_figures = self.unique(
             match.group('figure')
@@ -363,6 +366,17 @@ class InrecordReviewer:
         r'\\jeolmfigure(?:\[.*?\])?\{(?P<figure>.*?)\}' )
     includegraphics_pattern = re.compile(
         r'\\includegraphics')
+
+    def review_sty_inrecord(self, inpath, inrecord):
+        assert inrecord is None or 'no review' not in inrecord
+        logger.debug("{!s}: reviewing LaTeX style file".format(inpath))
+
+        if inrecord is None:
+            inrecord = {}
+        return inrecord
+
+    noreview_pattern = re.compile(
+        r'(?m)^% no review$' )
 
     def review_asy_inrecord(self, inpath, inrecord):
         assert inrecord is None or 'no review' not in inrecord
