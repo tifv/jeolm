@@ -126,7 +126,7 @@ class Node:
                 subprocess.check_call(callargs, cwd=str(cwd), **kwargs)
             except subprocess.CalledProcessError as exception:
                 rule_logger.critical(
-                    '<BOLD>[<RED>{node.name}<BLACK>] '
+                    '<BOLD>[<RED>{node.name}<NOCOLOUR>] '
                     '{exc.cmd} returned code {exc.returncode}<RESET>'
                     .format(node=self, exc=exception) )
                 raise;
@@ -424,7 +424,7 @@ class LaTeXNode(FileNode):
             except subprocess.CalledProcessError as exception:
                 self.print_latex_output(exception.output, force=True)
                 rule_logger.critical(
-                    '<BOLD>[<RED>{node.name}<BLACK>] '
+                    '<BOLD>[<RED>{node.name}<NOCOLOUR>] '
                     '{exc.cmd} returned code {exc.returncode}<RESET>'
                     .format(node=self, exc=exception) )
                 raise

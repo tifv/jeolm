@@ -40,20 +40,20 @@ def check_root(root):
     if broken_links:
         logger.warning(
             '<BOLD>Found broken links: {}<RESET>'.format(', '.join(
-                "'<YELLOW>{}<BLACK>'".format(x)
+                "'<YELLOW>{}<NOCOLOUR>'".format(x)
                 for x in sorted(broken_links)
             )) )
     if unexpected_directories:
         logger.warning(
             '<BOLD>Found unexpected directories: {}<RESET>.'.format(', '.join(
-                "'<YELLOW>{}<BLACK>'".format(x)
+                "'<YELLOW>{}<NOCOLOUR>'".format(x)
                 for x in sorted(unexpected_directories)
             )) )
     if unexpected_meta_items:
         logger.warning(
             "<BOLD>Found unexpected items in 'meta/': {}<RESET>."
             .format(', '.join(
-                "'<YELLOW>{}<BLACK>'".format(x)
+                "'<YELLOW>{}<NOCOLOUR>'".format(x)
                 for x in sorted(unexpected_meta_items)
             )) )
     return True;

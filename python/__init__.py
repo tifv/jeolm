@@ -93,6 +93,7 @@ def setup_file_logging(root):
 class FancyFormatter(logging.Formatter):
     fancy_replacements = {
         '<RESET>' : '\033[0m', '<BOLD>' : '\033[1m',
+        '<NOCOLOUR>' : '\033[39m',
 
         '<BLACK>' : '\033[30m', '<RED>'     : '\033[31m',
         '<GREEN>' : '\033[32m', '<YELLOW>'  : '\033[33m',

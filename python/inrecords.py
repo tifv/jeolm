@@ -120,7 +120,7 @@ class InrecordReviewer:
             return None;
         assert isinstance(superrecord, dict), superrecord
         if superrecord.get('no review', False):
-            logger.warning("<BOLD><YELLOW>{!s}<BLACK>: "
+            logger.warning("<BOLD><YELLOW>{!s}<NOCOLOUR>: "
                 "overpassing 'no review' tag in {!s}<RESET>"
                 .format(original_inpath, inpath) )
         if inpath.name not in superrecord:
@@ -190,8 +190,8 @@ class InrecordReviewer:
                 if subname in inrecord:
                     raise ValueError("{!s}: unrecognized extension"
                         .format(subpath) )
-                logger.warning('<BOLD><MAGENTA>{!s}<BLACK>: extension of '
-                    '<YELLOW>{}<BLACK> unrecognized<RESET>'
+                logger.warning('<BOLD><MAGENTA>{!s}<NOCOLOUR>: extension of '
+                    '<YELLOW>{}<NOCOLOUR> unrecognized<RESET>'
                     .format(inpath, subname) )
                 continue;
             subrecord = inrecord.get(subname, None)
@@ -205,7 +205,7 @@ class InrecordReviewer:
             elif subrecord is not None:
                 assert isinstance(subname, str)
                 inrecord[subname] = subrecord
-                logger.info('<BOLD><GREEN>{!s}<BLACK>: inrecord added<RESET>'
+                logger.info('<BOLD><GREEN>{!s}<NOCOLOUR>: inrecord added<RESET>'
                     .format(subpath) )
             else:
                 pass
@@ -231,7 +231,7 @@ class InrecordReviewer:
             if subpath.with_suffix(screening_suffix) in subpaths
         )
         for screened_path, screening_path in screened_paths:
-            logger.warning("<BOLD>'<YELLOW>{screened_path!s}<BLACK>' "
+            logger.warning("<BOLD>'<YELLOW>{screened_path!s}<NOCOLOUR>' "
                 "got screened by '{screening_path}'<RESET>"
                 .format(
                     screened_path=screened_path,
@@ -268,7 +268,7 @@ class InrecordReviewer:
         caption_match = self.caption_pattern.search(s)
         if caption_match is None:
             if 'caption' in inrecord:
-                logger.warning("<BOLD><MAGENTA>{!s}<BLACK>: "
+                logger.warning("<BOLD><MAGENTA>{!s}<NOCOLOUR>: "
                     "file is missing any caption; "
                     "preserved the caption '{}' holded in the record<RESET>"
                     .format(inpath, inrecord['caption']) )
@@ -300,7 +300,7 @@ class InrecordReviewer:
         date_match = self.date_pattern.search(s)
         if date_match is None:
             if 'date' in inrecord:
-                logger.warning("<BOLD><MAGENTA>{!s}<BLACK>: "
+                logger.warning("<BOLD><MAGENTA>{!s}<NOCOLOUR>: "
                     "file is missing any date; "
                     "preserved the date '{}' holded in the record<RESET>"
                     .format(inpath, inrecord['date']) )
@@ -330,8 +330,8 @@ class InrecordReviewer:
                 "'no figures' in the file".format(inpath) )
             return;
         if self.includegraphics_pattern.search(s) is not None:
-            logger.warning("<BOLD><MAGENTA>{!s}<BLACK>: "
-                "<YELLOW>\\includegraphics<BLACK> command found<RESET>"
+            logger.warning("<BOLD><MAGENTA>{!s}<NOCOLOUR>: "
+                "<YELLOW>\\includegraphics<NOCOLOUR> command found<RESET>"
                 .format(inpath) )
 
         new_figures = self.unique(
