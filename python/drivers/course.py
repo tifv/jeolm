@@ -222,12 +222,12 @@ class CourseDriver(metaclass=Substitutioner):
         protorecord.setdefault('date', self.min_date(date_set))
         protorecord['inpath set'] = inpath_set
 
-        style = record.get('$style')
-        if style is not None:
-            protorecord['style'] = style
-            assert all(isinstance(inpath, PurePath) for inpath in style), style
-        else:
-            protorecord['style'] = [PurePath('base.sty')]
+        style = record['$style']
+        for inpath in style:
+            assert isinstance(inpath, PurePath), inpath
+            if inpath not in self.inrecords:
+                raise RecordNotFoundError(inpath)
+        protorecord['style'] = style
 
         return protorecord
 
@@ -374,25 +374,25 @@ class CourseDriver(metaclass=Substitutioner):
             self.records = records
 
         def get_item(self, path, *, seen_aliases=frozenset()):
+            assert isinstance(path, PurePath) and not path.is_absolute(), path
             try:
                 the_path, the_record = self.cache[path]
             except KeyError:
                 if path == PurePath():
-                    return path, self.records
-                the_path, the_record = self.cache[path] = \
-                    self._get_item(path, seen_aliases=seen_aliases)
+                    the_path, the_record = self.get_child(
+                        path, {'root' : self.records}, 'root',
+                        seen_aliases=seen_aliases)
+                    the_path = path
+                else:
+                    the_path, the_record = self.get_item(
+                        path.parent(),
+                        seen_aliases=seen_aliases)
+                    the_path, the_record = self.get_child(
+                        the_path, the_record, path.name,
+                        seen_aliases=seen_aliases )
+                self.cache[path] = the_path, the_record
             if the_record is not None:
                 the_record = the_record.copy()
-            return the_path, the_record
-
-        def _get_item(self, path, *, seen_aliases):
-            assert isinstance(path, PurePath) and not path.is_absolute(), path
-            the_path, the_record = self.get_item(
-                path.parent(),
-                seen_aliases=seen_aliases)
-            the_path, the_record = self.get_child(
-                the_path, the_record, path.name,
-                seen_aliases=seen_aliases )
             return the_path, the_record
 
         def get_child(self, parent_path, parent_record, name,
@@ -419,7 +419,8 @@ class CourseDriver(metaclass=Substitutioner):
             return the_record
 
         def __contains__(self, path):
-            return self[path] is not None
+            the_path, the_record = self.get_item(path)
+            return the_record is not None
 
     class InrecordAccessor(RecordAccessor):
         cache = dict()
@@ -428,14 +429,16 @@ class CourseDriver(metaclass=Substitutioner):
             """List some targets based on inrecords."""
             if inrecord is None:
                 inrecord = self.records
-            for subname, subrecord in inrecord.items():
-                subpath = inpath/subname
-                if subpath.suffix == '.tex':
-                    yield subpath.with_suffix('')
-                    continue;
-                elif subpath.suffix == '':
-                    yield subpath
-                    yield from self.list_targets(subpath, subrecord)
+                is_root = True
+            else:
+                is_root = False
+            if inpath.suffix == '.tex':
+                yield inpath.with_suffix('')
+            elif inpath.suffix == '':
+                if not is_root:
+                    yield inpath
+                for subname, subrecord in inrecord.items():
+                    yield from self.list_targets(inpath/subname, subrecord)
 
     class OutrecordAccessor(RecordAccessor):
         cache = dict()
@@ -446,19 +449,13 @@ class CourseDriver(metaclass=Substitutioner):
         ):
             path, record = super().get_child(parent_path, parent_record, name,
                 seen_aliases=seen_aliases )
-            parent_style = parent_record.get('$style')
             if record is None:
                 record = {'$fake' : True}
             if '$alias' not in record:
-                style = record.get('$style')
-                if style is not None:
-                    style = [
-                        pure_join(path, sty_path).with_suffix('.sty')
-                        for sty_path in style ]
-                else:
-                    style = parent_style
-                if style is not None:
-                    record['$style'] = style
+                record['$style'] = self.merge_styles(
+                    base_style=parent_record.get('$style'),
+                    merged_style=record.get('$style'),
+                    current_path=path )
                 return path, record;
             if len(record) > 1:
                 raise ValueError(
@@ -474,19 +471,35 @@ class CourseDriver(metaclass=Substitutioner):
             """List some targets based on outrecords."""
             if outrecord is None:
                 outrecord = self.records
+            else:
+                yield outpath
+            if not isinstance(outrecord, dict) or '$alias' in outrecord:
+                return
+            if '$delegate' in outrecord:
+                for delegator in outrecord.get('$delegate'):
+                    yield pure_join(outpath, delegator)
             for subname, subrecord in outrecord.items():
                 if '$' in subname:
                     continue;
-                subpath = outpath/subname
-                yield subpath
-                if not isinstance(subrecord, dict):
-                    continue;
-                if '$alias' in subrecord:
-                    continue;
-                if '$delegate' in subrecord:
-                    for delegator in subrecord.get('$delegate'):
-                        yield pure_join(subpath, delegator)
-                yield from self.list_targets(subpath, subrecord)
+                yield from self.list_targets(outpath/subname, subrecord)
+
+        @staticmethod
+        def merge_styles(base_style, merged_style, current_path):
+            if base_style is None:
+                base_style = []
+            if merged_style is None:
+                return base_style
+            elif isinstance(merged_style, dict):
+                (key, merged_style), = merged_style.items()
+            else:
+                key = 'override'
+            merged_style = [
+                pure_join(current_path, sty_path).with_suffix('.sty')
+                for sty_path in merged_style ]
+            if key == 'override':
+                return merged_style
+            elif key == 'append':
+                return base_style + merged_style
 
     ##########
     # LaTeX-level functions
@@ -528,19 +541,19 @@ class CourseDriver(metaclass=Substitutioner):
     def generate_metapreamble(self, metarecord):
         for inpath in metarecord['style']:
             yield {'local package' : metarecord['aliases'][inpath]}
-        yield {'package' : 'pgfpages'}
-        yield {'verbatim' :
-            self.substitute_pgfpages_resize(options='a4paper') }
+#        yield {'package' : 'pgfpages'}
+#        yield {'verbatim' :
+#            self.substitute_pgfpages_resize(options='a4paper') }
 #        yield { 'package' : 'hyperref', 'options' : [
 #            'dvips', 'setpagesize=false',
 #            'pdftitle={{{}}}'.format(metarecord['metaname'])
 #        ]}
         if 'selectsize' in metarecord:
             font, skip = metarecord['selectsize']
-            yield self.substitute_selectsize(font=font, skip=skip)
+            yield {'verbatim' : self.substitute_selectsize(font=font, skip=skip)}
         yield from metarecord.get('preamble', ())
 
-    pgfpages_resize_template = r'\pgfpagesuselayout{resize to}[$options]'
+#    pgfpages_resize_template = r'\pgfpagesuselayout{resize to}[$options]'
     selectsize_template = (
         r'\AtBeginDocument{\fontsize{$font}{$skip}\selectfont}' )
 

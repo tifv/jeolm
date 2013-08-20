@@ -1,3 +1,5 @@
+from itertools import zip_longest
+
 from pathlib import PurePosixPath as PurePath
 
 def pure_join(*paths):
@@ -38,4 +40,18 @@ def pure_relative(fromdir, absolute):
         upstairs += 1
     return PurePath(*
         ['..'] * upstairs + [absolute.relative(fromdir)] )
+
+def path_startswith(path, other, recursed=False):
+    if not isinstance(other, (str, PurePath)):
+        assert not recursed
+        return any(path_startswith(path, o, recursed=True) for o in other)
+    parts = list(path.parts)
+    other_parts = list(PurePath(other).parts)
+
+    for part, other_part in zip_longest(parts, other_parts):
+        if other_part is None:
+            return True
+        if part != other_part:
+            return False
+    return True
 
