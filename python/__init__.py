@@ -27,7 +27,7 @@ def get_parser():
             '(defaults to all infiles); file paths are relative to cwd',
         nargs='*', metavar='INROOT', )
     command.add_argument('-c', '--clean',
-        help='clean toplevel links to build/**.pdf; clean **.tex in build/',
+        help='clean toplevel links to build/**.pdf; clean **.dvi in build/',
         action='count', )
     command.add_argument('-a', '--archive',
         help='create project archive, including some intermediate files',
@@ -38,78 +38,47 @@ def get_parser():
     return parser
 
 def main():
-    args = get_parser().parse_args()
-
     from jeolm import filesystem, builder, inrecords, commands
 
-    setup_logging(args.verbose)
-    root = filesystem.find_root(
-        proposal=None if args.root is None else Path(args.root) )
-    if root is None:
-        logger.critical(
-            '<BOLD><RED>Missing directory and file layout '
-            'required for jeolm.<RESET>' )
-        logger.warning('<BOLD>Required layout: {}<RESET>'
-            .format(filesystem.repr_required()) )
-        raise SystemExit
-#    setup_file_logging(root)
-#    logger.debug('Log file enabled')
+    args = get_parser().parse_args()
 
-    filesystem.load_localmodule(root)
+    setup_logging(args.verbose)
+    try:
+        fsmanager = filesystem.FSManager(
+            root=Path(args.root) if args.root is not None else None )
+    except filesystem.RootNotFoundError:
+        raise SystemExit
+    fsmanager.report_broken_links()
+
+    fsmanager.load_local_module()
 
     if args.review is not None:
-        return inrecords.review(args.review, viewpoint=Path.cwd(), root=root);
+        return inrecords.review(args.review, viewpoint=Path.cwd(),
+            fsmanager=fsmanager )
     if args.list_tex is not None:
-        return inrecords.print_inpaths(args.list_tex, '.tex',
-            viewpoint=Path.cwd(), root=root );
+        return inrecords.print_inpaths(args.list_tex, suffix='.tex',
+            viewpoint=Path.cwd(), fsmanager=fsmanager );
     if args.list_asy is not None:
-        return inrecords.print_inpaths(args.list_asy, '.asy',
-            viewpoint=Path.cwd(), root=root );
+        return inrecords.print_inpaths(args.list_asy, suffix='.asy',
+            viewpoint=Path.cwd(), fsmanager=fsmanager );
     if args.clean is not None:
         assert args.clean >= 1
         if args.clean == 1:
-            return commands.cleanview(root=root);
+            return commands.cleanview(root=fsmanager.root);
         if args.clean > 1:
-            return commands.unbuild(root=root);
+            return commands.unbuild(root=fsmanager.root);
     if args.archive:
-        return commands.archive(root=root);
+        return commands.archive(fsmanager=fsmanager);
 
-    return builder.build(args.targets, root=root);
+    builder = builder.Builder(args.targets, fsmanager=fsmanager)
+    builder.update()
 
 def setup_logging(verbose):
     import sys
+    from jeolm.logging import FancyFormatter
     handler = logging.StreamHandler()
     handler.setLevel(logging.INFO if not verbose else logging.DEBUG)
     handler.setFormatter(FancyFormatter("%(name)s: %(message)s",
         fancy=sys.stderr.isatty() ))
     logger.addHandler(handler)
-
-def setup_file_logging(root):
-    handler = logging.FileHandler(str(root/'jeolm.log'))
-    handler.setLevel(logging.DEBUG)
-    handler.setFormatter(FancyFormatter("%(name)s: %(message)s", fancy=False))
-    logger.addHandler(handler)
-
-class FancyFormatter(logging.Formatter):
-    fancy_replacements = {
-        '<RESET>' : '\033[0m', '<BOLD>' : '\033[1m',
-        '<NOCOLOUR>' : '\033[39m',
-
-        '<BLACK>' : '\033[30m', '<RED>'     : '\033[31m',
-        '<GREEN>' : '\033[32m', '<YELLOW>'  : '\033[33m',
-        '<BLUE>'  : '\033[34m', '<MAGENTA>' : '\033[35m',
-        '<CYAN>'  : '\033[36m', '<WHITE>'   : '\033[37m',
-    }
-
-    def __init__(self, *args, fancy=False, **kwargs):
-        self.fancy = fancy
-        return super().__init__(*args, **kwargs)
-
-    def format(self, record):
-        return self.fancify(super().format(record))
-
-    def fancify(self, s):
-        for k, v in self.fancy_replacements.items():
-            s = s.replace(k, v if self.fancy else '')
-        return s
 

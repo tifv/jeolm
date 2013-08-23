@@ -41,56 +41,44 @@ def main():
         # Request for filename completion
         sys.exit(100)
 
-    # Jeolm root detection
     from . import filesystem
     root = None
     while '--root' in args:
         if args.index('--root') < len(args) - 1:
             root = Path(args[args.index('--root')+1])
         args[args.index('--root')] = '--whatever'
-    root = filesystem.find_root(proposal=root)
-    if root is None:
-        raise SystemExit;
+    try:
+        fsmanager = filesystem.FSManager(root=root)
+    except filesystem.RootNotfoundError:
+        raise SystemExit
 
-    completer = Completer(root)
+    completer = Completer(fsmanager)
 
     completions = list(completer.complete(current))
     print('\n'.join(completions))
 
 class Completer:
-    def __init__(self, root):
-        self.root = root
-        self.metapaths = {
-            'in' : root/'meta/in.yaml',
-            'out' : root/'meta/out.yaml',
-            'cache' : root/'build/completion.cache.list',
-        }
-        self.load_targetlist()
+    def __init__(self, fsmanager):
+        self.fsmanager = fsmanager
+        self.load_target_list()
 
-    def load_targetlist(self):
-        self.meta_mtime = max(
-            self.metapaths['in'].st_mtime_ns,
-            self.metapaths['out'].st_mtime_ns )
-        if not self.metapaths['cache'].exists() or \
-                self.metapaths['cache'].st_mtime_ns < self.meta_mtime:
-            from jeolm import filesystem, yaml, drivers
-            filesystem.load_localmodule(self.root)
-            with self.metapaths['in'].open() as f:
-                inrecords = yaml.load(f) or ODict()
-            with self.metapaths['out'].open() as g:
-                outrecords = yaml.load(g) or {}
-            driver = drivers.Driver(inrecords, outrecords)
-            self.targetlist = driver.list_targets()
-            cache_new = Path('.completion.cache.list.new')
-            with cache_new.open('w') as h:
-                for target in self.targetlist:
-                    print(str(target), file=h)
-            cache_new.rename(self.metapaths['cache'])
-        else:
-            with self.metapaths['cache'].open() as h:
-                self.targetlist = [
-                    PurePath(x)
-                    for x in h.read().split('\n') if x != '' ]
+    def load_target_list(self):
+
+        self.target_list = self.fsmanager.load_completion_cache(
+            none_if_outdated=True )
+        if self.target_list is not None:
+            return
+
+        self.fsmanager.load_local_module()
+        inrecords = self.fsmanager.load_inrecords()
+        outrecords = self.fsmanager.load_outrecords()
+        Driver = self.fsmanager.get_local_driver()
+        if Driver is None:
+            from jeolm.driver import Driver
+
+        driver = Driver(inrecords, outrecords)
+        self.target_list = driver.list_targets()
+        self.fsmanager.dump_completion_cache(self.target_list)
 
     def complete(self, uncompleted_arg):
         """Return an iterator over completions."""
@@ -108,13 +96,13 @@ class Completer:
         elif uncompleted_arg.endswith('/'):
             uncompleted_parent = uncompleted_path
             uncompleted_name = ''
-            if uncompleted_parent in self.targetlist:
+            if uncompleted_parent in self.target_list:
                 yield str(uncompleted_parent) + '/'
         else:
             uncompleted_parent = uncompleted_path.parent()
             uncompleted_name = uncompleted_path.name
 
-        for path in self.targetlist:
+        for path in self.target_list:
             if uncompleted_parent != path.parent():
                 continue;
             name = path.name

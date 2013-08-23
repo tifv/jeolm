@@ -19,48 +19,53 @@ def cleanview(root):
 
 def unbuild(root):
     """
-    Run cleanview() plus remove all generated build/**.tex files
+    Run cleanview() plus remove all generated build/**.dvi files
     """
     cleanview(root)
-    _unbuild_recursive(root/'build')
+    _unbuild_recursive(root/'build', suffixes={'.dvi'})
 
-def _unbuild_recursive(builddir):
+def _unbuild_recursive(builddir, *, suffixes):
     for x in builddir:
         if x.is_symlink():
             continue;
         if x.is_dir():
-            _unbuild_recursive(x)
+            _unbuild_recursive(x, suffixes=suffixes)
             continue;
-        if x.suffix != '.tex':
+        if x.suffix not in suffixes:
             continue;
         x.unlink()
 
-def archive(root, target='archive', archive_name='archive.tar.xz', compression='xz'):
-    import tarfile
+def archive(*, fsmanager=None,
+    target='archive', archive_name='archive.tar.xz', compression='xz'
+):
+    if fsmanager is None:
+        import jeolm.filesystem
+        fsmanager = jeolm.filesystem.FSManager()
 
+    import jeolm.builder
+    builder = jeolm.builder.Builder([target], fsmanager=fsmanager)
+    builder.update()
+
+    import tarfile
     from pathlib import PurePath
 
-    from jeolm.builder import Builder
-    builder = Builder([target], root=root)
-    builder.prebuild(); builder.update()
-
-    def join(*args): return str(PurePath(*args))
+    root = fsmanager.root
 
     with tarfile.open(str(root/archive_name), 'w:' + compression) as af:
+
+        def add(sourcepath, *alias_parts, suffix=None):
+            aliaspath = PurePath(*alias_parts)
+            if suffix is not None:
+                aliaspath = aliaspath.with_suffix(suffix)
+            return af.add(str(sourcepath), str(aliaspath))
+
         for name, node in builder.source_nodes.items():
-            af.add(str(node.path), join('source', name))
+            add(node.path, 'source', name)
         for metaname, node in builder.pdf_nodes.items():
-            af.add(str(node.path), join('pdf', metaname+'.pdf'))
+            add(node.path, 'pdf', metaname, suffix='.pdf')
         for metaname, node in builder.autosource_nodes.items():
-            af.add(str(node.path), join('autosource', metaname+'.tex'))
+            add(node.path, 'autosource', metaname, suffix='.tex')
         for figname, node in builder.eps_nodes.items():
-            af.add(str(node.path), join('eps', figname+'.eps'))
-
-        af.add(str(root/'meta/in.yaml'), 'meta/in.yaml')
-        af.add(str(root/'meta/out.yaml'), 'meta/out.yaml')
-        af.add(str(root/'meta/local.sty'), 'meta/local.sty')
-
-        local_py = root/'meta/local.py'
-        if local_py.exists():
-            af.add(str(local_py), 'meta/local.py')
+            add(node.path, 'eps', figname, suffix='.eps')
+        fsmanager.populate_archive(af)
 

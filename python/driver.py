@@ -1,3 +1,67 @@
+"""
+Driver(inrecords, outrecords)
+    Given a target, Driver can produce corresponding LaTeX code, along
+    with dependency list. It is Driver which ultimately knows how to
+    deal with inrecords and outrecords.
+
+driver.produce_metarecords(targets)
+    Return (metarecords, figrecords) where
+    metarecords = ODict(metaname : metarecord for some metanames)
+    figrecords = ODict(figname : figrecord for some fignames)
+
+    Metanames and fignames are derived from targets, inrecords and
+    outrecords. They must not contain any '/' slashes and should not
+    contain any extensions.
+
+driver.list_targets()
+    Return a list of some valid targets, that may be used with
+    produce_metarecords(). This list is not (actually, can not be)
+    guaranteed to be complete.
+
+Metarecords
+    Each metarecord must contain the following fields:
+
+    'metaname'
+        string equal to the corresponding metaname
+
+    'sources'
+        {alias_name : inpath for each inpath}
+        where alias_name is a filename with '.tex' extension,
+        and inpath has '.tex' extension.
+
+    'fignames'
+        an iterable of strings; all of them must be contained
+        in figrecords.keys()
+
+    'document'
+        LaTeX document as a string
+
+Figrecords
+    Each figrecord must contain the following fields:
+
+    'figname'
+        string equal to the corresponding figname
+
+    'source'
+        inpath with '.asy' or '.eps' extension
+
+    'type'
+        string, either 'asy' or 'eps'
+
+    In case of Asymptote file ('asy' type), figrecord must also
+    contain:
+    'used'
+        {used_name : inpath for each used inpath}
+        where used_name is a filename with '.asy' extension,
+        and inpath has '.asy' extension
+
+Inpaths
+    Inpaths are relative PurePath objects. They should be based on
+    inrecords, and supposed to be valid subpaths of the '<root>/source/'
+    directory.
+
+"""
+
 import datetime
 from itertools import chain
 from collections import OrderedDict
@@ -29,7 +93,7 @@ class Substitutioner(type):
         namespace.update(namespace_upd)
         return super().__new__(cls, cls_name, cls_bases, namespace, **kwds)
 
-class CourseDriver(metaclass=Substitutioner):
+class Driver(metaclass=Substitutioner):
     """
     Driver for course-like projects.
     """
@@ -451,21 +515,25 @@ class CourseDriver(metaclass=Substitutioner):
                 seen_aliases=seen_aliases )
             if record is None:
                 record = {'$fake' : True}
-            if '$alias' not in record:
-                record['$style'] = self.merge_styles(
-                    base_style=parent_record.get('$style'),
-                    merged_style=record.get('$style'),
-                    current_path=path )
-                return path, record;
-            if len(record) > 1:
-                raise ValueError(
-                    '{!s}: $alias must be the only content of the record.'
-                    .format(path) )
-            if path in seen_aliases:
-                raise ValueError('{!s}: alias cycle detected.')
-            aliased_path = pure_join(path, record['$alias'])
-            return self.get_item(aliased_path,
-                seen_aliases=seen_aliases.union((path,)) );
+            if '$alias' in record:
+                if len(record) > 1:
+                    raise ValueError(
+                        '{!s}: $alias must be the only content of the record.'
+                        .format(path) )
+                if path in seen_aliases:
+                    raise ValueError('{!s}: alias cycle detected.')
+                aliased_path = pure_join(path.parent(), record['$alias'])
+                return self.get_item(aliased_path,
+                    seen_aliases=seen_aliases.union((path,)) );
+            self.derive_attributes(parent_record, record, path)
+            return path, record;
+
+        @classmethod
+        def derive_attributes(cls, parent_record, record, path):
+            record['$style'] = cls.derive_styles(
+                parent_style=parent_record.get('$style'),
+                style=record.get('$style'),
+                path=path )
 
         def list_targets(self, outpath=PurePath(), outrecord=None):
             """List some targets based on outrecords."""
@@ -483,23 +551,30 @@ class CourseDriver(metaclass=Substitutioner):
                     continue;
                 yield from self.list_targets(outpath/subname, subrecord)
 
-        @staticmethod
-        def merge_styles(base_style, merged_style, current_path):
-            if base_style is None:
-                base_style = []
-            if merged_style is None:
-                return base_style
-            elif isinstance(merged_style, dict):
-                (key, merged_style), = merged_style.items()
-            else:
-                key = 'override'
-            merged_style = [
-                pure_join(current_path, sty_path).with_suffix('.sty')
-                for sty_path in merged_style ]
-            if key == 'override':
-                return merged_style
-            elif key == 'append':
-                return base_style + merged_style
+        @classmethod
+        def derive_styles(cls, parent_style, style, path):
+            if parent_style is None:
+                parent_style = []
+            if style is None:
+                return parent_style
+
+            assimilate = cls.assimilate_style
+            if not isinstance(style, dict):
+                return assimilate(style, path)
+
+            for key, substyle in style.items():
+                if key == 'extend':
+                    return parent_style + assimilate(substyle, path)
+                else:
+                    raise ValueError(key)
+            return base_style
+
+        @classmethod
+        def assimilate_style(cls, style, path):
+            return [
+                pure_join(path, sty_path).with_suffix('.sty')
+                for sty_path in style
+            ]
 
     ##########
     # LaTeX-level functions

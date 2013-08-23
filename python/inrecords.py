@@ -1,17 +1,16 @@
 import os
 import re
 import datetime
-from collections import OrderedDict
+from collections import OrderedDict as ODict
 
 from pathlib import Path, PurePath
 
-from jeolm import yaml
 from jeolm.utils import pure_join
 
 import logging
 logger = logging.getLogger(__name__)
 
-def review(inroots, *, root, viewpoint):
+def review(inpaths, *, fsmanager, viewpoint):
     """
     Review inrecords.
 
@@ -21,49 +20,55 @@ def review(inroots, *, root, viewpoint):
         Path, probably Path.cwd()
     """
 
-    inroots = resolve_inpaths(inroots, root=root, viewpoint=viewpoint)
+    root = fsmanager.root
+    inpaths = resolve_inpaths(inpaths,
+        source_root=root/'source', viewpoint=viewpoint )
 
-    reviewer = InrecordReviewer(root)
+    reviewer = InrecordReviewer(fsmanager)
     reviewer.load_inrecords()
-    for inroot in inroots:
-        reviewer.review(inroot)
+    for inpath in inpaths:
+        reviewer.review(inpath)
     reviewer.dump_inrecords()
 
-def print_inpaths(inroots, suffix, *, root, viewpoint):
-    inroots = resolve_inpaths(inroots, root=root, viewpoint=viewpoint)
+def print_inpaths(inroots, suffix, *, fsmanager, viewpoint):
+    root = fsmanager.root
+    source_root = root/'source'
+    inroots = resolve_inpaths(inroots,
+        source_root=source_root, viewpoint=viewpoint )
 
-    reviewer = InrecordReviewer(root)
+    reviewer = InrecordReviewer(root_manager)
     reviewer.load_inrecords()
     sourceroot = root/'source'
     for inroot in inroots:
         for inpath in reviewer.iter_inpaths(inroot, suffix=suffix):
             print(str((sourceroot/inpath).relative(viewpoint)))
 
-def resolve_inpaths(inpaths, *, root, viewpoint):
+def resolve_inpaths(inpaths, *, source_root, viewpoint):
     inpaths = [PurePath(inpath) for inpath in inpaths]
     if any('..' in inpath.parts for inpath in inpaths):
         raise ValueError("'..' parts are not allowed", inpaths)
 
-    sourceroot = root/'source'
     inpaths = [
-        PurePath(viewpoint, inpath).relative(sourceroot)
+        PurePath(viewpoint, inpath).relative(source_root)
         for inpath in inpaths ]
     if not inpaths:
         inpaths = [PurePath('')]
     return inpaths
 
 class InrecordReviewer:
-    def __init__(self, root):
-        self.root = root
+    recorded_suffixes = frozenset(('', '.tex', '.sty', '.asy', '.eps'))
 
-    @property
-    def metapath(self):
-        return self.root/'meta/in.yaml'
+    def __init__(self, fsmanager):
+        self.fsmanager = fsmanager
+        self.root = self.fsmanager.root
 
-    def review(self, inroot):
-        inrecord = self.get_inrecord(inroot)
-        inrecord = self.review_inrecord(inroot, inrecord)
-        self.set_inrecord(inroot, inrecord)
+    def review(self, inpath):
+        inrecord = self.get_inrecord(inpath)
+        inrecord = self.review_inrecord(inpath, inrecord)
+        if inrecord is not None:
+            self.set_inrecord(inpath, inrecord)
+        else:
+            self.del_inrecord(inpath)
 
     def iter_inpaths(self, inroot, *, suffix, inrecord=None):
         if inrecord is None:
@@ -76,139 +81,107 @@ class InrecordReviewer:
             if inpath.suffix == suffix:
                 yield inpath
             if inpath.suffix == '':
-                yield from self.iter_inpaths(inpath, suffix=suffix, inrecord=subrecord)
+                yield from self.iter_inpaths(inpath,
+                    suffix=suffix, inrecord=subrecord )
 
     def load_inrecords(self):
-        with self.metapath.open('r') as f:
-            s = f.read()
-        inrecords = yaml.load(s)
+        inrecords = self.fsmanager.load_inrecords()
         if inrecords is None:
-            inrecords = OrderedDict()
-        elif not isinstance(inrecords, OrderedDict):
-            inrecords = OrderedDict(inrecords)
+            inrecords = ODict()
+        elif not isinstance(inrecords, ODict):
+            inrecords = ODict(inrecords)
         self.inrecords = inrecords
 
     def dump_inrecords(self):
-        s = yaml.dump(self.inrecords, default_flow_style=False)
-        metapath_new = Path('.in.yaml.new')
-        with metapath_new.open('w') as f:
-            f.write(s)
-        metapath_new.rename(self.metapath)
+        self.fsmanager.dump_inrecords(self.inrecords)
 
-    def get_inrecord(self, inpath, *, original_inpath=None, create_path=False):
+    def get_inrecord(self, inpath, *, create_path=False):
         """
         Return inrecord for given inpath.
 
-        Return None if there is not such inrecord.
+        Return None if there is no such inrecord.
         If create_path is set to True, None will never be returned -
-        instead, empty directory inrecords will be created.
+        instead, empty directory inrecords will be created, if needed.
         """
-        if original_inpath is None:
-            original_inpath = inpath
-            if inpath.suffix not in {'', '.tex', '.sty', '.asy', '.eps'}:
-                raise ValueError("{!s}: unrecognized extension"
-                    .format(original_inpath) )
-            if any(parent.suffix != '' for parent in inpath.parents()):
-                raise ValueError("{!s}: directory has an extension"
-                    .format(original_inpath) )
-        if inpath == PurePath('.'):
-            return self.inrecords;
-        superrecord = self.get_inrecord(inpath.parent(),
-            original_inpath=original_inpath, create_path=create_path )
-        if superrecord is None:
+
+        if inpath.suffix not in self.recorded_suffixes:
+            raise ValueError("{}: unrecognized suffix".format(inpath))
+        if inpath == PurePath(''):
+            return self.inrecords
+
+        parent_inpath = inpath.parent()
+        if parent_inpath.suffix != '':
+            raise ValueError("{}: directory must not have suffix"
+                .format(parent_inpath) )
+        parent_record = self.get_inrecord(inpath.parent(),
+            create_path=create_path )
+        if parent_record is None:
             assert not create_path
-            return None;
-        assert isinstance(superrecord, dict), superrecord
-        if superrecord.get('no review', False):
-            logger.warning("<BOLD><YELLOW>{!s}<NOCOLOUR>: "
-                "overpassing 'no review' tag in {!s}<RESET>"
-                .format(original_inpath, inpath) )
-        if inpath.name not in superrecord:
+            return None
+
+        if inpath.name not in parent_record:
             if not create_path:
-                return None;
-            logger.info('<BOLD><GREEN>{!s}: inrecord added<RESET>'
-                .format(inpath) )
-            if inpath.suffix == '':
-                superrecord[inpath.name] = OrderedDict()
-            else:
-                superrecord[inpath.name] = dict()
-        inrecord = superrecord[inpath.name]
-        if not isinstance(inrecord, dict):
-            raise TypeError("{!s}: dictionary expected, found {!r}"
-                .format(inpath, type(inrecord)) )
-        return inrecord;
+                return None
+            assert inpath.suffix == '', inpath
+            inrecord = parent_record[inpath.name] = ODict()
+        else:
+            inrecord = parent_record[inpath.name]
+            if not isinstance(inrecord, dict):
+                raise TypeError("{}: dictionary expected, found {!r}"
+                    .format(inpath, type(inrecord)) )
+        return inrecord
 
     def set_inrecord(self, inpath, inrecord):
         """Fit given inrecord in the inrecords tree."""
-        assert inpath != PurePath('.') or inrecord is not None
-        if inrecord is None:
-            inrecords = self.get_inrecord(inpath.parent())
-            if inrecords is None:
-                return;
-            assert isinstance(inrecords, dict)
-            if inpath.name not in inrecords:
-                return;
-            del inrecords[inpath.name]
-            return;
-        inrecords = self.get_inrecord(inpath, create_path=True)
-        assert inrecords is not None
-        if inrecord is inrecords:
-            inrecord = inrecord.copy()
-        inrecords.clear()
-        inrecords.update(inrecord)
+        assert inrecord is not None
+        if inpath == PurePath():
+            self.inrecords = inrecord
+            return
+        parent_record = self.get_inrecord(inpath.parent(), create_path=True)
+        assert isinstance(parent_record, dict), parent_record
+        parent_record[inpath.name] = inrecord
+
+    def del_inrecord(self, inpath):
+        assert inpath != PurePath()
+        parent_record = self.get_inrecord(inpath.parent())
+        if parent_record is None:
+            return
+        assert isinstance(parent_record, dict), parent_record
+        if inpath.name not in parent_record:
+            return
+        del parent_record[inpath.name]
+        return
 
     def review_inrecord(self, inpath, inrecord):
-        if inrecord is not None and inrecord.get('no review', False):
-            logger.debug(
-                "{!s}: skipped due to explicit 'no review' in the record"
-                .format(inpath) )
-            return inrecord;
         path = self.root/'source'/inpath
         if not path.exists():
+            if inrecord is not None:
+                logger.info('<BOLD><RED>{}<NOCOLOUR>: inrecord removed<RESET>'
+                    .format(inpath) )
             return None;
-        if inpath.suffix == '.tex':
-            return self.review_tex_inrecord(inpath, inrecord);
-        if inpath.suffix == '.sty':
-            return self.review_sty_inrecord(inpath, inrecord);
-        elif inpath.suffix == '.asy':
-            return self.review_asy_inrecord(inpath, inrecord);
-        elif inpath.suffix == '.eps':
-            return self.review_eps_inrecord(inpath, inrecord);
-        elif inpath.suffix == '':
-            pass
-        else:
-            raise AssertionError(inpath)
+        if inpath.suffix != '':
+            return self.review_file_inrecord(inpath, inrecord)
         if inrecord is None:
-            inrecord = OrderedDict()
-        subreviewed = inrecord.keys() | set(os.listdir(str(path)))
-        assert all(isinstance(subname, str)
-            for subname in subreviewed ), subreviewed
-        for subname in sorted(subreviewed):
+            inrecord = ODict()
+            logger.info('<BOLD><GREEN>{}<NOCOLOUR>: inrecord added<RESET>'
+                .format(inpath) )
+
+        subnames = inrecord.keys() | set(os.listdir(str(path)))
+        for subname in sorted(subnames):
+            assert isinstance(subname, str), subname
             subpath = inpath/subname
             subsuffix = subpath.suffix
-            if subsuffix not in {'', '.tex', '.sty', '.asy', '.eps'}:
-                if subname in inrecord:
-                    raise ValueError("{!s}: unrecognized extension"
-                        .format(subpath) )
-                logger.warning('<BOLD><MAGENTA>{!s}<NOCOLOUR>: extension of '
+            if subsuffix not in self.recorded_suffixes:
+                logger.warning('<BOLD><MAGENTA>{}<NOCOLOUR>: suffix of '
                     '<YELLOW>{}<NOCOLOUR> unrecognized<RESET>'
                     .format(inpath, subname) )
                 continue;
             subrecord = inrecord.get(subname, None)
             subrecord = self.review_inrecord(subpath, subrecord)
-            if subrecord is None and subname in inrecord:
-                inrecord.pop(subname)
-                logger.info('<BOLD><RED>{!s}<RESET>: inrecord removed<RESET>'
-                    .format(subpath) )
-            elif subname in inrecord:
-                inrecord[subname] = subrecord
-            elif subrecord is not None:
-                assert isinstance(subname, str)
-                inrecord[subname] = subrecord
-                logger.info('<BOLD><GREEN>{!s}<NOCOLOUR>: inrecord added<RESET>'
-                    .format(subpath) )
+            if subrecord is None:
+                inrecord.pop(subname, None)
             else:
-                pass
+                inrecord[subname] = subrecord
         self.report_screened_names(inpath, inrecord)
         return inrecord;
 
@@ -231,25 +204,33 @@ class InrecordReviewer:
             if subpath.with_suffix(screening_suffix) in subpaths
         )
         for screened_path, screening_path in screened_paths:
-            logger.warning("<BOLD>'<YELLOW>{screened_path!s}<NOCOLOUR>' "
-                "got screened by '{screening_path}'<RESET>"
+            logger.warning("<BOLD>'<YELLOW>{screened_path}<NOCOLOUR>' "
+                "got screened by '<MAGENTA>{screening_path}<NOCOLOUR>'<RESET>"
                 .format(
                     screened_path=screened_path,
                     screening_path=screening_path ))
 
+    def review_file_inrecord(self, inpath, inrecord):
+        if inrecord is None:
+            inrecord = {}
+            logger.info('<BOLD><GREEN>{}<NOCOLOUR>: inrecord added<RESET>'
+                .format(inpath) )
+        if inpath.suffix == '.tex':
+            return self.review_tex_inrecord(inpath, inrecord)
+        if inpath.suffix == '.sty':
+            return self.review_sty_inrecord(inpath, inrecord)
+        elif inpath.suffix == '.asy':
+            return self.review_asy_inrecord(inpath, inrecord)
+        elif inpath.suffix == '.eps':
+            return self.review_eps_inrecord(inpath, inrecord)
+        else:
+            raise AssertionError(inpath)
+
     def review_tex_inrecord(self, inpath, inrecord):
-        assert inrecord is None or 'no review' not in inrecord
-        logger.debug("{!s}: reviewing LaTeX file".format(inpath))
+        logger.debug("{}: reviewing LaTeX file".format(inpath))
 
         with (self.root/'source'/inpath).open('r') as f:
             s = f.read()
-
-        if self.noreview_pattern.search(s) is not None:
-            logger.debug("{!s}: review skipped due to explicit "
-                "'no review' in the file".format(inpath) )
-            return inrecord;
-        if inrecord is None:
-            inrecord = {}
 
         self.review_tex_caption(inpath, inrecord, s)
         self.review_tex_date(inpath, inrecord, s)
@@ -257,29 +238,26 @@ class InrecordReviewer:
 
         return inrecord;
 
-    noreview_pattern = re.compile(
-        r'(?m)^% no review$' )
-
     def review_tex_caption(self, inpath, inrecord, s):
         if self.nocaption_pattern.search(s) is not None:
-            logger.debug("{!s}: caption review skipped due to explicit "
+            logger.debug("{}: caption review skipped due to explicit "
                 "'no caption' in the file".format(inpath) )
             return;
         caption_match = self.caption_pattern.search(s)
         if caption_match is None:
             if 'caption' in inrecord:
-                logger.warning("<BOLD><MAGENTA>{!s}<NOCOLOUR>: "
+                logger.warning("<BOLD><MAGENTA>{}<NOCOLOUR>: "
                     "file is missing any caption; "
                     "preserved the caption '{}' holded in the record<RESET>"
                     .format(inpath, inrecord['caption']) )
             return;
         caption = caption_match.group('caption')
         if 'caption' not in inrecord:
-            logger.info("<BOLD><MAGENTA>{!s}<RESET>: "
+            logger.info("<BOLD><MAGENTA>{}<RESET>: "
                 "added caption '<BOLD><GREEN>{}<RESET>'"
                 .format(inpath, caption) )
         elif inrecord['caption'] != caption:
-            logger.info("<BOLD><MAGENTA>{!s}<RESET>: "
+            logger.info("<BOLD><MAGENTA>{}<RESET>: "
                 "caption changed from '<BOLD><RED>{}<RESET>' "
                 "to '<BOLD><GREEN>{}<RESET>'"
                 .format(inpath, inrecord['caption'], caption) )
@@ -294,13 +272,13 @@ class InrecordReviewer:
 
     def review_tex_date(self, inpath, inrecord, s):
         if self.nodate_pattern.search(s) is not None:
-            logger.debug("{!s}: date review skipped due to explicit "
+            logger.debug("{}: date review skipped due to explicit "
                 "'no date' in the file".format(inpath) )
             return;
         date_match = self.date_pattern.search(s)
         if date_match is None:
             if 'date' in inrecord:
-                logger.warning("<BOLD><MAGENTA>{!s}<NOCOLOUR>: "
+                logger.warning("<BOLD><MAGENTA>{}<NOCOLOUR>: "
                     "file is missing any date; "
                     "preserved the date '{}' holded in the record<RESET>"
                     .format(inpath, inrecord['date']) )
@@ -309,11 +287,11 @@ class InrecordReviewer:
             key : int(value)
             for key, value in date_match.groupdict().items() })
         if 'date' not in inrecord:
-            logger.info("<BOLD><MAGENTA>{!s}<RESET>: "
+            logger.info("<BOLD><MAGENTA>{}<RESET>: "
                 "added date '<BOLD><GREEN>{}<RESET>'"
                 .format(inpath, date) )
         elif inrecord['date'] != date:
-            logger.info("<BOLD><MAGENTA>{!s}<RESET>: "
+            logger.info("<BOLD><MAGENTA>{}<RESET>: "
                 "date changed from '<BOLD><RED>{}<RESET>' "
                 "to '<BOLD><GREEN>{}<RESET>'"
                 .format(inpath, inrecord['date'], date) )
@@ -326,11 +304,11 @@ class InrecordReviewer:
 
     def review_tex_figures(self, inpath, inrecord, s):
         if self.nofigures_pattern.search(s) is not None:
-            logger.debug("{!s}: figures review skipped due to explicit "
+            logger.debug("{}: figures review skipped due to explicit "
                 "'no figures' in the file".format(inpath) )
             return;
         if self.includegraphics_pattern.search(s) is not None:
-            logger.warning("<BOLD><MAGENTA>{!s}<NOCOLOUR>: "
+            logger.warning("<BOLD><MAGENTA>{}<NOCOLOUR>: "
                 "<YELLOW>\\includegraphics<NOCOLOUR> command found<RESET>"
                 .format(inpath) )
 
@@ -346,17 +324,17 @@ class InrecordReviewer:
             if figure not in old_figures
         ]
         for figure in set(old_figures).difference(new_figures):
-            logger.info("<BOLD><MAGENTA>{!s}<RESET>: "
+            logger.info("<BOLD><MAGENTA>{}<RESET>: "
                 "removed figure '<BOLD><RED>{}<RESET>'"
                 .format(inpath, figure) )
         for figure in set(new_figures).difference(old_figures):
-            logger.info("<BOLD><MAGENTA>{!s}<RESET>: "
+            logger.info("<BOLD><MAGENTA>{}<RESET>: "
                 "added figure '<BOLD><GREEN>{}<RESET>'"
                 .format(inpath, figure))
 
         parent = inpath.parent()
         if figures:
-            inrecord['figures'] = OrderedDict(
+            inrecord['figures'] = ODict(
                 (figure, pure_join(parent, figure))
                 for figure in figures )
 
@@ -368,27 +346,16 @@ class InrecordReviewer:
         r'\\includegraphics')
 
     def review_sty_inrecord(self, inpath, inrecord):
-        assert inrecord is None or 'no review' not in inrecord
-        logger.debug("{!s}: reviewing LaTeX style file".format(inpath))
-
-        if inrecord is None:
-            inrecord = {}
+        logger.debug("{}: reviewing LaTeX style file".format(inpath))
         return inrecord
 
-    noreview_pattern = re.compile(
-        r'(?m)^% no review$' )
-
     def review_asy_inrecord(self, inpath, inrecord):
-        assert inrecord is None or 'no review' not in inrecord
-        logger.debug("{!s}: reviewing Asymptote file".format(inpath))
-
+        logger.debug("{}: reviewing Asymptote file".format(inpath))
         with (self.root/'source'/inpath).open('r') as f:
             s = f.read()
-        if inrecord is None:
-            inrecord = {}
 
         parent = inpath.parent()
-        new_used = OrderedDict(
+        new_used = ODict(
             (
                 match.group('used_name'),
                 pure_join(parent, match.group('original_name'))
@@ -403,24 +370,23 @@ class InrecordReviewer:
             if used_name not in old_used
         ]
         for used_name in set(old_used).difference(new_used):
-            logger.info("<BOLD><MAGENTA>{!s}<RESET>: "
+            logger.info("<BOLD><MAGENTA>{}<RESET>: "
                 "removed used name '{}' for '<BOLD><RED>{}<RESET>'"
                 .format(inpath, used_name, old_used[used_name]) )
         for used_name in set(new_used).difference(old_used):
-            logger.info("<BOLD><MAGENTA>{!s}<RESET>: "
+            logger.info("<BOLD><MAGENTA>{}<RESET>: "
                 "added used name '{}' for '<BOLD><GREEN>{}<RESET>'"
                 .format(inpath, used_name, new_used[used_name]) )
         for used_name in set(new_used).intersection(old_used):
             if new_used[used_name] != old_used[used_name]:
-                logger.info("<BOLD><MAGENTA>{!s}<RESET>: "
+                logger.info("<BOLD><MAGENTA>{}<RESET>: "
                     "used name '{}' changed from '<BOLD><RED>{}<RESET>' "
                     "to '<BOLD><GREEN>{}<RESET>'"
                     .format(
                         inpath, used_name,
                         old_used[used_name], new_used[used_name]
                     ) )
-
-        used = OrderedDict(
+        used = ODict(
             (used_name, new_used[used_name])
             for used_name in used_names )
         if used:
@@ -433,11 +399,7 @@ class InrecordReviewer:
         r'as (?P<used_name>[-a-zA-Z0-9]*?\.asy)$' )
 
     def review_eps_inrecord(self, inpath, inrecord):
-        assert inrecord is None or 'no review' not in inrecord
-        logger.debug("{!s}: reviewing EPS file".format(inpath))
-
-        if inrecord is None:
-            inrecord = {}
+        logger.debug("{}: reviewing EPS file".format(inpath))
         return inrecord
 
     @staticmethod

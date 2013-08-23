@@ -1,34 +1,24 @@
 from collections import OrderedDict as ODict
-from hashlib import md5
+import hashlib
+import json
 
 from pathlib import Path, PurePosixPath as PurePath
 
 from .nodes import (
     Node, DatedNode, FileNode, DirectoryNode, LinkNode, LaTeXNode )
-from . import filesystem, drivers, yaml
+from . import filesystem, driver
 
 import logging
 logger = logging.getLogger(__name__)
 
-def build(targets, *, root):
-    builder = Builder(targets, root=root)
-    builder.prebuild()
-    builder.update()
-
 class Builder:
     shipout_format = 'pdf'
 
-    def __init__(self, targets, *, root):
-        self.root = root
-        self.targets = targets
-
-        self.metapaths = {
-            'in' : root/'meta/in.yaml',
-            'out' : root/'meta/out.yaml',
-            'meta.cache' : root/'build/meta.cache.yaml',
-        }
-        self.load_meta_files()
-        self.driver = drivers.Driver(self.inrecords, self.outrecords)
+    def __init__(self, targets, *, fsmanager):
+        self.fsmanager = fsmanager
+        self.root = self.fsmanager.root
+        self.figures_build_dir = self.root/'build/figures'
+        self.documents_build_dir = self.root/'build/documents'
 
         self.source_nodes = ODict()
         self.autosource_nodes = ODict()
@@ -39,9 +29,14 @@ class Builder:
         self.shipout_pdf_nodes = ODict()
         self.shipout_node = Node(name='shipout')
 
-    def prebuild(self):
+        self.load_meta_files()
+        Driver = self.fsmanager.get_local_driver()
+        if Driver is None:
+            from jeolm.driver import Driver
+        self.driver = Driver(self.inrecords, self.outrecords)
+
         self.metarecords, self.figrecords = \
-            self.driver.produce_metarecords(self.targets)
+            self.driver.produce_metarecords(targets)
         self.cache_updated = False
         self.metanodes = ODict(
             (metaname, self.create_metanode(metaname, metarecord))
@@ -49,67 +44,62 @@ class Builder:
         if self.cache_updated:
             self.dump_meta_cache()
 
-        self.prebuild_figures(DirectoryNode(
-            self.root/'build/figures', name='build/figures/' ))
-        self.prebuild_documents(DirectoryNode(
-            self.root/'build/latex', name='build/latex/' ))
+        self.prebuild_figures()
+        self.prebuild_documents()
         self.prebuild_shipout()
 
     def update(self):
         self.shipout_node.update()
 
     def load_meta_files(self):
-        with self.metapaths['in'].open() as f:
-            self.inrecords = yaml.load(f) or ODict()
-        with self.metapaths['out'].open() as g:
-            self.outrecords = yaml.load(g) or {}
-        if self.metapaths['meta.cache'].exists():
-            with self.metapaths['meta.cache'].open() as h:
-                self.metarecords_cache = yaml.load(h)
-        else:
-            self.metarecords_cache = {}
-        self.meta_mtime = max(
-            self.metapaths['in'].st_mtime_ns,
-            self.metapaths['out'].st_mtime_ns )
+        self.inrecords = self.fsmanager.load_inrecords()
+        self.outrecords = self.fsmanager.load_outrecords()
+        self.metarecords_cache = self.fsmanager.load_metarecords_cache()
+
+        self.jeolm_records_mtime = self.fsmanager.jeolm_records_mtime
 
     def dump_meta_cache(self):
-        s = yaml.dump(self.metarecords_cache, default_flow_style=False)
-        meta_cache_new = Path('.meta.cache.yaml.new')
-        with meta_cache_new.open('w') as f:
-            f.write(s)
-        meta_cache_new.rename(self.metapaths['meta.cache'])
+        self.fsmanager.dump_metarecords_cache(self.metarecords_cache)
 
     def create_metanode(self, metaname, metarecord):
         metanode = DatedNode(name='meta:{}'.format(metaname))
         metanode.record = metarecord
         cache = self.metarecords_cache
         metarecord_hash = self.metarecord_hash(metarecord)
+
         if metaname not in cache:
             logger.debug("Metanode {} was not found in cache"
                 .format(metaname) )
-            cache[metaname] = {'hash' : metarecord_hash, 'mtime' : self.meta_mtime}
-            metanode.mtime = self.meta_mtime
-            metanode.modified = True
-            self.cache_updated = True
+            modified = True
         elif cache[metaname]['hash'] != metarecord_hash:
             logger.debug("Metanode {} was found obsolete in cache"
                 .format(metaname) )
-            cache[metaname] = {'hash' : metarecord_hash, 'mtime' : self.meta_mtime}
-            metanode.mtime = self.meta_mtime
+            modified = True
+        else:
+            logger.debug("Metanode {} was found in cache"
+                .format(metaname) )
+            modified = False
+
+        if modified:
+            cache[metaname] = {
+                'hash' : metarecord_hash, 'mtime' : self.jeolm_records_mtime }
+            metanode.mtime = self.jeolm_records_mtime
             metanode.modified = True
             self.cache_updated = True
         else:
-            logger.debug("Metanode {} was found in cache".format(metaname))
             metanode.mtime = cache[metaname]['mtime']
         return metanode
 
-    def prebuild_figures(self, builddir_node):
-        builddir = builddir_node.path
+    def prebuild_figures(self):
+        build_dir = self.figures_build_dir
+        build_dir_node = DirectoryNode(
+            build_dir, name='build/figures/', parents=True, )
+
         eps_nodes = self.eps_nodes
         for figname, figrecord in self.figrecords.items():
             eps_nodes[figname] = self.prebuild_figure(
                 figname, figrecord,
-                DirectoryNode(builddir/figname, needs=(builddir_node,))
+                DirectoryNode(build_dir/figname, needs=(build_dir_node,))
             )
 
     def prebuild_figure(self, figname, figrecord, builddir_node):
@@ -143,13 +133,15 @@ class Builder:
     def prebuild_eps_figure(self, figname, figrecord, builddir_node):
         return self.get_source_node(figrecord['source'])
 
-    def prebuild_documents(self, builddir_node):
-        self.local_sty = FileNode(self.root/'meta/local.sty', name='local.sty')
-        builddir = builddir_node.path
+    def prebuild_documents(self):
+        build_dir = self.documents_build_dir
+        build_dir_node = DirectoryNode(
+            build_dir, name='build/documents/', parents=True, )
+
         for metaname, metarecord in self.metarecords.items():
             self.prebuild_document(
                 metaname, metarecord,
-                DirectoryNode(builddir/metaname, needs=(builddir_node,))
+                DirectoryNode(build_dir/metaname, needs=(build_dir_node,))
             )
 
     def prebuild_document(self, metaname, metarecord, builddir_node):
@@ -241,7 +233,28 @@ class Builder:
             FileNode(self.root/'source'/path)
         return node;
 
-    @staticmethod
-    def metarecord_hash(metarecord):
-        return md5(yaml.dump(metarecord).encode('utf-8')).hexdigest()
+    @classmethod
+    def metarecord_hash(cls, metarecord):
+        return hashlib.md5(json.dumps(cls.sterilize(metarecord),
+            ensure_ascii=True, sort_keys=True,
+        ).encode('ascii')).hexdigest()
+
+    @classmethod
+    def sterilize(cls, obj):
+        sterilize = cls.sterilize
+        if isinstance(obj, ODict):
+            return ODict((sterilize(k), sterilize(v)) for k, v in obj.items())
+        elif isinstance(obj, dict):
+            return {sterilize(k) : sterilize(v) for k, v in obj.items()}
+        elif isinstance(obj, list):
+            return [sterilize(i) for i in obj]
+        elif isinstance(obj, set):
+            return {sterilize(i):None for i in obj}
+        elif isinstance(obj, PurePath):
+            return str(obj)
+        elif obj is None or isinstance(obj, (str, int)):
+            return obj
+        else:
+            raise TypeError(type(obj))
+
 
