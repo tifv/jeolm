@@ -75,10 +75,12 @@ def main():
 
 def setup_logging(verbose):
     import sys
-    from jeolm.logging import FancyFormatter
+    if sys.stderr.isatty():
+        from jeolm.fancify import FancyFormatter as Formatter
+    else:
+        from jeolm.fancify import NotSoFancyFormatter as Formatter
     handler = logging.StreamHandler()
     handler.setLevel(logging.INFO if not verbose else logging.DEBUG)
-    handler.setFormatter(FancyFormatter("%(name)s: %(message)s",
-        fancy=sys.stderr.isatty() ))
+    handler.setFormatter(Formatter("%(name)s: %(message)s"))
     logger.addHandler(handler)
 

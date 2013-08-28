@@ -1,6 +1,7 @@
-from logging import *
+from logging import Formatter
 
 class FancyFormatter(Formatter):
+    # Terminal colour codes
     fancy_replacements = {
         '<RESET>' : '\033[0m', '<BOLD>' : '\033[1m',
         '<NOCOLOUR>' : '\033[39m',
@@ -11,19 +12,21 @@ class FancyFormatter(Formatter):
         '<CYAN>'  : '\033[36m', '<WHITE>'   : '\033[37m',
     }
 
-    def __init__(self, *args, fancy=False, **kwargs):
-        self.fancy = fancy
-        return super().__init__(*args, **kwargs)
-
     def format(self, record):
-        s = super().format(record)
-        if self.fancy:
-            s = self.fancify(s)
-        return s
+        return self.fancify(super().format(record))
 
     @classmethod
     def fancify(cls, s):
         for k, v in cls.fancy_replacements.items():
-            s = s.replace(k, v)
+            if k in s:
+                s = s.replace(k, v)
         return s
+
+fancify = FancyFormatter.fancify
+
+class NotSoFancyFormatter(FancyFormatter):
+    fancy_replacements = {
+        k : ''
+        for k in FancyFormatter.fancy_replacements
+    }
 
