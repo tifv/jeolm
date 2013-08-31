@@ -1,4 +1,5 @@
 from collections import OrderedDict as ODict
+from datetime import date
 
 import os
 import re
@@ -244,6 +245,7 @@ class Builder:
 
     @classmethod
     def sterilize(cls, obj):
+        """Sterilize object for JSON dumping."""
         sterilize = cls.sterilize
         if isinstance(obj, ODict):
             return ODict((sterilize(k), sterilize(v)) for k, v in obj.items())
@@ -253,10 +255,10 @@ class Builder:
             return [sterilize(i) for i in obj]
         elif isinstance(obj, set):
             return {sterilize(i):None for i in obj}
-        elif isinstance(obj, PurePath):
-            return str(obj)
-        elif obj is None or isinstance(obj, (str, int)):
+        elif obj is None or isinstance(obj, (str, int, float)):
             return obj
+        elif isinstance(obj, (PurePath, date)):
+            return str(obj)
         else:
             raise TypeError(type(obj))
 
