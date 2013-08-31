@@ -5,9 +5,9 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 logger.addHandler(logging.NullHandler())
 
-def get_parser():
+def get_parser(prog='jeolm'):
     from argparse import ArgumentParser
-    parser = ArgumentParser(
+    parser = ArgumentParser(prog=prog,
         description='Automated build system for course-like projects' )
     parser.add_argument('-R', '--root',
         help='explicit root path of a jeolm project', )
