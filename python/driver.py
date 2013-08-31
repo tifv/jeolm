@@ -412,7 +412,7 @@ class Driver(metaclass=Substitutioner):
             if not isinstance(inrecord, dict):
                 raise TypeError(inpath, inrecord)
             return figtype, inpath, inrecord;
-        raise RecordNotFoundError(figpath, 'figure');
+        raise RecordNotFoundError(figpath);
 
     def trace_figure_used(self, inpath, *, seen_paths=frozenset()):
         if inpath in seen_paths:
@@ -520,10 +520,10 @@ class Driver(metaclass=Substitutioner):
             if '$alias' in record:
                 if len(record) > 1:
                     raise ValueError(
-                        '{!s}: $alias must be the only content of the record.'
+                        '{}: $alias must be the only content of the record.'
                         .format(path) )
                 if path in seen_aliases:
-                    raise ValueError('{!s}: alias cycle detected.')
+                    raise ValueError('{}: alias cycle detected.'.format(path))
                 aliased_path = pure_join(path.parent(), record['$alias'])
                 return self.get_item(aliased_path,
                     seen_aliases=seen_aliases.union((path,)) );
@@ -607,34 +607,35 @@ class Driver(metaclass=Substitutioner):
     )
 
     def select_documentclass(self, metarecord):
-        return 'article'
+        return metarecord.get('class', 'article')
 
     def generate_classoptions(self, metarecord):
-        yield 'a5paper'
-        font_option = metarecord.get('font')
-        if font_option is None:
-            yield '10pt'
-        elif font_option in {'10pt', '11pt', '12pt'}:
-            yield font_option
-        else:
-            raise ValueError(font_option)
+        paper_option = metarecord.get('paper', 'a5paper')
+        yield str(paper_option)
+        font_option = metarecord.get('font', '10pt')
+        yield str(font_option)
+        yield from metarecord.get('class options', ())
+
+        if paper_option not in {'a4paper', 'a5paper'}:
+            logger.warning(
+                "<BOLD><MAGENTA>{name}<NOCOLOUR> uses "
+                "bad paper option '<YELLOW>{option}<NOCOLOUR>'<RESET>"
+                .format(name=metarecord.metaname, option=paper_option) )
+        if font_option not in {'10pt', '11pt', '12pt'}:
+            logger.warning(
+                "<BOLD><MAGENTA>{name}<NOCOLOUR> uses "
+                "bad font option '<YELLOW>{option}<NOCOLOUR>'<RESET>"
+                .format(name=metarecord.metaname, option=font_option) )
 
     def generate_metapreamble(self, metarecord):
         for inpath in metarecord['style']:
             yield {'local package' : metarecord['aliases'][inpath]}
-#        yield {'package' : 'pgfpages'}
-#        yield {'verbatim' :
-#            self.substitute_pgfpages_resize(options='a4paper') }
-#        yield { 'package' : 'hyperref', 'options' : [
-#            'dvips', 'setpagesize=false',
-#            'pdftitle={{{}}}'.format(metarecord['metaname'])
-#        ]}
         if 'selectsize' in metarecord:
             font, skip = metarecord['selectsize']
-            yield {'verbatim' : self.substitute_selectsize(font=font, skip=skip)}
+            yield {'verbatim' :
+                self.substitute_selectsize(font=font, skip=skip) }
         yield from metarecord.get('preamble', ())
 
-#    pgfpages_resize_template = r'\pgfpagesuselayout{resize to}[$options]'
     selectsize_template = (
         r'\AtBeginDocument{\fontsize{$font}{$skip}\selectfont}' )
 
@@ -779,12 +780,12 @@ class Driver(metaclass=Substitutioner):
         datetime_date_set = {date for date in date_set
             if isinstance(date, datetime.date) }
         if datetime_date_set:
-            return min(datetime_date_set);
+            return min(datetime_date_set)
         elif len(date_set) == 1:
             date, = date_set
-            return date;
+            return date
         else:
-            return None;
+            return None
 
     @staticmethod
     def sluggify_inpath(inpath):
