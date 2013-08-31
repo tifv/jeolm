@@ -154,7 +154,10 @@ class InrecordReviewer:
             logger.info('<BOLD><GREEN>{}<NOCOLOUR>: inrecord added<RESET>'
                 .format(inpath) )
 
-        subnames = inrecord.keys() | set(os.listdir(str(path)))
+        subnames = set(inrecord.keys())
+        subnames.union(
+            name for name in os.listdir(str(path))
+            if not name.startswith('.') )
         for subname in sorted(subnames):
             assert isinstance(subname, str), subname
             subpath = inpath/subname
