@@ -2,23 +2,30 @@
 Nodes, and dependency trees constructed of them.
 """
 
-import os
-import sys
-import re
-import subprocess
-
 from itertools import chain
+import weakref
+
+import os
+from stat import S_ISDIR
+import sys
+import subprocess
 
 from pathlib import Path, PurePath
 
-from jeolm.utils import pure_relative
-
 import logging
+from logging import DEBUG, INFO, WARNING, ERROR, CRITICAL
 import warnings
 logger = logging.getLogger(__name__)
-rule_logger = logging.getLogger(__name__ + '.rule')
 
-class NodeCycleError(RuntimeError): pass
+__all__ = [
+    'Node', 'NodeCycleError',
+    'DatedNode', 'PathNode', 'ProductNode',
+    'FileNode', 'ProductFileNode',
+    'LinkNode', 'DirectoryNode'
+]
+
+class NodeCycleError(RuntimeError):
+    pass
 
 class Node:
     """
@@ -27,18 +34,25 @@ class Node:
     Attributes
     ----------
     name
-        some short-but-identifying name
-    updated
-        bool, True if self.update() was ever triggered
-    modified
-        bool, True if self was modified, requiring any
-        dependent nodes to be rebuilt
+        str, some short-but-identifying name.
     needs
-        list of dependencies
+        list of Node instances, prerequisites of this node.
+        Expectd to be populated with initialization,
+        node.extend_needs() and node.append_needs() methods.
     rules
-        list of functions, that are supposed to rebuild self
+        list of functions, that are responsible for (re)building node
+        and setting node.modified attribute as appropriate.
+        Expected to be populated with @node.add_rule decorator.
+    modified
+        bool, True if node was modified, causing any
+        dependent nodes to be rebuilt.  Only node.needs_build() method
+        should be interested in quering this attribute.
+    _updated
+        bool, True if node.update() was ever triggered.
+        Should be read and written only by node.update() method.
     _locked
-        bool, dependency cycle protection
+        bool, dependency cycle protection.
+        Should be read and written only by node.update() method.
     """
 
     def __init__(self, *, name=None, needs=(), rules=()):
@@ -49,22 +63,22 @@ class Node:
         self.needs = list(needs)
         self.rules = list(rules)
 
-        self.updated = False
+        self._updated = False
         self.modified = False
 
         self._locked = False
 
     def update(self):
         """
-        Update the node, recursively updating prerequisites.
+        Update the node, recursively updating needs.
         """
         if self._locked:
             raise NodeCycleError(self.name)
-        if self.updated:
-            return;
+        if self._updated:
+            return
         self.update_needs()
         self.update_self()
-        self.updated = True
+        self._updated = True
 
     def update_needs(self):
         try:
@@ -74,7 +88,7 @@ class Node:
                     node.update()
                 except NodeCycleError as exception:
                     exception.args += (self.name,)
-                    raise;
+                    raise
         finally:
             self._locked = False
 
@@ -84,11 +98,15 @@ class Node:
 
     def needs_build(self):
         """
-        Return True if the node needs building (is obsolete, etc.).
+        Return True if the node needs to be (re)built.
+
+        Node needs build in the following case:
+        1) any of needed nodes are modified.
+        (Subclasses may introduce different conditions)
         """
         if any(node.modified for node in self.needs):
-            return True;
-        return False;
+            return True
+        return False
 
     def extend_needs(self, needs):
         needs = list(needs)
@@ -103,37 +121,40 @@ class Node:
         return self
 
     def add_rule(self, rule):
+        """Decorator."""
         self.rules.append(rule)
         return rule
 
     def run_rules(self):
+        # Should be only called by self.update_self()
         for rule in self.rules:
             rule()
 
-    def add_subprocess_rule(self, callargs, *, cwd, **kwargs):
-        if not isinstance(cwd, Path) or not cwd.is_absolute():
-            raise ValueError("cwd must be an absolute Path")
-        rule_repr = ('[<BOLD><MAGENTA>{node.name}<RESET>] '
-            '<cwd=<BOLD><BLUE>{cwd!s}<RESET>> '
-            '<BOLD>{command}<RESET>'
-            .format(
-                node=self, cwd=pure_relative(Path.cwd(), cwd),
-                command=' '.join(callargs) ) )
-        @self.add_rule
-        def subprocess_rule():
-            self.print_rule(rule_repr)
-            try:
-                subprocess.check_call(callargs, cwd=str(cwd), **kwargs)
-            except subprocess.CalledProcessError as exception:
-                rule_logger.critical(
-                    '<BOLD>[<RED>{node.name}<NOCOLOUR>] '
-                    '{exc.cmd} returned code {exc.returncode}<RESET>'
-                    .format(node=self, exc=exception) )
-                raise;
+    def log(self, level, message):
+        """
+        Log a message specific for this node.
 
-    @staticmethod
-    def print_rule(rule_repr):
-        rule_logger.info(rule_repr)
+        Prepend a message with node.name and delegate to module logger.
+        This function expects FancyFormatter to be used somewhere in
+        logging facility.
+        """
+        if level <= INFO:
+            colour = '<MAGENTA>'
+            bold = ''
+        elif level <= WARNING:
+            colour = '<YELLOW>'
+            bold = '<BOLD>'
+        else:
+            colour = '<RED>'
+            bold = '<BOLD>'
+        msg = '{bold}[{colour}{node.name}<NOCOLOUR>] {message}<RESET>'.format(
+            colour=colour, bold=bold, node=self, message=message )
+        logger.log(level, msg)
+
+    def __repr__(self):
+        return (
+            "{node.__class__.__qualname__}(name='{node.name}')"
+            .format(node=self) )
 
 class DatedNode(Node):
     """
@@ -142,31 +163,46 @@ class DatedNode(Node):
     Attributes
     ----------
     mtime
-        integer, usually returned by some os.stat as st_mtime_ns
-        (in nanoseconds)
+        integer, modification time in nanoseconds since epoch.
+        Usually returned by some os.stat as st_mtime_ns attribute.
     """
 
-    def __init__(self, *args, mtime=None, **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(self, *, mtime=None, **kwargs):
+        super().__init__(**kwargs)
         self.mtime = mtime
+
+    def update_self(self):
+        self.load_mtime()
+        super().update_self()
 
     def needs_build(self):
         """
-        DatedNode needs build, if
-        1) self.mtime == None (this means that self is very old);
-        2) some of the needed nodes has mtime newer than self;
+        Return True if the node needs to be (re)built.
+
+        Extension.
+        DatedNode needs build in the following cases:
+        1) node.mtime is None (this means that node was never built);
+        2) any of prerequisites has mtime newer than node.mtime;
         3) for some other reason (see superclasses).
         """
         mtime = self.mtime
         if mtime is None:
-            return True;
+            return True
         for node in self.needs:
-            if hasattr(node, 'mtime') and self.less(mtime, node.mtime):
-                return True;
+            if hasattr(node, 'mtime') and self.mtime_less(mtime, node.mtime):
+                return True
         return super().needs_build();
 
+    def load_mtime(self):
+        """
+        Set node.mtime to appropriate value.
+
+        No-op yet. Subclasses may introduce appropriate behavior.
+        """
+        pass
+
     @staticmethod
-    def less(x, y):
+    def mtime_less(x, y):
         if y is None:
             return False;
         if x is None:
@@ -177,41 +213,47 @@ class PathNode(DatedNode):
     """
     PathNode represents filesystem path, existing or not.
 
+    It introduces path attribute and add_subprocess_rule() method.
+
     Attributes
     ----------
     path
         absolute pathlib.Path object
     """
 
-    # This is used for detecting multiple nodes per path
-    pathpool = set()
+    root = Path.cwd()
 
-    def __init__(self, path, *args, **kwargs):
+    if __debug__:
+        seen_paths = weakref.WeakSet()
+
+    def __init__(self, path, **kwargs):
         if not isinstance(path, Path):
             path = Path(path)
         if not path.is_absolute():
-            raise ValueError(path)
-#        logger.debug("Creating {} for the path '{!s}'"
-#            .format(self.__class__.__qualname__, path) )
-        if path in self.pathpool:
-            warnings.warn(
-                "Duplicate PathNode('{!s}') object may be created"
-                .format(path), stacklevel=2)
+            raise ValueError(
+                "{cls.__qualname__} cannot be initialized "
+                "with relative path: '{path}'"
+                .format(cls=self.__class__, path=path) )
+        if __debug__:
+            if path in self.seen_paths:
+                warnings.warn(
+                    "Duplicate {node.__class__.__qualname__}"
+                    "(path='{node.relative_path}') detected"
+                    .format(node=self),
+                    stacklevel=2 )
+            self.seen_paths.add(path)
         if 'name' not in kwargs:
             kwargs['name'] = str(path)
-        self.pathpool.add(path)
-        super().__init__(*args, **kwargs)
+        super().__init__(**kwargs)
         self.path = path
-
-    def update_self(self):
-        self.load_mtime()
-        super().update_self()
 
     def load_mtime(self):
         """
-        Set self.mtime to appropriate value.
+        Set node.mtime to appropriate value.
 
-        Set self.mtime to None if file does not exist.
+        Set node.mtime to None if file does not exist.
+        Otherwise, use st_mtime_ns attribute for the structure
+        returned by node.stat().
         """
         try:
             stat = self.stat()
@@ -221,11 +263,16 @@ class PathNode(DatedNode):
             self.mtime = stat.st_mtime_ns # nanoseconds
 
     def stat(self):
-        return os.lstat(str(self.path))
+        """
+        Return appropriate stat structure. Do not follow symlinks.
+        """
+        return os.stat(str(self.path), follow_symlinks=False)
 
     def __repr__(self):
-        return "{}('{!s}')".format(
-            type(self).__qualname__, self.path )
+        return (
+            "{node.__class__.__qualname__}("
+            "name='{node.name}', path='{node.relative_path}')"
+            .format(node=self) )
 
     def run_rules(self):
         mtime = self.mtime
@@ -233,75 +280,145 @@ class PathNode(DatedNode):
             super().run_rules()
         except:
             self.load_mtime()
-            if self.less(mtime, self.mtime):
+            if self.mtime_less(mtime, self.mtime):
+                # Failed program resulted in a file written.
+                # We have to clear it.
+                self.log(ERROR, 'deleting {}'.format(self.relative_path))
                 self.path.unlink()
             raise
         self.load_mtime()
         if self.mtime is None:
+            # Succeeded program did not result in a file
             raise FileNotFoundError(
-                "Path is missing after command execution: '{!s}'"
+                "Path is missing after command execution: '{}'"
                 .format(self.path) )
         if mtime != self.mtime:
             self.modified = True
 
+    def add_subprocess_rule(self, callargs, *, cwd, **kwargs):
+        if not isinstance(cwd, Path) or not cwd.is_absolute():
+            raise ValueError("cwd must be an absolute Path")
+        rule_repr = (
+            '<cwd=<BLUE>{cwd}<NOCOLOUR>> <GREEN>{command}<NOCOLOUR>'.format(
+                cwd=self.pure_relative(cwd, self.root),
+                command=' '.join(callargs)
+            ) )
+        @self.add_rule
+        def subprocess_rule():
+            self.log(INFO, rule_repr)
+            try:
+                subprocess.check_call(callargs, cwd=str(cwd), **kwargs)
+            except subprocess.CalledProcessError as exception:
+                self.log(CRITICAL,
+                    '{exc.cmd} returned code {exc.returncode}'
+                    .format(exc=exception) )
+                exception.reported = True
+                raise
+
+    @property
+    def relative_path(self):
+        return self.pure_relative(self.path, self.root)
+
+    @staticmethod
+    def pure_relative(path, root):
+        """
+        Compute relative PurePath, with '..' parts.
+
+        Both arguments must be absolute PurePath's and lack '..' parts.
+        """
+        if not path.is_absolute():
+            raise ValueError(path)
+        if not root.is_absolute():
+            raise ValueError(root)
+        if any('..' in path.parts for path in (path, root)):
+            raise ValueError(path, root)
+        upstairs = 0
+        path_parents = set(path.parents())
+        while root not in path_parents:
+            root = root.parts[:-1]
+            upstairs += 1
+        return PurePath(*
+            ['..'] * upstairs + [path.relative(root)] )
+
+class ProductNode(PathNode):
+    """
+    ProductionNode has a source.
+
+    ProductionNode is a subclass of PathNode that introduces a notion
+    of source, which is also a PathNode.
+
+    Attributes
+    ----------
+    source
+        PathNode instance. Exact semantics is defined by subclasses.
+    """
+
+    def __init__(self, source, path, *, needs=(), **kwargs):
+        if not isinstance(source, PathNode):
+            raise TypeError(type(source))
+        self.source = source
+        needs = chain((source,), needs)
+        super().__init__(path, needs=needs, **kwargs)
+
+    def __repr__(self):
+        return (
+            "{node.__class__.__qualname__}(name='{node.name}', "
+                "source='{node.source!r}', path='{node.relative_path}')"
+            .format(node=self) )
+
 class FileNode(PathNode):
     """
-    FileNode represents a file, existing or not.
+    FileNode represents a file, existing or not (yet).
     """
 
     def stat(self):
-        return os.stat(str(self.path))
+        """
+        Return appropriate stat structure. Follow symlinks.
+        """
+        return os.stat(str(self.path), follow_symlinks=True)
 
     def open(self, *args, **kwargs):
         return open(str(self.path), *args, **kwargs)
 
-#    def add_edit_rule(self, editfunc):
-#        @self.add_rule
-#        def edit_rule():
-#            with self.open('r') as f:
-#                s = f.read()
-#            s = editfunc(s)
-#            with self.open('w') as f:
-#                f.write(s)
-
     def run_rules(self):
+        # Written in blood
         if self.path.exists() and self.path.is_symlink():
             self.path.unlink()
         super().run_rules()
 
-class LinkNode(PathNode):
+class ProductFileNode(ProductNode, FileNode):
+    # Order is everything.
+    pass
+
+class LinkNode(ProductNode):
     """
     LinkNode represents a symlink to the file.
 
     Attributes
     ----------
-    source
+    source (derived)
         PathNode instance. Represents the target of the link.
     """
 
-    def __init__(self, source, destpath, *, needs=(),
-        relative=True, **kwargs
-    ):
-        if not isinstance(source, PathNode): raise TypeError
-        self.source = source
-        super().__init__(destpath, needs=chain((source,), needs), **kwargs)
+    def __init__(self, source, path, *, relative=True, **kwargs):
+        super().__init__(source, path, **kwargs)
 
         if not relative:
             self.source_path = source.path
         else:
-            self.source_path = pure_relative(
-                self.path.parent(), source.path )
+            self.source_path = self.pure_relative(
+                source.path, self.path.parent(), )
 
         rule_repr = (
-            '[<BOLD><MAGENTA>{node.name}<RESET>] '
-            '<source=<BOLD><BLUE>{node.source.name}<RESET>> '
-            '<BOLD>ln --symbolic {node.source_path!s} {node.path!s}<RESET>'
+            '<source=<BLUE>{node.source.name}<NOCOLOUR>> '
+            '<GREEN>ln --symbolic {node.source_path} '
+                '{node.relative_path}<NOCOLOUR>'
             .format(node=self) )
         @self.add_rule
         def link_rule():
             if os.path.lexists(str(self.path)):
                 self.path.unlink()
-            self.print_rule(rule_repr)
+            self.log(INFO, rule_repr)
             os.symlink(str(self.source_path), str(self.path))
             self.modified = True
 
@@ -316,20 +433,22 @@ class LinkNode(PathNode):
         if mtime is None:
             return
         source = self.source
-        source.load_mtime()
         source_mtime = source.mtime
-        if self.less(mtime, source_mtime):
+        if self.mtime_less(mtime, source_mtime):
             self.mtime = source_mtime
         if source.modified:
             self.modified = True
 
     def needs_build(self):
         """
-        LinkNode needs build if
+        Return True if the node needs to be (re)built.
+
+        Override.
+        LinkNode needs build in the following cases:
         1) path does not exist;
         2) path is not a link;
         3) path is a link, but wrong link.
-        Superclasses IGNORED.
+        Superclasses ignored.
         """
         path = str(self.path)
         return not (
@@ -338,32 +457,40 @@ class LinkNode(PathNode):
             str(self.source_path) == os.readlink(path) )
 
 class DirectoryNode(PathNode):
-    def __init__(self, path, *args, parents=False, **kwargs):
-        super().__init__(path, *args, **kwargs)
-        rule_repr = ('[<BOLD><MAGENTA>{node.name}<RESET>] '
-            '<BOLD>{command} {node.path}<RESET>'
+    def __init__(self, path, *, parents=False, **kwargs):
+        super().__init__(path, **kwargs)
+        rule_repr = (
+            '<GREEN>{command} {node.relative_path}<NOCOLOUR>'
             .format(node=self,
                 command='mkdir --parents' if parents else 'mkdir' ) )
         @self.add_rule
         def mkdir_rule():
             if os.path.lexists(str(path)):
                 path.unlink()
-            self.print_rule(rule_repr)
+            self.log(INFO, rule_repr)
             # rwxr-xr-x
             path.mkdir(mode=0b111101101, parents=parents)
             self.modified = True
 
     def needs_build(self):
-        path = str(self.path)
-        return not (
-            os.path.lexists(path) and
-            os.path.isdir(path) )
+        """
+        Return True if the node needs to be (re)built.
+
+        Override.
+        DirectoryNode needs build in the following cases:
+        1) path does not exist;
+        2) path is not a directory.
+        Superclasses ignored.
+        """
+        if self.mtime is None:
+            return True
+        return False
 
     def load_mtime(self):
         """
         Set self.mtime to appropriate value.
 
-        Set self.mtime to None if file does not exist.
+        Set self.mtime to None if self.path does not exist.
         Otherwise, set self.mtime to 0.
 
         This method overrides normal behavior. It reflects the fact
@@ -377,102 +504,10 @@ class DirectoryNode(PathNode):
         except FileNotFoundError:
             self.mtime = None
         else:
-            self.mtime = 0
-
-class LaTeXNode(FileNode):
-    """
-    Represents a target of some latex command.
-
-    Aims at reasonable handling of latex output to stdin/log.
-    Completely suppresses latex output unless finds something
-    interesting in it.
-    """
-
-    interesting_latexlog_pattern = re.compile(
-        '(?m)^! |[Ee]rror|[Ww]arning|No pages of output.'
-    )
-    latexlog_encoding = 'cp1251' # XXX WTF?
-
-    overfull_latexlog_pattern = re.compile(
-        r'(?m)^(Overfull|Underfull)\s+\\hbox\s+\([^()]*?\)\s+'
-        r'in\s+paragraph\s+at\s+lines\s+\d+--\d+'
-    )
-    page_latexlog_pattern = re.compile(r'\[(?P<number>(?:\d|\s)+)\]')
-
-    def add_latex_rule(self, sourcename, *,
-        command='latex', cwd,
-        logpath=None, **kwargs
-    ):
-        if not isinstance(cwd, Path) or not cwd.is_absolute():
-            raise ValueError("cwd must be an absolute Path")
-        kwargs.update(universal_newlines=False)
-        rule_repr = ('[<BOLD><MAGENTA>{node.name}<RESET>] '
-            '<cwd=<BOLD><BLUE>{cwd!s}<RESET>> '
-            '<BOLD>{command} {sourcename}<RESET>'
-            .format(
-                node=self, cwd=pure_relative(Path.cwd(), cwd),
-                command=command, sourcename=sourcename ) )
-        callargs = ('latex',
-            '-interaction=nonstopmode', '-halt-on-error', '-file-line-error',
-            sourcename )
-        @self.add_rule
-        def latex_rule():
-            self.print_rule(rule_repr)
-            try:
-                output = subprocess.check_output(callargs, cwd=str(cwd),
-                    **kwargs )
-            except subprocess.CalledProcessError as exception:
-                self.print_latex_output(exception.output, force=True)
-                rule_logger.critical(
-                    '<BOLD>[<RED>{node.name}<NOCOLOUR>] '
-                    '{exc.cmd} returned code {exc.returncode}<RESET>'
-                    .format(node=self, exc=exception) )
-                raise
-            if not self.print_latex_output(output):
-                if logpath is not None:
-                    self.print_overfulls(logpath)
-
-    def print_latex_output(self, output, force=False):
-        """
-        Print output if it is interesting.
-
-        Return False if output was not interesting.
-        """
-        output = output.decode(self.latexlog_encoding)
-        if force or self.interesting_latexlog_pattern.search(output):
-            print(output)
-
-    def print_overfulls(self, logpath):
-        with logpath.open(encoding=self.latexlog_encoding) as f:
-            s = f.read()
-
-        page_marks = {1 : 0}
-        last_page = 1; last_mark = 0
-        while True:
-            for match in self.page_latexlog_pattern.finditer(s):
-                value = int(match.group('number').replace('\n', ''))
-                if value == last_page + 1:
-                    break
+            if S_ISDIR(stat.st_mode):
+                self.mtime = 0
             else:
-                break
-            last_page += 1
-            last_mark = match.end()
-            page_marks[last_page] = last_mark
-        def current_page(pos):
-            page = max(
-                (
-                    (page, mark)
-                    for (page, mark) in page_marks.items()
-                    if mark <= pos
-                ), key=lambda v:v[1])[0]
-            if page == 1:
-                return '1--2'
-            else:
-                return page + 1
-
-        for match in self.overfull_latexlog_pattern.finditer(s):
-            start = match.start()
-            print(
-                '[{}]'.format(current_page(match.start())),
-                match.group(0) )
+                raise NotADirectoryError(
+                    "Found something where a directory should be: {}"
+                    .format(self.relative_path) )
 

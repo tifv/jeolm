@@ -11,18 +11,8 @@ import logging
 logger = logging.getLogger(__name__)
 
 def review(inpaths, *, fsmanager, viewpoint):
-    """
-    Review inrecords.
-
-    root
-        Path, jeolm root directory
-    viewpoint
-        Path, probably Path.cwd()
-    """
-
-    root = fsmanager.root
     inpaths = resolve_inpaths(inpaths,
-        source_root=root/'source', viewpoint=viewpoint )
+        source_dir=fsmanager.source_dir, viewpoint=viewpoint )
 
     reviewer = InrecordReviewer(fsmanager)
     reviewer.load_inrecords()
@@ -31,25 +21,23 @@ def review(inpaths, *, fsmanager, viewpoint):
     reviewer.dump_inrecords()
 
 def print_inpaths(inroots, suffix, *, fsmanager, viewpoint):
-    root = fsmanager.root
-    source_root = root/'source'
+    source_dir = fsmanager.source_dir
     inroots = resolve_inpaths(inroots,
-        source_root=source_root, viewpoint=viewpoint )
+        source_dir=source_dir, viewpoint=viewpoint )
 
-    reviewer = InrecordReviewer(root_manager)
+    reviewer = InrecordReviewer(fsmanager)
     reviewer.load_inrecords()
-    sourceroot = root/'source'
     for inroot in inroots:
         for inpath in reviewer.iter_inpaths(inroot, suffix=suffix):
-            print(str((sourceroot/inpath).relative(viewpoint)))
+            print(str((source_dir/inpath).relative(viewpoint)))
 
-def resolve_inpaths(inpaths, *, source_root, viewpoint):
+def resolve_inpaths(inpaths, *, source_dir, viewpoint):
     inpaths = [PurePath(inpath) for inpath in inpaths]
     if any('..' in inpath.parts for inpath in inpaths):
         raise ValueError("'..' parts are not allowed", inpaths)
 
     inpaths = [
-        PurePath(viewpoint, inpath).relative(source_root)
+        PurePath(viewpoint, inpath).relative(source_dir)
         for inpath in inpaths ]
     if not inpaths:
         inpaths = [PurePath('')]
@@ -60,7 +48,7 @@ class InrecordReviewer:
 
     def __init__(self, fsmanager):
         self.fsmanager = fsmanager
-        self.root = self.fsmanager.root
+        self.source_dir = self.fsmanager.source_dir
 
     def review(self, inpath):
         inrecord = self.get_inrecord(inpath)
@@ -153,7 +141,7 @@ class InrecordReviewer:
         return
 
     def review_inrecord(self, inpath, inrecord):
-        path = self.root/'source'/inpath
+        path = self.source_dir/inpath
         if not path.exists():
             if inrecord is not None:
                 logger.info('<BOLD><RED>{}<NOCOLOUR>: inrecord removed<RESET>'
@@ -229,7 +217,7 @@ class InrecordReviewer:
     def review_tex_inrecord(self, inpath, inrecord):
         logger.debug("{}: reviewing LaTeX file".format(inpath))
 
-        with (self.root/'source'/inpath).open('r') as f:
+        with (self.source_dir/inpath).open('r') as f:
             s = f.read()
 
         self.review_tex_caption(inpath, inrecord, s)
@@ -351,7 +339,7 @@ class InrecordReviewer:
 
     def review_asy_inrecord(self, inpath, inrecord):
         logger.debug("{}: reviewing Asymptote file".format(inpath))
-        with (self.root/'source'/inpath).open('r') as f:
+        with (self.source_dir/inpath).open('r') as f:
             s = f.read()
 
         parent = inpath.parent()

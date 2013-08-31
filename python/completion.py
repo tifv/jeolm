@@ -64,8 +64,7 @@ class Completer:
 
     def load_target_list(self):
 
-        self.target_list = self.fsmanager.load_completion_cache(
-            none_if_outdated=True )
+        self.target_list = self.fsmanager.load_updated_completion_cache()
         if self.target_list is not None:
             return
 

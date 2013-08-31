@@ -38,7 +38,7 @@ def get_parser(prog='jeolm'):
     return parser
 
 def main():
-    from jeolm import filesystem, builder, inrecords, commands
+    from jeolm import filesystem, nodes, builder, inrecords, commands
 
     args = get_parser().parse_args()
 
@@ -48,6 +48,7 @@ def main():
             root=Path(args.root) if args.root is not None else None )
     except filesystem.RootNotFoundError:
         raise SystemExit
+    nodes.PathNode.root = fsmanager.root
     fsmanager.report_broken_links()
 
     fsmanager.load_local_module()

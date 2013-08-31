@@ -19,23 +19,3 @@ def pure_join(*paths):
             parts.pop()
     return PurePath(*parts)
 
-def pure_relative(fromdir, absolute):
-    """
-    Compute relative PurePath, with '..' parts.
-
-    Both arguments must be absolute PurePath's and lack '..' parts.
-    """
-    if not absolute.is_absolute():
-        raise ValueError(absolute)
-    if not fromdir.is_absolute():
-        raise ValueError(fromdir)
-    if any('..' in path.parts for path in (absolute, fromdir)):
-        raise ValueError(absolute, fromdir)
-    upstairs = 0
-    absolute_parents = set(absolute.parents())
-    while fromdir not in absolute_parents:
-        fromdir = fromdir.parts[:-1]
-        upstairs += 1
-    return PurePath(*
-        ['..'] * upstairs + [absolute.relative(fromdir)] )
-

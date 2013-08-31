@@ -30,9 +30,11 @@ class FSManager:
                 self.report_failed_check()
                 raise RootNotFoundError()
         self.root = root
+        self.build_dir = self.root/'build'
+        self.source_dir = self.root/'source'
         self.inrecords_path = self.root/'.jeolm/in.yaml'
-        self.metarecords_cache_path = self.root/'build/meta.cache.yaml'
-        self.completion_cache_path = root/'build/completion.cache.list'
+        self.metarecords_cache_path = self.build_dir/'meta.cache.yaml'
+        self.completion_cache_path = self.build_dir/'completion.cache.list'
 
         self.local_module = None
 
@@ -123,11 +125,12 @@ class FSManager:
             f.write(s)
         new_path.rename(self.metarecords_cache_path)
 
-    def load_completion_cache(self, none_if_outdated=False):
+    def load_updated_completion_cache(self):
         cache_path = self.completion_cache_path
         if not cache_path.exists():
             return None
         if cache_path.st_mtime_ns <= self.jeolm_records_mtime:
+            # Do not load if the cache is outdated
             return None
         from pathlib import PurePosixPath as PurePath
         with cache_path.open() as f:
@@ -152,12 +155,11 @@ class FSManager:
 
 
     def ensure_build_dir(self):
-        build_dir = self.root/'build'
-        if build_dir.exists():
-            if build_dir.is_symlink() or not build_dir.is_dir():
-                raise NotADirectoryError(str(build_dir))
+        if self.build_dir.exists():
+            if self.build_dir.is_symlink() or not self.build_dir.is_dir():
+                raise NotADirectoryError(str(self.build_dir))
         else:
-            build_dir.mkdir(mode=0b111101101, parents=False)
+            self.build_dir.mkdir(mode=0b111101101, parents=False)
 
     def populate_archive(self, archive_file):
         add = archive_file.add
@@ -174,7 +176,7 @@ class FSManager:
     @classmethod
     def check_root(cls, root):
         if not isinstance(root, Path):
-            raise TypeError("Expected pathlib.Path instance, got {!s}"
+            raise TypeError("Expected pathlib.Path instance, got {!r}"
                 .format(type(Path)) )
         jeolm_dir = root/'.jeolm'
         if not jeolm_dir.exists() or not jeolm_dir.is_dir():
@@ -195,7 +197,7 @@ class FSManager:
                 yield path
                 continue
             if recursive and path.is_dir():
-                yield from self.iter_broken_links(path, recursive=recursive)
+                yield from cls.iter_broken_links(path, recursive=recursive)
 
     def list_outrecords_paths(self):
         yield from self._list_outrecords_paths(self.root)
@@ -203,7 +205,8 @@ class FSManager:
     @staticmethod
     @lru_cache()
     def _list_outrecords_paths(root):
-        for path in root/'.jeolm':
-            if path.name == 'out.yaml' or path.name.endswith('.out.yaml'):
-                yield path
+        return [ path
+            for path in root/'.jeolm'
+            if path.name == 'out.yaml' or path.name.endswith('.out.yaml')
+        ]
 
