@@ -233,23 +233,25 @@ class InrecordReviewer:
             return;
         caption_match = self.caption_pattern.search(s)
         if caption_match is None:
-            if 'caption' in inrecord:
-                logger.warning("<BOLD><MAGENTA>{}<NOCOLOUR>: "
+            if '$caption' in inrecord:
+                logger.warning(
+                    "<BOLD><MAGENTA>{}<NOCOLOUR>: "
                     "file is missing any caption; "
-                    "preserved the caption '{}' holded in the record<RESET>"
-                    .format(inpath, inrecord['caption']) )
-            return;
+                    "preserved the caption '<YELLOW>{}<NOCOLOUR>' "
+                    "holded in the record<RESET>"
+                    .format(inpath, inrecord['$caption']) )
+            return
         caption = caption_match.group('caption')
-        if 'caption' not in inrecord:
+        if '$caption' not in inrecord:
             logger.info("<BOLD><MAGENTA>{}<RESET>: "
                 "added caption '<BOLD><GREEN>{}<RESET>'"
                 .format(inpath, caption) )
-        elif inrecord['caption'] != caption:
+        elif inrecord['$caption'] != caption:
             logger.info("<BOLD><MAGENTA>{}<RESET>: "
                 "caption changed from '<BOLD><RED>{}<RESET>' "
                 "to '<BOLD><GREEN>{}<RESET>'"
-                .format(inpath, inrecord['caption'], caption) )
-        inrecord['caption'] = caption
+                .format(inpath, inrecord['$caption'], caption) )
+        inrecord['$caption'] = caption
 
     nocaption_pattern = re.compile(
         r'(?m)^% no caption$' )
@@ -265,25 +267,27 @@ class InrecordReviewer:
             return;
         date_match = self.date_pattern.search(s)
         if date_match is None:
-            if 'date' in inrecord:
-                logger.warning("<BOLD><MAGENTA>{}<NOCOLOUR>: "
+            if '$date' in inrecord:
+                logger.warning(
+                    "<BOLD><MAGENTA>{}<NOCOLOUR>: "
                     "file is missing any date; "
-                    "preserved the date '{}' holded in the record<RESET>"
-                    .format(inpath, inrecord['date']) )
+                    "preserved the date '<YELLOW>{}<NOCOLOUR>' "
+                    "holded in the record<RESET>"
+                    .format(inpath, inrecord['$date']) )
             return;
         date = datetime.date(**{
             key : int(value)
             for key, value in date_match.groupdict().items() })
-        if 'date' not in inrecord:
+        if '$date' not in inrecord:
             logger.info("<BOLD><MAGENTA>{}<RESET>: "
                 "added date '<BOLD><GREEN>{}<RESET>'"
                 .format(inpath, date) )
-        elif inrecord['date'] != date:
+        elif inrecord['$date'] != date:
             logger.info("<BOLD><MAGENTA>{}<RESET>: "
                 "date changed from '<BOLD><RED>{}<RESET>' "
                 "to '<BOLD><GREEN>{}<RESET>'"
-                .format(inpath, inrecord['date'], date) )
-        inrecord['date'] = date
+                .format(inpath, inrecord['$date'], date) )
+        inrecord['$date'] = date
 
     nodate_pattern = re.compile(
         r'(?m)^% no date$' )
@@ -303,7 +307,7 @@ class InrecordReviewer:
         new_figures = self.unique(
             match.group('figure')
             for match in self.figure_pattern.finditer(s) )
-        old_figures = inrecord.pop('figures', ())
+        old_figures = inrecord.pop('$figures', ())
         figures = [
             figure for figure in old_figures
             if figure in new_figures
@@ -322,7 +326,7 @@ class InrecordReviewer:
 
         parent = inpath.parent()
         if figures:
-            inrecord['figures'] = ODict(
+            inrecord['$figures'] = ODict(
                 (figure, pure_join(parent, figure))
                 for figure in figures )
 
@@ -349,7 +353,7 @@ class InrecordReviewer:
                 pure_join(parent, match.group('original_name'))
             )
             for match in self.asy_use_pattern.finditer(s) )
-        old_used = inrecord.pop('used', ())
+        old_used = inrecord.pop('$used', ())
         used_names = [
             used_name for used_name in old_used
             if used_name in new_used
@@ -378,7 +382,7 @@ class InrecordReviewer:
             (used_name, new_used[used_name])
             for used_name in used_names )
         if used:
-            inrecord['used'] = used
+            inrecord['$used'] = used
 
         return inrecord
 

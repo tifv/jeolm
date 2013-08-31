@@ -193,7 +193,7 @@ class Driver(metaclass=Substitutioner):
         Update self.figrecords.
         """
 
-        inrecord_figures = self.inrecords[inpath].get('figures')
+        inrecord_figures = self.inrecords[inpath].get('$figures')
         if inrecord_figures is None:
             return {};
         if not isinstance(inrecord_figures, dict):
@@ -345,7 +345,7 @@ class Driver(metaclass=Substitutioner):
                 if inrecord is None:
                     raise RecordNotFoundError(inpath, target);
                 inpath_set.add(inpath)
-                date_set.add(inrecords.get('date'))
+                date_set.add(inrecord.get('$date'))
                 yield {'inpath' : inpath}
 
     def generate_fluid_body(self, target, fluid,
@@ -364,7 +364,7 @@ class Driver(metaclass=Substitutioner):
                 # Fail
                 raise RecordNotFoundError(target);
             inpath_set.add(inpath)
-            date_set.add(inrecord.get('date'))
+            date_set.add(inrecord.get('$date'))
             yield {'inpath' : inpath}
             return;
         for item in fluid:
@@ -422,7 +422,7 @@ class Driver(metaclass=Substitutioner):
         inrecord = self.inrecords[inpath]
         if inrecord is None:
             raise RecordNotFoundError(inpath);
-        used = inrecord.get('used')
+        used = inrecord.get('$used')
         if used is None:
             return;
         for used_name, original_path in used.items():
@@ -489,20 +489,22 @@ class Driver(metaclass=Substitutioner):
     class InrecordAccessor(RecordAccessor):
         cache = dict()
 
-        def list_targets(self, inpath=PurePath(), inrecord=None):
+        def list_targets(self):
             """List some targets based on inrecords."""
-            if inrecord is None:
-                inrecord = self.records
-                is_root = True
-            else:
-                is_root = False
+            target_iterator = self._list_targets(PurePath(), self.records)
+            root = next(target_iterator)
+            assert root == PurePath(), root
+            yield from target_iterator
+
+        def _list_targets(self, inpath, inrecord):
             if inpath.suffix == '.tex':
                 yield inpath.with_suffix('')
             elif inpath.suffix == '':
-                if not is_root:
-                    yield inpath
+                yield inpath
                 for subname, subrecord in inrecord.items():
-                    yield from self.list_targets(inpath/subname, subrecord)
+                    if '$' in subname:
+                        continue
+                    yield from self._list_targets(inpath/subname, subrecord)
 
     class OutrecordAccessor(RecordAccessor):
         cache = dict()
@@ -535,21 +537,25 @@ class Driver(metaclass=Substitutioner):
                 style=record.get('$style'),
                 path=path )
 
-        def list_targets(self, outpath=PurePath(), outrecord=None):
+        def list_targets(self):
             """List some targets based on outrecords."""
-            if outrecord is None:
-                outrecord = self.records
-            else:
-                yield outpath
-            if not isinstance(outrecord, dict) or '$alias' in outrecord:
+            target_iterator = self._list_targets(PurePath(), self.records)
+            root = next(target_iterator)
+            assert root == PurePath(), root
+            yield from target_iterator
+
+        def _list_targets(self, outpath, outrecord):
+            yield outpath
+            assert isinstance(outrecord, dict), type(outrecord)
+            if '$alias' in outrecord:
                 return
             if '$delegate' in outrecord:
                 for delegator in outrecord.get('$delegate'):
                     yield pure_join(outpath, delegator)
             for subname, subrecord in outrecord.items():
                 if '$' in subname:
-                    continue;
-                yield from self.list_targets(outpath/subname, subrecord)
+                    continue
+                yield from self._list_targets(outpath/subname, subrecord)
 
         @classmethod
         def derive_styles(cls, parent_style, style, path):
@@ -693,12 +699,12 @@ class Driver(metaclass=Substitutioner):
         )
 
     def constitute_input(self, inpath, alias, inrecord, figname_map):
-        caption = inrecord.get('caption', '(no caption)')
+        caption = inrecord.get('$caption', '(no caption)')
         body = self.substitute_input(caption=caption, filename=alias)
-
-        if 'date' in inrecord:
-            body = body + self.substitute_datestamp(
-                date=self.constitute_date(inrecord['date']) )
+        date = inrecord.get('$date')
+        if date is not None:
+            body = body + '\n' + self.substitute_datestamp(
+                date=self.constitute_date(date) )
         if figname_map:
             body = self.constitute_figname_map(figname_map) + '\n' + body
         return body
