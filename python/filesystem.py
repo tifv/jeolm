@@ -36,7 +36,22 @@ class FSManager:
         self.metarecords_cache_path = self.build_dir/'meta.cache.yaml'
         self.completion_cache_path = self.build_dir/'completion.cache.list'
 
-        self.local_module = None
+    @classmethod
+    def check_root(cls, root):
+        if not isinstance(root, Path):
+            raise TypeError("Expected pathlib.Path instance, got {!r}"
+                .format(type(Path)) )
+        jeolm_dir = root/'.jeolm'
+        if not jeolm_dir.exists() or not jeolm_dir.is_dir():
+            return False
+        return True
+
+    @classmethod
+    def report_failed_check(cls):
+        logger.critical(
+            '<BOLD><RED>Missing directory and file layout '
+            'required for jeolm.<RESET>' )
+        logger.warning("<BOLD>Required layout: '.jeolm'<RESET>")
 
     def report_broken_links(self):
         broken_links = {
@@ -49,33 +64,65 @@ class FSManager:
                     for x in sorted(broken_links)
                 )) )
 
+    @classmethod
+    def iter_broken_links(cls, root, recursive=False):
+        for path in root:
+            if not path.exists():
+                yield path
+                continue
+            if recursive and path.is_dir():
+                yield from cls.iter_broken_links(path, recursive=recursive)
+
+    def get_driver(self):
+        """
+        Return driver.
+        """
+        Driver = self.get_driver_class()
+        inrecords = self.load_inrecords()
+        outrecords = self.load_outrecords()
+        return Driver(inrecords, outrecords)
+
+    def get_driver_class(self):
+        """
+        Return appropriate Driver class.
+        """
+        Driver = self.get_local_driver_class()
+        if Driver is None:
+            from jeolm.driver import Driver
+        return Driver
+
+    def get_local_driver_class(self):
+        """
+        Return Driver class from local_module, or None.
+
+        Requires load_local_module() called beforehand.
+        """
+        local_module = self.load_local_module()
+        if local_module is None:
+            return None
+        try:
+            return local_module.Driver
+        except AttributeError:
+            return None
+
     def load_local_module(self, *, module_name='jeolm.local'):
+        try:
+            return self.local_module
+        except AttributeError:
+            pass
+
         module_path = self.root/'.jeolm/local.py'
         if not module_path.exists():
+            self.local_module = None
             return None
 
         import importlib.machinery
         loader = importlib.machinery.SourceFileLoader(
             module_name, str(module_path) )
         self.local_module = local_module = loader.load_module()
-        logger.debug("Loaded 'meta/local.py' as {} module".format(module_name))
+        logger.debug("Loaded '.jeolm/local.py' as {} module"
+            .format(module_name) )
         return local_module
-
-    def get_local_driver(self):
-        """
-        Return driver from local_module, or None.
-
-        Requires load_local_module() called beforehand.
-        Oherwise, no-op.
-        """
-        if self.local_module is None:
-            return None
-        local_module = self.local_module
-        try:
-            return local_module.Driver
-        except AttributeError:
-            return None
-
 
     def load_inrecords(self):
         try:
@@ -105,6 +152,16 @@ class FSManager:
             outrecords.update(load(s))
         return outrecords
 
+    def list_outrecords_paths(self):
+        yield from self._list_outrecords_paths(self.root)
+
+    @staticmethod
+    @lru_cache()
+    def _list_outrecords_paths(root):
+        return [ path
+            for path in root/'.jeolm'
+            if path.name == 'out.yaml' or path.name.endswith('.out.yaml')
+        ]
 
     def load_metarecords_cache(self):
         try:
@@ -129,7 +186,7 @@ class FSManager:
         cache_path = self.completion_cache_path
         if not cache_path.exists():
             return None
-        if cache_path.st_mtime_ns <= self.jeolm_records_mtime:
+        if cache_path.st_mtime_ns <= self.records_mtime:
             # Do not load if the cache is outdated
             return None
         from pathlib import PurePosixPath as PurePath
@@ -147,12 +204,11 @@ class FSManager:
         new_path.rename(self.completion_cache_path)
 
     @property
-    def jeolm_records_mtime(self):
+    def records_mtime(self):
         mtimes = [self.inrecords_path.st_mtime_ns]
         mtimes.extend(outrecords_path.st_mtime_ns
             for outrecords_path in self.list_outrecords_paths() )
         return max(mtimes)
-
 
     def ensure_build_dir(self):
         if self.build_dir.exists():
@@ -171,42 +227,4 @@ class FSManager:
         local_py = self.root/'.jeolm/local.py'
         if local_py.exists():
             add(str(local_py), '.jeolm/local.py')
-
-
-    @classmethod
-    def check_root(cls, root):
-        if not isinstance(root, Path):
-            raise TypeError("Expected pathlib.Path instance, got {!r}"
-                .format(type(Path)) )
-        jeolm_dir = root/'.jeolm'
-        if not jeolm_dir.exists() or not jeolm_dir.is_dir():
-            return False
-        return True
-
-    @classmethod
-    def report_failed_check(cls):
-        logger.critical(
-            '<BOLD><RED>Missing directory and file layout '
-            'required for jeolm.<RESET>' )
-        logger.warning("<BOLD>Required layout: '.jeolm'<RESET>")
-
-    @classmethod
-    def iter_broken_links(cls, root, recursive=False):
-        for path in root:
-            if not path.exists():
-                yield path
-                continue
-            if recursive and path.is_dir():
-                yield from cls.iter_broken_links(path, recursive=recursive)
-
-    def list_outrecords_paths(self):
-        yield from self._list_outrecords_paths(self.root)
-
-    @staticmethod
-    @lru_cache()
-    def _list_outrecords_paths(root):
-        return [ path
-            for path in root/'.jeolm'
-            if path.name == 'out.yaml' or path.name.endswith('.out.yaml')
-        ]
 

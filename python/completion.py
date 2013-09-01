@@ -69,15 +69,7 @@ class Completer:
         if self.target_list is not None:
             return
 
-        self.fsmanager.load_local_module()
-        inrecords = self.fsmanager.load_inrecords()
-        outrecords = self.fsmanager.load_outrecords()
-        Driver = self.fsmanager.get_local_driver()
-        if Driver is None:
-            from jeolm.driver import Driver
-
-        driver = Driver(inrecords, outrecords)
-        self.target_list = driver.list_targets()
+        self.target_list = self.fsmanager.get_driver().list_targets()
         self.fsmanager.dump_completion_cache(self.target_list)
 
     def complete(self, uncompleted_arg):

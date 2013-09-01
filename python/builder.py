@@ -32,11 +32,9 @@ class Builder:
         self.shipout_pdf_nodes = ODict()
         self.shipout_node = Node(name='shipout')
 
-        self.load_meta_files()
-        Driver = self.fsmanager.get_local_driver()
-        if Driver is None:
-            from jeolm.driver import Driver
-        self.driver = Driver(self.inrecords, self.outrecords)
+        self.driver = self.fsmanager.get_driver()
+        self.metarecords_cache = self.fsmanager.load_metarecords_cache()
+        self.records_mtime = self.fsmanager.records_mtime
 
         self.metarecords, self.figrecords = \
             self.driver.produce_metarecords(targets)
@@ -53,13 +51,6 @@ class Builder:
 
     def update(self):
         self.shipout_node.update()
-
-    def load_meta_files(self):
-        self.inrecords = self.fsmanager.load_inrecords()
-        self.outrecords = self.fsmanager.load_outrecords()
-        self.metarecords_cache = self.fsmanager.load_metarecords_cache()
-
-        self.jeolm_records_mtime = self.fsmanager.jeolm_records_mtime
 
     def dump_meta_cache(self):
         self.fsmanager.dump_metarecords_cache(self.metarecords_cache)
@@ -85,8 +76,8 @@ class Builder:
 
         if modified:
             cache[metaname] = {
-                'hash' : metarecord_hash, 'mtime' : self.jeolm_records_mtime }
-            metanode.mtime = self.jeolm_records_mtime
+                'hash' : metarecord_hash, 'mtime' : self.records_mtime }
+            metanode.mtime = self.records_mtime
             metanode.modified = True
             self.cache_updated = True
         else:
@@ -253,6 +244,8 @@ class Builder:
             return {sterilize(k) : sterilize(v) for k, v in obj.items()}
         elif isinstance(obj, list):
             return [sterilize(i) for i in obj]
+#        elif isinstance(obj, set):
+#            return {sterilize(i):None for i in obj}
         elif obj is None or isinstance(obj, (str, int, float)):
             return obj
         elif isinstance(obj, (PurePath, date)):
