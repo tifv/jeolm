@@ -10,8 +10,8 @@ from jeolm.utils import pure_join
 import logging
 logger = logging.getLogger(__name__)
 
-def review(inpaths, *, fsmanager, viewpoint):
-    inpaths = resolve_inpaths(inpaths,
+def review(paths, *, fsmanager, viewpoint):
+    inpaths = resolve_inpaths(paths,
         source_dir=fsmanager.source_dir, viewpoint=viewpoint )
 
     reviewer = InrecordReviewer(fsmanager)
@@ -20,9 +20,9 @@ def review(inpaths, *, fsmanager, viewpoint):
         reviewer.review(inpath)
     reviewer.dump_inrecords()
 
-def print_inpaths(inroots, suffix, *, fsmanager, viewpoint):
+def print_inpaths(roots, suffix, *, fsmanager, viewpoint):
     source_dir = fsmanager.source_dir
-    inroots = resolve_inpaths(inroots,
+    inroots = resolve_inpaths(roots,
         source_dir=source_dir, viewpoint=viewpoint )
 
     reviewer = InrecordReviewer(fsmanager)
@@ -32,12 +32,11 @@ def print_inpaths(inroots, suffix, *, fsmanager, viewpoint):
             print(str((source_dir/inpath).relative(viewpoint)))
 
 def resolve_inpaths(inpaths, *, source_dir, viewpoint):
-    inpaths = [PurePath(inpath) for inpath in inpaths]
-    if any('..' in inpath.parts for inpath in inpaths):
-        raise ValueError("'..' parts are not allowed", inpaths)
-
     inpaths = [
-        PurePath(viewpoint, inpath).relative(source_dir)
+        Path(viewpoint, inpath).resolve()
+        for inpath in inpaths ]
+    inpaths = [
+        PurePath(inpath).relative(source_dir)
         for inpath in inpaths ]
     if not inpaths:
         inpaths = [PurePath('')]
@@ -58,19 +57,22 @@ class InrecordReviewer:
         else:
             self.del_inrecord(inpath)
 
-    def iter_inpaths(self, inroot, *, suffix, inrecord=None):
+    def iter_inpaths(self, inroot, *, suffix):
+        inrecord = self.get_inrecord(inroot)
         if inrecord is None:
-            inrecord = self.get_inrecord(inroot)
-            if inrecord is None:
-                return;
-        assert isinstance(inrecord, dict), (inroot, inrecord)
+            return
+        yield from self._iter_inpaths(inroot, inrecord, suffix=suffix)
+
+    def _iter_inpaths(self, inpath, inrecord, *, suffix):
+        assert isinstance(inpath, PurePath), inpath
+        assert isinstance(inrecord, dict), (inpath, inrecord)
+        if inpath.suffix == suffix:
+            yield inpath
+        if inpath.suffix != '':
+            return
         for subname, subrecord in inrecord.items():
-            inpath = PurePath(inroot, subname)
-            if inpath.suffix == suffix:
-                yield inpath
-            if inpath.suffix == '':
-                yield from self.iter_inpaths(inpath,
-                    suffix=suffix, inrecord=subrecord )
+            yield from self._iter_inpaths(inpath/subname, subrecord,
+                suffix=suffix, )
 
     def load_inrecords(self):
         inrecords = self.fsmanager.load_inrecords()

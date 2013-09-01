@@ -153,12 +153,13 @@ class Driver(metaclass=Substitutioner):
             raise ValueError("Metaname '{}' duplicated.".format(metaname))
         self.metarecords[metaname] = metarecord
 
-        inpath_set = metarecord['inpath set']
+        inpath_list = metarecord['inpath list']
         metarecord['aliases'] = {
-            inpath : self.sluggify_inpath(inpath) + '.in.tex'
-            for inpath in inpath_set }
+            inpath : self.sluggify_path(inpath, suffix='.in.tex')
+            for inpath in inpath_list }
+        inpath_list.extend(metarecord['style'])
         metarecord['aliases'].update({
-            inpath : 'local-' + self.sluggify_inpath(inpath) + '.sty'
+            inpath : self.sluggify_path('local', inpath, suffix='.sty')
             for inpath in metarecord['style'] })
         metarecord['sources'] = {
             alias : inpath
@@ -166,15 +167,15 @@ class Driver(metaclass=Substitutioner):
         if len(metarecord['sources']) < len(metarecord['aliases']):
             raise ValueError({
                 metarecord['aliases'][inpath]
-                for inpath in
-                    inpath_set.difference(metarecord['sources'].values())
+                for inpath
+                in set(inpath_list).difference(metarecord['sources'].values())
             })
         metarecord['inrecords'] = {
-            inpath : self.inrecords[inpath] for inpath in inpath_set }
+            inpath : self.inrecords[inpath] for inpath in inpath_list }
 
         figname_maps = metarecord['figname maps'] = {
             inpath : self.produce_figname_map(inpath)
-            for inpath in inpath_set }
+            for inpath in inpath_list }
 
         metarecord['fignames'] = sorted(
             figname
@@ -265,15 +266,15 @@ class Driver(metaclass=Substitutioner):
         """
         Return protorecord.
         """
-        inpath_set = set()
+        inpath_list = list()
         date_set = set()
         resolved_path, record = self.outrecords.get_item(target)
 
         for method in self.list_protorecord_methods():
             try:
                 protorecord = method(resolved_path, record,
-                    inpath_set=inpath_set, date_set=date_set )
-                # Call is not over! We must fix 'body', 'date' and 'inpath set'
+                    inpath_list=inpath_list, date_set=date_set )
+                # Call is not over! We must fix 'body', 'date' and 'inpath list'
                 break;
             except RecordNotFoundError as error:
                 if error.args != (target,):
@@ -284,7 +285,7 @@ class Driver(metaclass=Substitutioner):
         if not isinstance(protorecord['body'], list):
             protorecord['body'] = list(protorecord['body'])
         protorecord.setdefault('date', self.min_date(date_set))
-        protorecord['inpath set'] = inpath_set
+        protorecord['inpath list'] = inpath_list
 
         style = record['$style']
         for inpath in style:
@@ -296,7 +297,7 @@ class Driver(metaclass=Substitutioner):
         return protorecord
 
     def produce_rigid_protorecord(self, target, record,
-        *, inpath_set, date_set
+        *, inpath_list, date_set
     ):
         """Return protorecord with 'body'."""
         if '$rigid' not in record:
@@ -308,11 +309,11 @@ class Driver(metaclass=Substitutioner):
         rigid = record['$rigid']
 
         protorecord['body'] = list(self.generate_rigid_body(
-            target, rigid, inpath_set=inpath_set, date_set=date_set ))
+            target, rigid, inpath_list=inpath_list, date_set=date_set ))
         return protorecord
 
     def produce_fluid_protorecord(self, target, record,
-        *, inpath_set, date_set
+        *, inpath_list, date_set
     ):
         """Return protorecord with 'body'."""
         protorecord = dict()
@@ -322,10 +323,10 @@ class Driver(metaclass=Substitutioner):
         fluid = record.get('$fluid')
 
         protorecord['body'] = list(self.generate_fluid_body(
-            target, fluid, inpath_set=inpath_set, date_set=date_set ))
+            target, fluid, inpath_list=inpath_list, date_set=date_set ))
         return protorecord
 
-    def generate_rigid_body(self, target, rigid, *, inpath_set, date_set):
+    def generate_rigid_body(self, target, rigid, *, inpath_list, date_set):
         for page in rigid:
             yield self.substitute_clearpage()
             if not page: # empty page
@@ -344,12 +345,12 @@ class Driver(metaclass=Substitutioner):
                     subpath.with_suffix('.tex') )
                 if inrecord is None:
                     raise RecordNotFoundError(inpath, target);
-                inpath_set.add(inpath)
+                inpath_list.append(inpath)
                 date_set.add(inrecord.get('$date'))
                 yield {'inpath' : inpath}
 
     def generate_fluid_body(self, target, fluid,
-        *, inpath_set, date_set
+        *, inpath_list, date_set
     ):
         if fluid is None:
             # No outrecord fluid.
@@ -363,7 +364,7 @@ class Driver(metaclass=Substitutioner):
             if inrecord is None:
                 # Fail
                 raise RecordNotFoundError(target);
-            inpath_set.add(inpath)
+            inpath_list.append(inpath)
             date_set.add(inrecord.get('$date'))
             yield {'inpath' : inpath}
             return;
@@ -378,7 +379,7 @@ class Driver(metaclass=Substitutioner):
                 pure_join(target, item) )
             subprotorecord = self.produce_fluid_protorecord(
                 subpath, subrecord,
-                inpath_set=inpath_set, date_set=date_set )
+                inpath_list=inpath_list, date_set=date_set )
             yield from subprotorecord['body']
 
     def generate_autofluid(self, target):
@@ -788,7 +789,8 @@ class Driver(metaclass=Substitutioner):
             return None
 
     @staticmethod
-    def sluggify_inpath(inpath):
-        assert len(inpath.suffixes) == 1, inpath
-        return '-'.join(inpath.with_suffix('').parts)
+    def sluggify_path(*parts, suffix=''):
+        path = PurePath(*parts)
+        assert not path.is_absolute() and len(path.suffixes) == 1, path
+        return '-'.join(path.with_suffix('').parts) + suffix
 

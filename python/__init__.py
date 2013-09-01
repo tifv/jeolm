@@ -22,6 +22,9 @@ def get_parser(prog='jeolm'):
         help='list all TeX infiles in given inrecords '
             '(defaults to all infiles); file paths are relative to cwd',
         nargs='*', metavar='INROOT', )
+    command.add_argument('--list-target-tex',
+        help='list all TeX infiles for given targets',
+        nargs='+', metavar='TARGETS', )
     command.add_argument('--list-asy',
         help='list all Asymptote infiles in given inrecords '
             '(defaults to all infiles); file paths are relative to cwd',
@@ -58,6 +61,17 @@ def main():
             fsmanager=fsmanager )
     if args.list_tex is not None:
         return inrecords.print_inpaths(args.list_tex, suffix='.tex',
+            viewpoint=Path.cwd(), fsmanager=fsmanager );
+    if args.list_target_tex is not None:
+        targets = args.list_target_tex
+        driver = fsmanager.get_driver()
+        metarecords, figrcords = driver.produce_metarecords(targets)
+        return inrecords.print_inpaths(
+            [
+                fsmanager.source_dir/inpath
+                for metarecord in metarecords.values()
+                for inpath in metarecord['inpath list'] ],
+            suffix='.tex',
             viewpoint=Path.cwd(), fsmanager=fsmanager );
     if args.list_asy is not None:
         return inrecords.print_inpaths(args.list_asy, suffix='.asy',

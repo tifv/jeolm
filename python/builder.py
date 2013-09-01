@@ -253,8 +253,6 @@ class Builder:
             return {sterilize(k) : sterilize(v) for k, v in obj.items()}
         elif isinstance(obj, list):
             return [sterilize(i) for i in obj]
-        elif isinstance(obj, set):
-            return {sterilize(i):None for i in obj}
         elif obj is None or isinstance(obj, (str, int, float)):
             return obj
         elif isinstance(obj, (PurePath, date)):
