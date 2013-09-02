@@ -9,13 +9,12 @@ long_options = (
     '--review', '--root', '--verbose',
     '--clean', '--archive',
     '--list-tex', '--list-asy',
-    '--list-target-tex',
 )
 short_options = {
     '-r' : '--review', '-R' : '--root', '-v' : '--verbose',
     '-c' : '--clean', '-a' : '--archive'
 }
-pathlist_accepting_options = ('-r', '--review', '--list-tex', '--list-asy')
+pathlist_accepting_options = ('-r', '--review')
 
 def main():
     import sys

@@ -123,18 +123,29 @@ class Driver(metaclass=Substitutioner):
             for metaname in metanames )
 
         # Extract requested figrecords
-        fignames = { figname
+        figrecords = OrderedDict(
+            (figname, self.figrecords[figname])
             for metarecord in metarecords.values()
-            for figname in metarecord['fignames'] }
-        figrecords = {
-            figname : self.figrecords[figname]
-            for figname in fignames }
+            for figname in metarecord['fignames'] )
 
         return metarecords, figrecords
 
     def list_targets(self):
         yield from self.inrecords.list_targets()
         yield from self.outrecords.list_targets()
+
+    def list_inpaths(self, targets, *, source_types=('tex', )):
+        metarecords, figrecords = self.produce_metarecords(targets)
+        inpath_list = []
+        if 'tex' in source_types:
+            inpath_list.extend( inpath
+                for metarecord in metarecords.values()
+                for inpath in metarecord['inpath list']
+                if inpath.suffix == '.tex' )
+        if 'asy' in source_types:
+            inpath_list.extend( figrecord['source']
+                for figrecord in figrecords.values() )
+        return inpath_list
 
     def form_metarecord(self, target):
         """

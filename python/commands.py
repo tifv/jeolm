@@ -35,6 +35,14 @@ def _unbuild_recursive(builddir, *, suffixes):
             continue;
         x.unlink()
 
+def print_source_list(targets, *, fsmanager, viewpoint, **kwargs):
+    driver = fsmanager.get_driver()
+    inpath_list = driver.list_inpaths(targets, **kwargs)
+    source_dir = fsmanager.source_dir
+    for inpath in inpath_list:
+        print(str(
+            (source_dir/inpath).relative(viewpoint) ))
+
 def archive(*, fsmanager=None,
     target='archive', archive_name='archive.tar.xz', compression='xz'
 ):

@@ -19,16 +19,11 @@ def get_parser(prog='jeolm'):
         help='review given inrecords (defaults to all inrecords)',
         nargs='*', metavar='INROOT', )
     command.add_argument('--list-tex',
-        help='list all TeX infiles in given inrecords '
-            '(defaults to all infiles); file paths are relative to cwd',
-        nargs='*', metavar='INROOT', )
-    command.add_argument('--list-target-tex',
         help='list all TeX infiles for given targets',
-        nargs='+', metavar='TARGETS', )
+        nargs='*', metavar='TARGET', )
     command.add_argument('--list-asy',
-        help='list all Asymptote infiles in given inrecords '
-            '(defaults to all infiles); file paths are relative to cwd',
-        nargs='*', metavar='INROOT', )
+        help='list all Asymptote infiles for given targets',
+        nargs='*', metavar='TARGET', )
     command.add_argument('-c', '--clean',
         help='clean toplevel links to build/**.pdf; clean **.dvi in build/',
         action='count', )
@@ -60,22 +55,12 @@ def main():
         return inrecords.review(args.review, viewpoint=Path.cwd(),
             fsmanager=fsmanager )
     if args.list_tex is not None:
-        return inrecords.print_inpaths(args.list_tex, suffix='.tex',
-            viewpoint=Path.cwd(), fsmanager=fsmanager );
-    if args.list_target_tex is not None:
-        targets = args.list_target_tex
-        driver = fsmanager.get_driver()
-        metarecords, figrcords = driver.produce_metarecords(targets)
-        return inrecords.print_inpaths(
-            [
-                fsmanager.source_dir/inpath
-                for metarecord in metarecords.values()
-                for inpath in metarecord['inpath list'] ],
-            suffix='.tex',
-            viewpoint=Path.cwd(), fsmanager=fsmanager );
+        return commands.print_source_list(
+            args.list_tex, fsmanager=fsmanager, viewpoint=Path.cwd(), )
     if args.list_asy is not None:
-        return inrecords.print_inpaths(args.list_asy, suffix='.asy',
-            viewpoint=Path.cwd(), fsmanager=fsmanager );
+        return commands.print_source_list(
+            args.list_asy, fsmanager=fsmanager, viewpoint=Path.cwd(),
+            source_types=('asy',), )
     if args.clean is not None:
         assert args.clean >= 1
         if args.clean == 1:
