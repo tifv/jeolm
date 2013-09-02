@@ -43,13 +43,9 @@ def print_source_list(targets, *, fsmanager, viewpoint, **kwargs):
         print(str(
             (source_dir/inpath).relative(viewpoint) ))
 
-def archive(*, fsmanager=None,
+def archive(*, fsmanager,
     target='archive', archive_name='archive.tar.xz', compression='xz'
 ):
-    if fsmanager is None:
-        import jeolm.filesystem
-        fsmanager = jeolm.filesystem.FSManager()
-
     import jeolm.builder
     builder = jeolm.builder.Builder([target], fsmanager=fsmanager)
     builder.update()

@@ -17,7 +17,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 class Builder:
-    shipout_format = 'pdf'
+    shipout_format = ('pdf', )
 
     def __init__(self, targets, *, fsmanager):
         self.fsmanager = fsmanager
