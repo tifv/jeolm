@@ -46,7 +46,6 @@ class InrecordReviewer:
         else:
             self.del_inrecord(inpath)
 
-
     def load_inrecords(self):
         inrecords = self.fsmanager.load_inrecords()
         if inrecords is None:
@@ -116,12 +115,16 @@ class InrecordReviewer:
         return
 
     def review_inrecord(self, inpath, inrecord):
+        logger.debug('{}: inrecord reviewed'.format(inpath))
         path = self.source_dir/inpath
         if not path.exists():
-            if inrecord is not None:
-                logger.info('<BOLD><RED>{}<NOCOLOUR>: inrecord removed<RESET>'
-                    .format(inpath) )
-            return None;
+            if inrecord is None:
+                return None
+            logger.info('<BOLD><RED>{}<NOCOLOUR>: inrecord removed<RESET>'
+                .format(inpath) )
+            return None
+        if len(inpath.suffixes) > 1:
+            raise ValueError(inpath)
         if inpath.suffix != '':
             return self.review_file_inrecord(inpath, inrecord)
         if inrecord is None:
@@ -130,10 +133,12 @@ class InrecordReviewer:
                 .format(inpath) )
 
         subnames = set(inrecord.keys())
-        subnames.union(
+        subnames.update(
             name for name in os.listdir(str(path))
             if not name.startswith('.') )
-        for subname in sorted(subnames):
+        subnames = sorted(subnames)
+        logger.debug('{} listing: {}'.format(inpath, subnames))
+        for subname in subnames:
             assert isinstance(subname, str), subname
             subpath = inpath/subname
             subsuffix = subpath.suffix
@@ -183,7 +188,7 @@ class InrecordReviewer:
                 .format(inpath) )
         if inpath.suffix == '.tex':
             return self.review_tex_inrecord(inpath, inrecord)
-        if inpath.suffix == '.sty':
+        elif inpath.suffix == '.sty':
             return self.review_sty_inrecord(inpath, inrecord)
         elif inpath.suffix == '.asy':
             return self.review_asy_inrecord(inpath, inrecord)
@@ -202,7 +207,7 @@ class InrecordReviewer:
         self.review_tex_date(inpath, inrecord, s)
         self.review_tex_figures(inpath, inrecord, s)
 
-        return inrecord;
+        return inrecord
 
     def review_tex_caption(self, inpath, inrecord, s):
         if self.nocaption_pattern.search(s) is not None:
@@ -221,13 +226,13 @@ class InrecordReviewer:
             return
         caption = caption_match.group('caption')
         if '$caption' not in inrecord:
-            logger.info("<BOLD><MAGENTA>{}<RESET>: "
-                "added caption '<BOLD><GREEN>{}<RESET>'"
+            logger.info("<BOLD><MAGENTA>{}<NOCOLOUR>: "
+                "added caption '<GREEN>{}<NOCOLOUR>'<RESET>"
                 .format(inpath, caption) )
         elif inrecord['$caption'] != caption:
-            logger.info("<BOLD><MAGENTA>{}<RESET>: "
-                "caption changed from '<BOLD><RED>{}<RESET>' "
-                "to '<BOLD><GREEN>{}<RESET>'"
+            logger.info("<BOLD><MAGENTA>{}<NOCOLOUR>: "
+                "caption changed from '<RED>{}<NOCOLOUR>' "
+                "to '<GREEN>{}<NOCOLOUR>'<RESET>"
                 .format(inpath, inrecord['$caption'], caption) )
         inrecord['$caption'] = caption
 
@@ -257,13 +262,13 @@ class InrecordReviewer:
             key : int(value)
             for key, value in date_match.groupdict().items() })
         if '$date' not in inrecord:
-            logger.info("<BOLD><MAGENTA>{}<RESET>: "
-                "added date '<BOLD><GREEN>{}<RESET>'"
+            logger.info("<BOLD><MAGENTA>{}<NOCOLOUR>: "
+                "added date '<GREEN>{}<NOCOLOUR>'<RESET>"
                 .format(inpath, date) )
         elif inrecord['$date'] != date:
-            logger.info("<BOLD><MAGENTA>{}<RESET>: "
-                "date changed from '<BOLD><RED>{}<RESET>' "
-                "to '<BOLD><GREEN>{}<RESET>'"
+            logger.info("<BOLD><MAGENTA>{}<NOCOLOUR>: "
+                "date changed from '<RED>{}<NOCOLOUR>' "
+                "to '<GREEN>{}<NOCOLOUR>'<RESET>"
                 .format(inpath, inrecord['$date'], date) )
         inrecord['$date'] = date
 
@@ -294,12 +299,12 @@ class InrecordReviewer:
             if figure not in old_figures
         ]
         for figure in set(old_figures).difference(new_figures):
-            logger.info("<BOLD><MAGENTA>{}<RESET>: "
-                "removed figure '<BOLD><RED>{}<RESET>'"
+            logger.info("<BOLD><MAGENTA>{}<NOCOLOUR>: "
+                "removed figure '<RED>{}<NOCOLOUR>'<RESET>"
                 .format(inpath, figure) )
         for figure in set(new_figures).difference(old_figures):
-            logger.info("<BOLD><MAGENTA>{}<RESET>: "
-                "added figure '<BOLD><GREEN>{}<RESET>'"
+            logger.info("<BOLD><MAGENTA>{}<NOCOLOUR>: "
+                "added figure '<GREEN>{}<NOCOLOUR>'<RESET>"
                 .format(inpath, figure))
 
         parent = inpath.parent()
@@ -340,18 +345,18 @@ class InrecordReviewer:
             if used_name not in old_used
         ]
         for used_name in set(old_used).difference(new_used):
-            logger.info("<BOLD><MAGENTA>{}<RESET>: "
-                "removed used name '{}' for '<BOLD><RED>{}<RESET>'"
+            logger.info("<BOLD><MAGENTA>{}<NOCOLOUR>: "
+                "removed used name '{}' for '<RED>{}<NOCOLOUR>'<RESET>"
                 .format(inpath, used_name, old_used[used_name]) )
         for used_name in set(new_used).difference(old_used):
-            logger.info("<BOLD><MAGENTA>{}<RESET>: "
-                "added used name '{}' for '<BOLD><GREEN>{}<RESET>'"
+            logger.info("<BOLD><MAGENTA>{}<NOCOLOUR>: "
+                "added used name '{}' for '<GREEN>{}<NOCOLOUR>'<RESET>"
                 .format(inpath, used_name, new_used[used_name]) )
         for used_name in set(new_used).intersection(old_used):
             if new_used[used_name] != old_used[used_name]:
-                logger.info("<BOLD><MAGENTA>{}<RESET>: "
-                    "used name '{}' changed from '<BOLD><RED>{}<RESET>' "
-                    "to '<BOLD><GREEN>{}<RESET>'"
+                logger.info("<BOLD><MAGENTA>{}<NOCOLOUR>: "
+                    "used name '{}' changed from '<RED>{}<NOCOLOUR>' "
+                    "to '<GREEN>{}<NOCOLOUR>'<RESET>"
                     .format(
                         inpath, used_name,
                         old_used[used_name], new_used[used_name]
