@@ -350,7 +350,6 @@ class Driver(metaclass=Substitutioner):
                 if not isinstance(item, str):
                     raise TypeError(target, item)
 
-                yield self.substitute_jeolmheader()
                 subpath = self.outrecords.resolve(pure_join(target, item))
                 inpath, inrecord = self.inrecords.get_item(
                     subpath.with_suffix('.tex') )
@@ -358,7 +357,7 @@ class Driver(metaclass=Substitutioner):
                     raise RecordNotFoundError(inpath, target);
                 inpath_list.append(inpath)
                 date_set.add(inrecord.get('$date'))
-                yield {'inpath' : inpath}
+                yield {'inpath' : inpath, 'rigid' : True}
 
     def generate_fluid_body(self, target, fluid,
         *, inpath_list, date_set
@@ -711,13 +710,19 @@ class Driver(metaclass=Substitutioner):
             for item in metabody
         )
 
-    def constitute_input(self, inpath, alias, inrecord, figname_map):
+    def constitute_input(self, inpath, *,
+        alias, inrecord, figname_map, rigid=False
+    ):
         caption = inrecord.get('$caption', '(no caption)')
         body = self.substitute_input(caption=caption, filename=alias)
         date = inrecord.get('$date')
+        if rigid:
+            body = self.substitute_jeolmheader() + '\n' + body
         if date is not None:
-            body = body + '\n' + self.substitute_datestamp(
-                date=self.constitute_date(date) )
+            date = self.constitute_date(date)
+            body = self.substitute_datedef(date=date) + '\n' + body
+            if not rigid:
+                body = body + '\n' + self.substitute_datestamp()
         if figname_map:
             body = self.constitute_figname_map(figname_map) + '\n' + body
         return body
@@ -727,9 +732,11 @@ class Driver(metaclass=Substitutioner):
          '\n    }'
         r'\resetproblem' '\n'
         r'\input{$filename}' )
+    jeolmheader_template = r'\jeolmheader'
+    datedef_template = r'\def\jeolmdate{$date}'
     datestamp_template = (
         r'    \begin{flushright}\small' '\n'
-        r'    $date' '\n'
+        r'    \jeolmdate' '\n'
         r'    \end{flushright}'
     )
 
@@ -743,7 +750,7 @@ class Driver(metaclass=Substitutioner):
     @classmethod
     def constitute_date(cls, date):
         if not isinstance(date, datetime.date):
-            return str(date);
+            return str(date)
         return cls.substitute_date(
             year=date.year,
             month=cls.ru_monthes[date.month-1],
@@ -761,7 +768,6 @@ class Driver(metaclass=Substitutioner):
             raise ValueError(special)
         return str(next(iter(special.values())))
 
-    jeolmheader_template = r'\jeolmheader'
     clearpage_template = r'\clearpage'
     phantom_template = r'\phantom{Ы}'
 

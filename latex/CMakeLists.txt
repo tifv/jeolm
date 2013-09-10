@@ -28,7 +28,6 @@ endmacro(add_jeolm_sty)
 
 add_jeolm_sty(jeolm)
 add_jeolm_sty(jeolm-olymp)
-add_jeolm_sty(jeolm-tourn)
 
 add_custom_target(sty ALL DEPENDS ${JEOLM_STY})
 add_custom_target(pdf ALL DEPENDS ${JEOLM_PDF})

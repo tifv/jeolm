@@ -310,19 +310,36 @@ This work has the LPPL maintenance status `author-maintained'.
 %
 % \subsection{Headers}
 %
+% \begin{macro}{\jeolmheaderhrule}
+%    \begin{macrocode}
+\newlength{\jeolmheader@height}%
+\newcommand\jeolmheaderhrule[1]{%
+\settoheight{\jeolmheader@height}{\hbox{ace}}%
+\smash{\parbox{\textwidth}{%
+\hrulefill\quad
+\raisebox{-0.5\jeolmheader@height}{#1}%
+\quad\hrulefill}}
+}
+%    \end{macrocode}
+% \end{macro}
+%
 % \begin{macro}{\jeolmheaderset}
 % \begin{macro}{\jeolmheader}
 % To use |\jeolmheader|, macro |\jeolmheaderset|\marg{institution}\marg{group}
 % should be called exactly once in preambule.
 %    \begin{macrocode}
-\newcommand\jeolmheadertemplate[2]{%
-\vspace{1.5em}%
-{\small\sffamily
-\centerline{\bfseries #1}\centerline{#2}%
-\vspace{0.5ex}\hrule\par\vspace{0.5ex}}%
-\vspace{-1em}}
-\newcommand\jeolmheaderset[2]{%
-\newcommand\jeolmheader{\jeolmheadertemplate{#1}{#2}}}
+\newcommand\jeolmheadertemplate[3]{%
+\vspace{4ex}%
+\begingroup\small\sffamily
+\smash{\parbox{\textwidth}{\hfill\bfseries#1\hfill\strut}}%
+\vspace{0.5ex}%
+\smash{\parbox{\textwidth}{\hfill#2\rlap{\qquad\itshape#3}\hfill\strut}}%
+\vspace{0.5ex}%
+\jeolmheaderhrule{\jeolmdate}
+\par\endgroup
+\vspace{-4ex}}
+\newcommand\jeolmheaderset[3]{%
+\newcommand\jeolmheader{\jeolmheadertemplate{#1}{#2}{#3}}}
 %    \end{macrocode}
 % \end{macro}
 % \end{macro}
