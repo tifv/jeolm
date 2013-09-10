@@ -105,6 +105,34 @@ class FSManager:
         except AttributeError:
             return None
 
+    def get_reviewer(self):
+        """
+        Return inrecord reviewer.
+        """
+        InrecordReviewer = self.get_reviewer_class()
+        return InrecordReviewer(fsmanager=self)
+
+    def get_reviewer_class(self):
+        """
+        Return appropriate InrecordReviewer class.
+        """
+        InrecordReviewer = self.get_local_reviewer_class()
+        if InrecordReviewer is None:
+            from jeolm.inrecords import InrecordReviewer
+        return InrecordReviewer
+
+    def get_local_reviewer_class(self):
+        """
+        Return InrecordReviewer class from local_module, or None.
+        """
+        local_module = self.load_local_module()
+        if local_module is None:
+            return None
+        try:
+            return local_module.InrecordReviewer
+        except AttributeError:
+            return None
+
     def load_local_module(self, *, module_name='jeolm.local'):
         try:
             return self.local_module

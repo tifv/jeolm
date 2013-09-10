@@ -14,7 +14,7 @@ def review(paths, *, fsmanager, viewpoint):
     inpaths = resolve_inpaths(paths,
         source_dir=fsmanager.source_dir, viewpoint=viewpoint )
 
-    reviewer = InrecordReviewer(fsmanager)
+    reviewer = fsmanager.get_reviewer()
     reviewer.load_inrecords()
     for inpath in inpaths:
         reviewer.review(inpath)
@@ -146,7 +146,7 @@ class InrecordReviewer:
                 logger.warning('<BOLD><MAGENTA>{}<NOCOLOUR>: suffix of '
                     '<YELLOW>{}<NOCOLOUR> unrecognized<RESET>'
                     .format(inpath, subname) )
-                continue;
+                continue
             subrecord = inrecord.get(subname, None)
             subrecord = self.review_inrecord(subpath, subrecord)
             if subrecord is None:
@@ -154,7 +154,7 @@ class InrecordReviewer:
             else:
                 inrecord[subname] = subrecord
         self.report_screened_names(inpath, inrecord)
-        return inrecord;
+        return inrecord
 
     def report_screened_names(self, inpath, inrecord):
         """
@@ -203,17 +203,20 @@ class InrecordReviewer:
         with (self.source_dir/inpath).open('r') as f:
             s = f.read()
 
+        self.review_tex_content(inpath, inrecord, s)
+
+        return inrecord
+
+    def review_tex_content(self, inpath, inrecord, s):
         self.review_tex_caption(inpath, inrecord, s)
         self.review_tex_date(inpath, inrecord, s)
         self.review_tex_figures(inpath, inrecord, s)
-
-        return inrecord
 
     def review_tex_caption(self, inpath, inrecord, s):
         if self.nocaption_pattern.search(s) is not None:
             logger.debug("{}: caption review skipped due to explicit "
                 "'no caption' in the file".format(inpath) )
-            return;
+            return
         caption_match = self.caption_pattern.search(s)
         if caption_match is None:
             if '$caption' in inrecord:
@@ -231,9 +234,9 @@ class InrecordReviewer:
                 .format(inpath, caption) )
         elif inrecord['$caption'] != caption:
             logger.info("<BOLD><MAGENTA>{}<NOCOLOUR>: "
-                "caption changed from '<RED>{}<NOCOLOUR>' "
-                "to '<GREEN>{}<NOCOLOUR>'<RESET>"
-                .format(inpath, inrecord['$caption'], caption) )
+                "caption changed from '<RED>{old}<NOCOLOUR>' "
+                "to '<GREEN>{new}<NOCOLOUR>'<RESET>"
+                .format(inpath, old=inrecord['$caption'], new=caption) )
         inrecord['$caption'] = caption
 
     nocaption_pattern = re.compile(
@@ -241,13 +244,13 @@ class InrecordReviewer:
     caption_pattern = re.compile(r'(?m)^'
         r'%+\n'
         r'%+ +(?! )(?P<caption>[^%]+)(?<! ) *(?:%.*)?\n'
-        r'%+$')
+        r'%+\n')
 
     def review_tex_date(self, inpath, inrecord, s):
         if self.nodate_pattern.search(s) is not None:
             logger.debug("{}: date review skipped due to explicit "
                 "'no date' in the file".format(inpath) )
-            return;
+            return
         date_match = self.date_pattern.search(s)
         if date_match is None:
             if '$date' in inrecord:
@@ -257,7 +260,7 @@ class InrecordReviewer:
                     "preserved the date '<YELLOW>{}<NOCOLOUR>' "
                     "holded in the record<RESET>"
                     .format(inpath, inrecord['$date']) )
-            return;
+            return
         date = datetime.date(**{
             key : int(value)
             for key, value in date_match.groupdict().items() })
@@ -281,7 +284,7 @@ class InrecordReviewer:
         if self.nofigures_pattern.search(s) is not None:
             logger.debug("{}: figures review skipped due to explicit "
                 "'no figures' in the file".format(inpath) )
-            return;
+            return
         if self.includegraphics_pattern.search(s) is not None:
             logger.warning("<BOLD><MAGENTA>{}<NOCOLOUR>: "
                 "<YELLOW>\\includegraphics<NOCOLOUR> command found<RESET>"
