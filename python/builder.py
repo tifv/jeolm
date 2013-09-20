@@ -152,7 +152,7 @@ class Builder:
 
         tex_node = self.autosource_nodes[metaname] = FileNode(
             name='doc:{}:source:main'.format(metaname),
-            path=(build_dir/metaname).with_suffix('.tex'),
+            path=build_dir/'main.tex',
             needs=(metanode, build_dir_node) )
         tex_node_rule_repr = (
             '<GREEN>Write generated source to {node.relative_path}<NOCOLOUR>'
@@ -275,16 +275,17 @@ class LaTeXNode(ProductFileNode):
 
         # Ensure that both latex source and target are in the same directory
         # and this directory is cwd.
-        assert (
-            path == source.path.with_suffix(self.target_suffix) and
-            path.parent() == cwd == source.path.parent()
-        ), (path, cwd, source.path)
+        assert path.parent() == cwd == source.path.parent()
+        assert path.suffix == '.dvi'
+        assert source.path.suffix == '.tex'
 
         rule_repr = (
             '<cwd=<BLUE>{cwd}<NOCOLOUR>> '
-            '<GREEN>{node.latex_command} {node.source.path.name}<NOCOLOUR>'
+            '<GREEN>{node.latex_command} -jobname={node.path.basename} '
+                '{node.source.path.name}<NOCOLOUR>'
             .format(cwd=self.pure_relative(cwd, self.root), node=self) )
         callargs = (self.latex_command,
+            '-jobname={}'.format(self.path.basename),
             '-interaction=nonstopmode', '-halt-on-error', '-file-line-error',
             self.source.path.name )
         @self.add_rule
