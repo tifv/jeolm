@@ -2,10 +2,12 @@ import os
 import re
 import datetime
 from collections import OrderedDict as ODict
+from difflib import ndiff as diff
 
 from pathlib import Path, PurePath
 
 from jeolm.utils import pure_join
+from jeolm import yaml
 
 import logging
 logger = logging.getLogger(__name__)
@@ -154,6 +156,8 @@ class InrecordReviewer:
             else:
                 inrecord[subname] = subrecord
         self.report_screened_names(inpath, inrecord)
+
+        self.reorder_odict(inrecord, orderpath=path/'.order')
         return inrecord
 
     def report_screened_names(self, inpath, inrecord):
@@ -203,41 +207,51 @@ class InrecordReviewer:
         with (self.source_dir/inpath).open('r') as f:
             s = f.read()
 
-        self.review_tex_content(inpath, inrecord, s)
+        oldrecord = inrecord
+        newrecord = {}
+        self.review_tex_content(inpath, s, oldrecord, newrecord)
+        olddump = yaml.dump(oldrecord, default_flow_style=False).splitlines()
+        newdump = yaml.dump(newrecord, default_flow_style=False).splitlines()
+        if olddump != newdump:
+            logger.info('<BOLD><MAGENTA>{}<NOCOLOUR>: amendment<RESET>'
+                .format(inpath) )
+            for line in diff(olddump, newdump):
+                if line.startswith('+'):
+                    logger.info('<GREEN>{}<RESET>'.format(line))
+                elif line.startswith('-'):
+                    logger.info('<RED>{}<RESET>'.format(line))
+                elif line.startswith('?'):
+                    pass
+                    logger.info('<YELLOW>{}<RESET>'.format(line))
+                else:
+                    logger.info(line)
+        inrecord = newrecord
 
         return inrecord
 
-    def review_tex_content(self, inpath, inrecord, s):
-        self.review_tex_caption(inpath, inrecord, s)
-        self.review_tex_date(inpath, inrecord, s)
-        self.review_tex_figures(inpath, inrecord, s)
+    def review_tex_content(self, inpath, s, oldrecord, newrecord):
+        self.review_tex_caption(inpath, s, oldrecord, newrecord)
+        self.review_tex_date(inpath, s, oldrecord, newrecord)
+        self.review_tex_figures(inpath, s, oldrecord, newrecord)
+        self.review_tex_metadata(inpath, s, oldrecord, newrecord)
 
-    def review_tex_caption(self, inpath, inrecord, s):
+    def review_tex_caption(self, inpath, s, oldrecord, newrecord):
         if self.nocaption_pattern.search(s) is not None:
             logger.debug("{}: caption review skipped due to explicit "
                 "'no caption' in the file".format(inpath) )
             return
         caption_match = self.caption_pattern.search(s)
         if caption_match is None:
-            if '$caption' in inrecord:
+            if '$caption' in oldrecord:
                 logger.warning(
                     "<BOLD><MAGENTA>{}<NOCOLOUR>: "
                     "file is missing any caption; "
                     "preserved the caption '<YELLOW>{}<NOCOLOUR>' "
                     "holded in the record<RESET>"
-                    .format(inpath, inrecord['$caption']) )
-            return
-        caption = caption_match.group('caption')
-        if '$caption' not in inrecord:
-            logger.info("<BOLD><MAGENTA>{}<NOCOLOUR>: "
-                "added caption '<GREEN>{}<NOCOLOUR>'<RESET>"
-                .format(inpath, caption) )
-        elif inrecord['$caption'] != caption:
-            logger.info("<BOLD><MAGENTA>{}<NOCOLOUR>: "
-                "caption changed from '<RED>{old}<NOCOLOUR>' "
-                "to '<GREEN>{new}<NOCOLOUR>'<RESET>"
-                .format(inpath, old=inrecord['$caption'], new=caption) )
-        inrecord['$caption'] = caption
+                    .format(inpath, oldrecord['$caption']) )
+                newrecord['$caption'] = oldrecord['$caption']
+        else:
+            newrecord['$caption'] = caption_match.group('caption')
 
     nocaption_pattern = re.compile(
         r'(?m)^% no caption$' )
@@ -246,41 +260,32 @@ class InrecordReviewer:
         r'%+ +(?! )(?P<caption>[^%]+)(?<! ) *(?:%.*)?\n'
         r'%+\n')
 
-    def review_tex_date(self, inpath, inrecord, s):
+    def review_tex_date(self, inpath, s, oldrecord, newrecord):
         if self.nodate_pattern.search(s) is not None:
             logger.debug("{}: date review skipped due to explicit "
                 "'no date' in the file".format(inpath) )
             return
         date_match = self.date_pattern.search(s)
         if date_match is None:
-            if '$date' in inrecord:
+            if '$date' in oldrecord:
                 logger.warning(
                     "<BOLD><MAGENTA>{}<NOCOLOUR>: "
                     "file is missing any date; "
                     "preserved the date '<YELLOW>{}<NOCOLOUR>' "
                     "holded in the record<RESET>"
-                    .format(inpath, inrecord['$date']) )
-            return
-        date = datetime.date(**{
-            key : int(value)
-            for key, value in date_match.groupdict().items() })
-        if '$date' not in inrecord:
-            logger.info("<BOLD><MAGENTA>{}<NOCOLOUR>: "
-                "added date '<GREEN>{}<NOCOLOUR>'<RESET>"
-                .format(inpath, date) )
-        elif inrecord['$date'] != date:
-            logger.info("<BOLD><MAGENTA>{}<NOCOLOUR>: "
-                "date changed from '<RED>{}<NOCOLOUR>' "
-                "to '<GREEN>{}<NOCOLOUR>'<RESET>"
-                .format(inpath, inrecord['$date'], date) )
-        inrecord['$date'] = date
+                    .format(inpath, oldrecord['$date']) )
+                newrecord['$date'] = oldrecord['$date']
+        else:
+            newrecord['$date'] = datetime.date(**{
+                key : int(value)
+                for key, value in date_match.groupdict().items() })
 
     nodate_pattern = re.compile(
         r'(?m)^% no date$' )
     date_pattern = re.compile(
         r'(?m)^% (?P<year>[0-9]{4})-(?P<month>[0-9]{2})-(?P<day>[0-9]{2})$' )
 
-    def review_tex_figures(self, inpath, inrecord, s):
+    def review_tex_figures(self, inpath, s, oldrecord, newrecord):
         if self.nofigures_pattern.search(s) is not None:
             logger.debug("{}: figures review skipped due to explicit "
                 "'no figures' in the file".format(inpath) )
@@ -290,29 +295,13 @@ class InrecordReviewer:
                 "<YELLOW>\\includegraphics<NOCOLOUR> command found<RESET>"
                 .format(inpath) )
 
-        new_figures = self.unique(
+        figures = self.unique(
             match.group('figure')
             for match in self.figure_pattern.finditer(s) )
-        old_figures = inrecord.pop('$figures', ())
-        figures = [
-            figure for figure in old_figures
-            if figure in new_figures
-        ] + [
-            figure for figure in new_figures
-            if figure not in old_figures
-        ]
-        for figure in set(old_figures).difference(new_figures):
-            logger.info("<BOLD><MAGENTA>{}<NOCOLOUR>: "
-                "removed figure '<RED>{}<NOCOLOUR>'<RESET>"
-                .format(inpath, figure) )
-        for figure in set(new_figures).difference(old_figures):
-            logger.info("<BOLD><MAGENTA>{}<NOCOLOUR>: "
-                "added figure '<GREEN>{}<NOCOLOUR>'<RESET>"
-                .format(inpath, figure))
 
         parent = inpath.parent()
         if figures:
-            inrecord['$figures'] = ODict(
+            newrecord['$figures'] = ODict(
                 (figure, pure_join(parent, figure))
                 for figure in figures )
 
@@ -322,6 +311,23 @@ class InrecordReviewer:
         r'\\jeolmfigure(?:\[.*?\])?\{(?P<figure>.*?)\}' )
     includegraphics_pattern = re.compile(
         r'\\includegraphics')
+
+    def review_tex_metadata(self, inpath, s, oldrecord, newrecord):
+        for match in self.metadata_pattern.finditer(s):
+            piece = match.group(0).splitlines()
+            assert all(line.startswith('% ') for line in piece)
+            piece = '\n'.join(line[2:] for line in piece)
+            piece = yaml.load(piece)
+            if not isinstance(piece, dict):
+                logger.warning("<BOLD><MAGENTA>{}<NOCOLOUR>: "
+                    "unrecognized metadata piece<RESET>"
+                    .format(inpath) )
+                logger.warning(piece)
+            newrecord.update(piece)
+
+    metadata_pattern = re.compile('(?m)^'
+        r'% \$[a-z]+:.*'
+        r'(\n%  .+)*')
 
     def review_sty_inrecord(self, inpath, inrecord):
         logger.debug("{}: reviewing LaTeX style file".format(inpath))
@@ -379,6 +385,32 @@ class InrecordReviewer:
     def review_eps_inrecord(self, inpath, inrecord):
         logger.debug("{}: reviewing EPS file".format(inpath))
         return inrecord
+
+    @staticmethod
+    def reorder_odict(odict, orderpath):
+        if not orderpath.exists():
+            return
+        swap = ODict(odict)
+        assert len(odict) == len(swap)
+        odict.clear()
+        with orderpath.open('r') as orderfile:
+            order = [ key
+                for key in orderfile.read().splitlines()
+                if key if not key.startswith('#') ]
+        if '*' not in order:
+            order.append('*')
+        star_i = order.index('*')
+        first_order = order[:star_i]
+        last_order = order[star_i+1:]
+        middle_order = [key for key in swap if key not in order]
+
+        overall_order = chain(first_order, middle_order, last_order)
+        for key in overall_order:
+            try:
+                odict[key] = swap[key]
+            except KeyError:
+                pass
+        assert len(odict) == len(swap)
 
     @staticmethod
     def unique(iterable):

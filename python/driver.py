@@ -313,40 +313,21 @@ class Driver(metaclass=Substitutioner):
         """Return protorecord with 'body'."""
         if '$rigid' not in record:
             raise RecordNotFoundError(target);
-        protorecord = dict()
-        protorecord.update(record.get('$rigid$opt', ()))
-        if 'date' in protorecord:
-            date_set.add(protorecord['date']); date_set = set()
         rigid = record['$rigid']
+        rigid_opt = record.get('$rigid$opt', {})
+        if '$date' in record:
+            date_set.add(record['$date']); date_set = set()
 
-        protorecord['body'] = list(self.generate_rigid_body(
-            target, rigid, inpath_list=inpath_list, date_set=date_set ))
-        return protorecord
-
-    def produce_fluid_protorecord(self, target, record,
-        *, inpath_list, date_set
-    ):
-        """Return protorecord with 'body'."""
-        protorecord = dict()
-        protorecord.update(record.get('$fluid$opt', ()))
-        if 'date' in protorecord:
-            date_set.add(protorecord['date']); date_set = set()
-        fluid = record.get('$fluid')
-
-        protorecord['body'] = list(self.generate_fluid_body(
-            target, fluid, inpath_list=inpath_list, date_set=date_set ))
-        return protorecord
-
-    def generate_rigid_body(self, target, rigid, *, inpath_list, date_set):
+        body = []; append = body.append
         for page in rigid:
-            yield self.substitute_clearpage()
+            append(self.substitute_clearpage())
             if not page: # empty page
-                yield self.substitute_phantom()
-                continue;
+                append(self.substitute_phantom())
+                continue
             for item in page:
                 if isinstance(item, dict):
-                    yield self.constitute_special(item)
-                    continue;
+                    append(self.constitute_special(item))
+                    continue
                 if not isinstance(item, str):
                     raise TypeError(target, item)
 
@@ -357,47 +338,63 @@ class Driver(metaclass=Substitutioner):
                     raise RecordNotFoundError(inpath, target);
                 inpath_list.append(inpath)
                 date_set.add(inrecord.get('$date'))
-                yield {'inpath' : inpath, 'rigid' : True}
+                append({'inpath' : inpath, 'rigid' : True})
 
-    def generate_fluid_body(self, target, fluid,
-        *, inpath_list, date_set
+        protorecord = {'body' : body}
+        protorecord.update(rigid_opt)
+        return protorecord
+
+    def produce_fluid_protorecord(self, target, record,
+        *, inpath_list, date_set, fluid_opt=None
     ):
+        """Return protorecord with 'body'."""
+        fluid = record.get('$fluid', None)
+        if fluid_opt is None:
+            fluid_opt = record.get('$fluid$opt', {})
+        if '$date' in record:
+            date_set.add(record['$date']); date_set = set()
+
+        body = []; append = body.append
         if fluid is None:
             # No outrecord fluid.
             # Try directory inrecord.
-            fluid = self.generate_autofluid(target)
+            fluid = self.generate_autofluid(target, fluid_opt)
         if fluid is None:
             # No outrecord fluid and no directory inrecord.
             # Try single file inrecord.
             inpath, inrecord = self.inrecords.get_item(
                 target.with_suffix('.tex') )
             if inrecord is None:
-                # Fail
-                raise RecordNotFoundError(target);
+                # We tried everything..
+                raise RecordNotFoundError(target)
             inpath_list.append(inpath)
             date_set.add(inrecord.get('$date'))
-            yield {'inpath' : inpath}
-            return;
-        for item in fluid:
-            if isinstance(item, dict):
-                yield self.constitute_special(item)
-                continue;
-            if not isinstance(item, str):
-                raise TypeError(target, item)
+            append({'inpath' : inpath})
+        else:
+            for item in fluid:
+                if isinstance(item, dict):
+                    append(self.constitute_special(item))
+                    continue
+                if not isinstance(item, str):
+                    raise TypeError(target, item)
 
-            subpath, subrecord = self.outrecords.get_item(
-                pure_join(target, item) )
-            subprotorecord = self.produce_fluid_protorecord(
-                subpath, subrecord,
-                inpath_list=inpath_list, date_set=date_set )
-            yield from subprotorecord['body']
+                subpath, subrecord = self.outrecords.get_item(
+                    pure_join(target, item) )
+                subprotorecord = self.produce_fluid_protorecord(
+                    subpath, subrecord, fluid_opt=fluid_opt,
+                    inpath_list=inpath_list, date_set=date_set )
+                body.extend(subprotorecord['body'])
 
-    def generate_autofluid(self, target):
+        protorecord = {'body' : body}
+        protorecord.update(fluid_opt)
+        return protorecord
+
+    def generate_autofluid(self, target, fluid_opt):
         inrecord = self.inrecords[target]
         if inrecord is None:
             return None;
         subnames = []
-        for subname in inrecord:
+        for subname, subrecord in inrecord.items():
             subnamepath = PurePath(subname)
             suffix = subnamepath.suffix
             if suffix == '.tex':
@@ -405,9 +402,16 @@ class Driver(metaclass=Substitutioner):
             elif suffix == '':
                 pass
             else:
-                continue;
+                continue
+            if not self.filter_autofluid(
+                target/subname, subrecord, fluid_opt=fluid_opt
+            ):
+                continue
             subnames.append(subname)
         return subnames
+
+    def filter_autofluid(self, inpath, inrecord, *, fluid_opt):
+        return True
 
     def find_figure_inrecord(self, figpath):
         """
@@ -713,12 +717,14 @@ class Driver(metaclass=Substitutioner):
     def constitute_input(self, inpath, *,
         alias, inrecord, figname_map, rigid=False
     ):
-        caption = inrecord.get('$caption', '(no caption)')
+        caption = self.extract_inrecord_caption(inpath, inrecord)
         body = self.substitute_input(caption=caption, filename=alias)
         date = inrecord.get('$date')
         if rigid:
             body = self.substitute_jeolmheader() + '\n' + body
-        if date is not None:
+        if date is None:
+            body = self.substitute_datedef(date='(no date)') + '\n' + body
+        else:
             date = self.constitute_date(date)
             body = self.substitute_datedef(date=date) + '\n' + body
             if not rigid:
@@ -739,6 +745,12 @@ class Driver(metaclass=Substitutioner):
         r'    \jeolmdate' '\n'
         r'    \end{flushright}'
     )
+
+    def extract_inrecord_caption(self, inpath, inrecord):
+        caption = inrecord.get('$caption')
+        if caption is None:
+            caption = '{}'.format(inpath)
+        return caption
 
     def constitute_figname_map(self, figname_map):
         return '\n'.join(
