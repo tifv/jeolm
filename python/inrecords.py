@@ -404,8 +404,7 @@ class InrecordReviewer:
         last_order = order[star_i+1:]
         middle_order = [key for key in swap if key not in order]
 
-        overall_order = chain(first_order, middle_order, last_order)
-        for key in overall_order:
+        for key in first_order + middle_order + last_order:
             try:
                 odict[key] = swap[key]
             except KeyError:
