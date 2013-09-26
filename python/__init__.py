@@ -14,31 +14,44 @@ def get_parser(prog='jeolm'):
     parser.add_argument('-v', '--verbose',
         help='make debug messages to stdout',
         action='store_true', )
-    command = parser.add_mutually_exclusive_group()
-    command.add_argument('-r', '--review',
-        help='review given inrecords (defaults to all inrecords)',
-        nargs='*', metavar='INROOT', )
-    command.add_argument('--list-tex',
-        help='list all TeX infiles for given targets',
+    subparsers = parser.add_subparsers()
+
+    build_parser = subparsers.add_parser('build',
+        help='build specified targets', )
+    build_parser.add_argument('targets',
         nargs='*', metavar='TARGET', )
-    command.add_argument('--list-asy',
-        help='list all Asymptote infiles for given targets',
-        nargs='*', metavar='TARGET', )
-    command.add_argument('-c', '--clean',
-        help='clean toplevel links to build/**.pdf; clean **.dvi in build/',
-        action='count', )
-    command.add_argument('-a', '--archive',
-        help='create project archive, including some intermediate files',
+    build_parser.add_argument('-f', '--force-recompile',
+        help='force recompilation on LaTeX stage',
         action='store_true', )
-    command.add_argument('targets',
-        help='build specified targets',
-        nargs='*', default=[], )
+    build_parser.set_defaults(main_func=main_build)
+
+    list_parser = subparsers.add_parser('list',
+        help='list all infiles for given targets' )
+    list_parser.add_argument('targets',
+        nargs='*', metavar='TARGET', )
+    list_parser.add_argument('--type',
+        help='searched-for infiles type',
+        choices=['tex', 'asy'], default='tex',
+        dest='source_type', metavar='SOURCE_TYPE', )
+    list_parser.set_defaults(main_func=main_list)
+
+    review_parser = subparsers.add_parser('review', aliases=['r'],
+        help='review given inrecords' )
+    review_parser.add_argument('inpaths',
+        nargs='*', metavar='INPATH', )
+    review_parser.set_defaults(main_func=main_review)
+
+    clean_parser = subparsers.add_parser('clean',
+        help='clean toplevel links to build/**.pdf', )
+    clean_parser.set_defaults(main_func=main_clean)
+
     return parser
 
 def main():
-    from jeolm import filesystem, nodes, builder, inrecords, commands
+    from jeolm import filesystem, nodes
 
-    args = get_parser().parse_args()
+    parser = get_parser()
+    args = parser.parse_args()
 
     setup_logging(args.verbose)
     try:
@@ -51,27 +64,36 @@ def main():
 
     fsmanager.load_local_module()
 
-    if args.review is not None:
-        return inrecords.review(args.review, viewpoint=Path.cwd(),
-            fsmanager=fsmanager )
-    if args.list_tex is not None:
-        return commands.print_source_list(
-            args.list_tex, fsmanager=fsmanager, viewpoint=Path.cwd(), )
-    if args.list_asy is not None:
-        return commands.print_source_list(
-            args.list_asy, fsmanager=fsmanager, viewpoint=Path.cwd(),
-            source_types=('asy',), )
-    if args.clean is not None:
-        assert args.clean >= 1
-        if args.clean == 1:
-            return commands.cleanview(root=fsmanager.root);
-        if args.clean > 1:
-            return commands.unbuild(root=fsmanager.root);
-    if args.archive:
-        return commands.archive(fsmanager=fsmanager);
+    if 'main_func' not in vars(args):
+        return parser.print_help()
+    return args.main_func(args, fsmanager=fsmanager)
 
-    builder = builder.Builder(args.targets, fsmanager=fsmanager)
+def main_build(args, *, fsmanager):
+    from jeolm.builder import Builder
+    if not args.targets:
+        logger.warn('No-op: no targets for source list')
+    builder = Builder(args.targets,
+        fsmanager=fsmanager, force_recompile=args.force_recompile, )
     builder.update()
+
+def main_review(args, *, fsmanager):
+    from jeolm.inrecords import review
+    if not args.inpaths:
+        logger.warn('No-op: no inpaths for review')
+    review(args.inpaths, viewpoint=Path.cwd(),
+            fsmanager=fsmanager )
+
+def main_list(args, *, fsmanager):
+    from jeolm.commands import print_source_list
+    if not args.targets:
+        logger.warn('No-op: no targets for source list')
+    print_source_list(args.targets,
+        fsmanager=fsmanager, viewpoint=Path.cwd(),
+        source_type=args.source_type, )
+
+def main_clean(args, *, fsmanager):
+    from jeolm.commands import clean
+    clean(root=fsmanager.root)
 
 def setup_logging(verbose):
     import sys

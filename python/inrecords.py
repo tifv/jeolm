@@ -29,8 +29,6 @@ def resolve_inpaths(inpaths, *, source_dir, viewpoint):
     inpaths = [
         PurePath(inpath).relative(source_dir)
         for inpath in inpaths ]
-    if not inpaths:
-        inpaths = [PurePath('')]
     return inpaths
 
 class InrecordReviewer:

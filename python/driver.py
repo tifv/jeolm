@@ -134,15 +134,15 @@ class Driver(metaclass=Substitutioner):
         yield from self.inrecords.list_targets()
         yield from self.outrecords.list_targets()
 
-    def list_inpaths(self, targets, *, source_types=('tex', )):
+    def list_inpaths(self, targets, *, source_type='tex'):
         metarecords, figrecords = self.produce_metarecords(targets)
         inpath_list = []
-        if 'tex' in source_types:
+        if 'tex' == source_type:
             inpath_list.extend( inpath
                 for metarecord in metarecords.values()
                 for inpath in metarecord['inpath list']
                 if inpath.suffix == '.tex' )
-        if 'asy' in source_types:
+        if 'asy' == source_type:
             inpath_list.extend( figrecord['source']
                 for figrecord in figrecords.values() )
         return inpath_list

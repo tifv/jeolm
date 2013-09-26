@@ -1,0 +1,41 @@
+alias jeolm='python3.3 -m jeolm'
+_jeolm_completion() {
+    COMPREPLY=( $(python3.3 -m jeolm.completion "$COMP_CWORD" "${COMP_WORDS[@]}") )
+    completioncode=$?
+
+    case $completioncode in
+        100)
+            COMPREPLY=( $(compgen -o filenames -A file "${COMP_WORDS[COMP_CWORD]}") )
+            return 0
+            ;;
+        101)
+            COMPREPLY=( $(compgen -o dirnames -A directory "${COMP_WORDS[COMP_CWORD]}") )
+            return 0
+            ;;
+        *)
+        ;;
+    esac
+
+    return 0
+}
+complete -o nospace -F _jeolm_completion jeolm
+
+alias je='jeolm build'
+_je_completion() {
+    COMPREPLY=( $(python3.3 -m jeolm.completion "$(($COMP_CWORD + 1))" \
+        "${COMP_WORDS[0]}" build "${COMP_WORDS[@]:1}") )
+    completioncode=$?
+
+    case $completioncode in
+        101)
+            COMPREPLY=( $(compgen -o dirnames -A directory "${COMP_WORDS[COMP_CWORD]}") )
+            return 0
+            ;;
+        *)
+        ;;
+    esac
+
+    return 0
+}
+complete -o nospace -F _je_completion je
+

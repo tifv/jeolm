@@ -19,9 +19,10 @@ logger = logging.getLogger(__name__)
 class Builder:
     shipout_format = ('pdf', )
 
-    def __init__(self, targets, *, fsmanager):
+    def __init__(self, targets, *, fsmanager, force_recompile):
         self.fsmanager = fsmanager
         self.root = self.fsmanager.root
+        self.force_recompile = force_recompile
 
         self.source_nodes = ODict()
         self.autosource_nodes = ODict()
@@ -168,7 +169,7 @@ class Builder:
             name='doc:{}:dvi'.format(metaname),
             source=tex_node,
             path=(build_dir/metaname).with_suffix('.dvi'),
-            cwd=build_dir )
+            cwd=build_dir, )
         dvi_node.extend_needs(
             LinkNode(
                 name='doc:{}:source:{}'.format(metaname, alias_name),
@@ -183,6 +184,10 @@ class Builder:
                 path=(build_dir/figname).with_suffix('.eps'),
                 needs=(build_dir_node,) )
             for figname in metarecord['fignames'] )
+        if self.force_recompile:
+            def needs_build():
+                return True
+            dvi_node.needs_build = needs_build
 
         pdf_node = self.pdf_nodes[metaname] = FileNode(
             name='doc:{}:pdf'.format(metaname),
@@ -283,7 +288,10 @@ class LaTeXNode(ProductFileNode):
             '<cwd=<BLUE>{cwd}<NOCOLOUR>> '
             '<GREEN>{node.latex_command} -jobname={node.path.basename} '
                 '{node.source.path.name}<NOCOLOUR>'
-            .format(cwd=self.pure_relative(cwd, self.root), node=self) )
+            .format(
+                cwd=self.pure_relative(cwd, self.root),
+                node=self )
+        )
         callargs = (self.latex_command,
             '-jobname={}'.format(self.path.basename),
             '-interaction=nonstopmode', '-halt-on-error', '-file-line-error',

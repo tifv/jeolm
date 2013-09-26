@@ -5,57 +5,90 @@ from pathlib import Path, PurePosixPath as PurePath
 import logging
 logger = logging.getLogger(__name__)
 
-long_options = (
-    '--review', '--root', '--verbose',
-    '--clean', '--archive',
-    '--list-tex', '--list-asy',
-)
-short_options = {
-    '-r' : '--review', '-R' : '--root', '-v' : '--verbose',
-    '-c' : '--clean', '-a' : '--archive'
-}
-pathlist_accepting_options = ('-r', '--review')
-
 def main():
+    options = ('--root', '--verbose')
+    short_options = {'-R' : '--root', '-v' : '--verbose'}
+
+    subcommands = ('build', 'review', 'list', 'clean', )
+    subcommand_options = {
+        'build' : ('--force-recompile',),
+        'list' : ('--type',) }
+    subcommand_short_options = {'build' : {'-f' : '--force-recompile'}}
+    subcommands_accepting_paths = ('review', )
+    subcommands_accepting_targets = ('build', 'list', )
+
     import sys
     n = int(sys.argv[1]) - 1
+#    prog = sys.argv[2]
     args = sys.argv[3:]
+    if n == len(args):
+        # workaround
+        args.append('')
     current = args[n]
     previous = args[n-1] if n > 0 else None
     preceding = args[:n]
-
-    if current.startswith('-'):
-        if current in short_options:
-            print(short_options[current])
-            return;
-        for option in long_options:
-            if option.startswith(current):
-                print(option)
-        return;
 
     if previous is not None:
         if previous == '--root':
             # Request for directory completion
             sys.exit(101)
-    if any(arg in preceding for arg in pathlist_accepting_options):
-        # Request for filename completion
-        sys.exit(100)
-
     from . import filesystem
     root = None
     while '--root' in args:
-        if args.index('--root') < len(args) - 1:
-            root = Path(args[args.index('--root')+1])
-        args[args.index('--root')] = '--whatever'
+        root_key_index = args.index('--root')
+        root_value_index = root_key_index + 1
+        if root_value_index < len(args):
+            root = Path(args[root_value_index])
+        del args[root_key_index:root_value_index+1]
+        if n > root_value_index:
+            n -= 2
+        elif n < root_key_index:
+            pass
+        elif n == root_key_index:
+            print('--root')
+            return
+        else:
+            return
     try:
         fsmanager = filesystem.FSManager(root=root)
     except filesystem.RootNotfoundError:
         raise SystemExit
 
-    completer = Completer(fsmanager)
+    while '--verbose' in args:
+        verbose_key_index = args.index('--verbose')
+        del args[verbose_key_index]
+        if n > verbose_key_index:
+            n -= 1
+        elif n < verbose_key_index:
+            pass
+        else:
+            print('--verbose')
+            return
 
-    completions = list(completer.complete(current))
-    print('\n'.join(completions))
+    if n == 0:
+        for subcommand in subcommands:
+            if subcommand.startswith(current):
+                print(subcommand)
+    subcommand = args[0]
+    if current.startswith('-'):
+        if current in subcommand_short_options.get(subcommand, ()):
+            print(subcommand_short_options[subcommand][current])
+            return
+        if current in short_options:
+            print(short_options[current])
+            return
+        for option in subcommand_options[subcommand] + options:
+            if option.startswith(current):
+                print(option)
+        return
+
+    if subcommand in subcommands_accepting_paths:
+        # Request for filename completion
+        sys.exit(100)
+    elif subcommand in subcommands_accepting_targets:
+        completer = Completer(fsmanager)
+        completions = list(completer.complete_target(current))
+        print('\n'.join(completions))
 
 class Completer:
     def __init__(self, fsmanager):
@@ -71,7 +104,7 @@ class Completer:
         self.target_list = self.fsmanager.get_driver().list_targets()
         self.fsmanager.dump_completion_cache(self.target_list)
 
-    def complete(self, uncompleted_arg):
+    def complete_target(self, uncompleted_arg):
         """Return an iterator over completions."""
         if '.' in uncompleted_arg or ' ' in uncompleted_arg:
             return;
@@ -104,7 +137,7 @@ class Completer:
 
     def readline_completer(self, text, state):
         if not hasattr(self, 'saved_text') or self.saved_text != text:
-            self.saved_completion = list(self.complete(text))
+            self.saved_completion = list(self.complete_target(text))
             self.saved_text = text
         if state < len(self.saved_completion):
             return self.saved_completion[state];

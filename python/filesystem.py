@@ -245,14 +245,3 @@ class FSManager:
         else:
             self.build_dir.mkdir(mode=0b111101101, parents=False)
 
-    def populate_archive(self, archive_file):
-        add = archive_file.add
-
-        add(str(self.root/'.jeolm/in.yaml'), '.jeolm/in.yaml')
-        for path in self.list_outrecords_paths():
-            add(str(path), str(path.relative(self.root)))
-
-        local_py = self.root/'.jeolm/local.py'
-        if local_py.exists():
-            add(str(local_py), '.jeolm/local.py')
-
