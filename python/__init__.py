@@ -4,6 +4,9 @@ import logging
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 logger.addHandler(logging.NullHandler())
+difflogger = logging.getLogger(__name__ + '.diff')
+difflogger.setLevel(logging.INFO)
+difflogger.addHandler(logging.NullHandler())
 
 def get_parser(prog='jeolm'):
     from argparse import ArgumentParser
@@ -34,6 +37,12 @@ def get_parser(prog='jeolm'):
         choices=['tex', 'asy'], default='tex',
         dest='source_type', metavar='SOURCE_TYPE', )
     list_parser.set_defaults(main_func=main_list)
+
+    spell_parser = subparsers.add_parser('spell',
+        help='spell-check all infiles for given targets' )
+    spell_parser.add_argument('targets',
+        nargs='*', metavar='TARGET', )
+    spell_parser.set_defaults(main_func=main_spell)
 
     review_parser = subparsers.add_parser('review', aliases=['r'],
         help='review given inrecords' )
@@ -91,6 +100,12 @@ def main_list(args, *, fsmanager):
         fsmanager=fsmanager, viewpoint=Path.cwd(),
         source_type=args.source_type, )
 
+def main_spell(args, *, fsmanager):
+    from jeolm.commands import check_spelling
+    if not args.targets:
+        logger.warn('No-op: no targets for spell check')
+    check_spelling(args.targets, fsmanager=fsmanager,)
+
 def main_clean(args, *, fsmanager):
     from jeolm.commands import clean
     clean(root=fsmanager.root)
@@ -105,4 +120,9 @@ def setup_logging(verbose):
     handler.setLevel(logging.INFO if not verbose else logging.DEBUG)
     handler.setFormatter(Formatter("%(name)s: %(message)s"))
     logger.addHandler(handler)
+    diffhandler = logging.StreamHandler()
+    diffhandler.setLevel(logging.INFO)
+    diffhandler.setFormatter(Formatter("%(message)s"))
+    difflogger.propagate = False
+    difflogger.addHandler(diffhandler)
 

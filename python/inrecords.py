@@ -11,6 +11,7 @@ from jeolm import yaml
 
 import logging
 logger = logging.getLogger(__name__)
+from jeolm import difflogger
 
 def review(paths, *, fsmanager, viewpoint):
     inpaths = resolve_inpaths(paths,
@@ -211,18 +212,17 @@ class InrecordReviewer:
         olddump = yaml.dump(oldrecord, default_flow_style=False).splitlines()
         newdump = yaml.dump(newrecord, default_flow_style=False).splitlines()
         if olddump != newdump:
-            logger.info('<BOLD><MAGENTA>{}<NOCOLOUR>: amendment<RESET>'
+            difflogger.info('<BOLD><MAGENTA>{}<NOCOLOUR>: amendment<RESET>'
                 .format(inpath) )
             for line in diff(olddump, newdump):
                 if line.startswith('+'):
-                    logger.info('<GREEN>{}<RESET>'.format(line))
+                    difflogger.info('<GREEN>{}<RESET>'.format(line))
                 elif line.startswith('-'):
-                    logger.info('<RED>{}<RESET>'.format(line))
+                    difflogger.info('<RED>{}<RESET>'.format(line))
                 elif line.startswith('?'):
-                    pass
-                    logger.info('<YELLOW>{}<RESET>'.format(line))
+                    difflogger.info('<YELLOW>{}<RESET>'.format(line))
                 else:
-                    logger.info(line)
+                    difflogger.info(line)
         inrecord = newrecord
 
         return inrecord

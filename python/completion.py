@@ -9,13 +9,13 @@ def main():
     options = ('--root', '--verbose')
     short_options = {'-R' : '--root', '-v' : '--verbose'}
 
-    subcommands = ('build', 'review', 'list', 'clean', )
+    subcommands = ('build', 'review', 'list', 'spell', 'clean', )
     subcommand_options = {
         'build' : ('--force-recompile',),
         'list' : ('--type',) }
     subcommand_short_options = {'build' : {'-f' : '--force-recompile'}}
     subcommands_accepting_paths = ('review', )
-    subcommands_accepting_targets = ('build', 'list', )
+    subcommands_accepting_targets = ('build', 'list', 'spell', )
 
     import sys
     n = int(sys.argv[1]) - 1
