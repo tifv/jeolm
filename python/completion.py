@@ -51,7 +51,7 @@ def main():
             return
     try:
         fsmanager = filesystem.FSManager(root=root)
-    except filesystem.RootNotfoundError:
+    except filesystem.RootNotFoundError:
         raise SystemExit
 
     while '--verbose' in args:
