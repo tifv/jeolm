@@ -56,7 +56,7 @@ class FSManager:
     def report_broken_links(self):
         broken_links = {
             path.relative(self.root)
-            for path in self.iter_broken_links(self.root) }
+            for path in self.iter_broken_links(self.root, recursive=False) }
         if broken_links:
             logger.warning(
                 '<BOLD>Found broken links: {}<RESET>'.format(', '.join(
@@ -65,13 +65,21 @@ class FSManager:
                 )) )
 
     @classmethod
-    def iter_broken_links(cls, root, recursive=False):
+    def iter_broken_links(cls, root, *, recursive):
         for path in root:
             if not path.exists():
                 yield path
                 continue
             if recursive and path.is_dir():
                 yield from cls.iter_broken_links(path, recursive=recursive)
+
+    @classmethod
+    def clean_broken_links(cls, root, *, recursive):
+        trash = list(cls.iter_broken_links(root, recursive=recursive))
+        for path in trash:
+            logger.info("Removing broken link at '{}'"
+                .format(path.relative(root)) )
+            path.unlink()
 
     def get_driver(self):
         """

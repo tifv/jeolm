@@ -8,7 +8,7 @@ from jeolm import difflogger
 
 def clean(root):
     """
-    Remove all <root>/build/** symbolic links from the toplevel.
+    Remove all symbolic links to 'build/**' from the toplevel.
     """
     assert isinstance(root, Path), root
     for x in root:

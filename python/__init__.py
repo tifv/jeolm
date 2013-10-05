@@ -109,6 +109,7 @@ def main_spell(args, *, fsmanager):
 def main_clean(args, *, fsmanager):
     from jeolm.commands import clean
     clean(root=fsmanager.root)
+    fsmanager.clean_broken_links(fsmanager.build_dir, recursive=True)
 
 def setup_logging(verbose):
     import sys
