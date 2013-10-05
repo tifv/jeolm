@@ -86,7 +86,7 @@ def main_build(args, *, fsmanager):
     builder.update()
 
 def main_review(args, *, fsmanager):
-    from jeolm.inrecords import review
+    from jeolm.commands import review
     if not args.inpaths:
         logger.warn('No-op: no inpaths for review')
     review(args.inpaths, viewpoint=Path.cwd(),

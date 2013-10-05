@@ -13,25 +13,6 @@ import logging
 logger = logging.getLogger(__name__)
 from jeolm import difflogger
 
-def review(paths, *, fsmanager, viewpoint):
-    inpaths = resolve_inpaths(paths,
-        source_dir=fsmanager.source_dir, viewpoint=viewpoint )
-
-    reviewer = fsmanager.get_reviewer()
-    reviewer.load_inrecords()
-    for inpath in inpaths:
-        reviewer.review(inpath)
-    reviewer.dump_inrecords()
-
-def resolve_inpaths(inpaths, *, source_dir, viewpoint):
-    inpaths = [
-        Path(viewpoint, inpath).resolve()
-        for inpath in inpaths ]
-    inpaths = [
-        PurePath(inpath).relative(source_dir)
-        for inpath in inpaths ]
-    return inpaths
-
 class InrecordReviewer:
     recorded_suffixes = frozenset(('', '.tex', '.sty', '.asy', '.eps'))
 
@@ -324,7 +305,7 @@ class InrecordReviewer:
             newrecord.update(piece)
 
     metadata_pattern = re.compile('(?m)^'
-        r'% \$[a-z]+:.*'
+        r'% \$[a-z\-]+:.*'
         r'(\n%  .+)*')
 
     def review_sty_inrecord(self, inpath, inrecord):

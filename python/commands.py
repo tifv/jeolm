@@ -1,6 +1,10 @@
+"""
+Miscellaneous and relatively simple commands, not deserving their own
+module.
+"""
 import os
 
-from pathlib import Path
+from pathlib import Path, PurePosixPath as PurePath
 
 import logging
 logger = logging.getLogger(__name__)
@@ -8,7 +12,7 @@ from jeolm import difflogger
 
 def clean(root):
     """
-    Remove all symbolic links to 'build/**' from the toplevel.
+    Remove all symbolic links to 'build/*whatever*' from the toplevel.
     """
     assert isinstance(root, Path), root
     for x in root:
@@ -17,13 +21,6 @@ def clean(root):
         target = os.readlink(str(x))
         if target.startswith('build/'):
             x.unlink()
-
-def list_sources(targets, *, fsmanager, source_type):
-    driver = fsmanager.get_driver()
-    source_dir = fsmanager.source_dir
-    inpath_generator = driver.list_inpaths(targets, source_type=source_type)
-    for inpath in inpath_generator:
-        yield source_dir/inpath
 
 def print_source_list(targets, *, fsmanager, viewpoint, source_type):
     path_generator = list_sources(targets,
@@ -77,4 +74,27 @@ def check_spelling(targets, *, fsmanager):
             else:
                 difflogger.info(line)
     indicator_clean()
+
+def review(paths, *, fsmanager, viewpoint):
+    inpaths = resolve_inpaths(paths,
+        source_dir=fsmanager.source_dir, viewpoint=viewpoint )
+
+    reviewer = fsmanager.get_reviewer()
+    reviewer.load_inrecords()
+    for inpath in inpaths:
+        reviewer.review(inpath)
+    reviewer.dump_inrecords()
+
+def list_sources(targets, *, fsmanager, source_type):
+    driver = fsmanager.get_driver()
+    source_dir = fsmanager.source_dir
+    inpath_generator = driver.list_inpaths(targets, source_type=source_type)
+    for inpath in inpath_generator:
+        yield source_dir/inpath
+
+def resolve_inpaths(inpaths, *, source_dir, viewpoint):
+    for inpath in inpaths:
+        yield PurePath(
+            Path(viewpoint, inpath).resolve()
+        ).relative(source_dir)
 
