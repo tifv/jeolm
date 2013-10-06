@@ -143,20 +143,6 @@ This work has the LPPL maintenance status `author-maintained'.
 % determine actual figure name and delegate to
 % |\includegraphics|\oarg{graphics options}\marg{realname}.
 %
-% \subsection{Headers}
-%
-% \DescribeMacro{\jeolmheaderset}
-% \DescribeMacro{\jeolmheader}
-% Macro |\jeolmheader| is the standard header, placed on the top of each
-% course-piece, containing information both about course and institution.
-% This macro is intended to be used programmatically.
-% It is left undefined, and is intended to be defined by the call to
-% |\jeolmheaderset|.
-%
-% Macro |\jeolmheaderset|\marg{institution}\marg{course} will define
-% |\jeolmheader| to be |\jeolmheadertemplate|\marg{institution}\marg{course}.
-% This macro is intended to be used in \textsf{local.sty} file.
-%
 % \subsection{Problem numbering}
 %
 % \DescribeMacro{\problem}
@@ -329,17 +315,13 @@ This work has the LPPL maintenance status `author-maintained'.
 % should be called exactly once in preambule.
 %    \begin{macrocode}
 \newcommand\jeolmheadertemplate[3]{%
-\vspace{3ex}%
+{\Large\vspace{4ex}}\par%
 \begingroup\small\sffamily
-\smash{\parbox{\textwidth}{\hfill\bfseries#1\hfill\strut}}%
-\vspace{0.5ex}%
-\smash{\parbox{\textwidth}{\hfill{\itshape#2}\qquad#3\qquad{\itshape\jeolmdate}\hfill\strut}}%
-\vspace{1ex}\par%
-\hrule
-\par\endgroup
-\vspace{-3ex}}
-\newcommand\jeolmheaderset[3]{%
-\newcommand\jeolmheader{\jeolmheadertemplate{#1}{#2}{#3}}}
+\strut\hfill{\bfseries#1}\hfill\strut\\
+\strut\hfill{\itshape#2}\qquad#3\qquad{\itshape\jeolmdate}\hfill\strut\\
+\rule[1ex]{\textwidth}{0.5pt}
+\endgroup
+{\vspace{-1ex}\Large\vspace{-4ex}\vspace{-\parskip}}}
 %    \end{macrocode}
 % \end{macro}
 % \end{macro}
