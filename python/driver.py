@@ -138,7 +138,7 @@ class Driver(metaclass=Substitutioner):
         metarecords, figrecords = self.produce_metarecords(targets)
         if 'tex' == source_type:
             for metarecord in metarecords.values():
-                for inpath in metarecord['inpath list']:
+                for inpath in metarecord['inpaths']:
                     if inpath.suffix == '.tex':
                         yield inpath
         elif 'asy' == source_type:
@@ -163,48 +163,59 @@ class Driver(metaclass=Substitutioner):
             raise ValueError("Metaname '{}' duplicated.".format(metaname))
         self.metarecords[metaname] = metarecord
 
-        inpath_list = metarecord['inpath list']
-        metarecord['aliases'] = {
-            inpath : self.sluggify_path(inpath, suffix='.in.tex')
-            for inpath in inpath_list }
-        inpath_list.extend(metarecord['style'])
-        metarecord['aliases'].update({
-            inpath : self.sluggify_path('local', inpath, suffix='.sty')
-            for inpath in metarecord['style'] })
+        self.select_aliases(metarecord)
+
+        figname_maps = dict()
+        fignames = set()
+        for inpath, inrecord in metarecord['inrecords'].items():
+            figname_maps[inpath] = figname_map = \
+                self.produce_figname_map(inpath, inrecord)
+            fignames.update(figname_map.values())
+        metarecord['figname maps'] = figname_maps
+        metarecord['fignames'] = sorted(fignames)
+
+        metarecord['document'] = self.constitute_document(
+            metarecord,
+            metastyle=metarecord.pop('style'),
+            metabody=metarecord.pop('body'), )
+        self.formed_metarecords[target] = metaname
+        return metaname
+
+    def select_aliases(self, metarecord):
+        metarecord['aliases'] = aliases = dict()
+
+        inpaths = metarecord['inpaths']
+
+        for inpath in inpaths:
+            if inpath.suffix == '.tex':
+                aliases[inpath] = self.sluggify_path(
+                    inpath, suffix='.in.tex' )
+            elif inpath.suffix == '.sty':
+                aliases[inpath] = self.sluggify_path(
+                    'local', inpath, suffix='.sty' )
+
         metarecord['sources'] = {
             alias : inpath
             for inpath, alias in metarecord['aliases'].items() }
         if len(metarecord['sources']) < len(metarecord['aliases']):
+            clashed_inpaths = (
+                set(metarecord['inpaths']) -
+                set(metarecord['sources'].values()) )
             raise ValueError({
                 metarecord['aliases'][inpath]
-                for inpath
-                in set(inpath_list).difference(metarecord['sources'].values())
-            })
+                for inpath in clashed_inpaths })
         metarecord['inrecords'] = {
-            inpath : self.inrecords[inpath] for inpath in inpath_list }
+            inpath : self.inrecords[inpath]
+            for inpath in metarecord['inpaths'] }
 
-        figname_maps = metarecord['figname maps'] = {
-            inpath : self.produce_figname_map(inpath)
-            for inpath in inpath_list }
-
-        metarecord['fignames'] = sorted(
-            figname
-            for figname_map in figname_maps.values()
-            for figname in figname_map.values() )
-
-        metarecord['document'] = self.constitute_document(
-            metarecord, metabody=metarecord.pop('body'))
-        self.formed_metarecords[target] = metaname
-        return metaname
-
-    def produce_figname_map(self, inpath):
+    def produce_figname_map(self, inpath, inrecord):
         """
         Return {figalias : figname for each figname included in source}
 
         Update self.figrecords.
         """
 
-        inrecord_figures = self.inrecords[inpath].get('$figures')
+        inrecord_figures = inrecord.get('$figures')
         if inrecord_figures is None:
             return {};
         if not isinstance(inrecord_figures, dict):
@@ -276,15 +287,13 @@ class Driver(metaclass=Substitutioner):
         """
         Return protorecord.
         """
-        inpath_list = list()
         date_set = set()
         resolved_path, record = self.outrecords.get_item(target)
 
         for method in self.list_protorecord_methods():
             try:
-                protorecord = method(resolved_path, record,
-                    inpath_list=inpath_list, date_set=date_set )
-                # Call is not over! We must fix 'body', 'date' and 'inpath list'
+                protorecord = method(resolved_path, record, date_set=date_set)
+                # Call is not over! We must fix 'body', 'date' and 'inpaths'
                 break;
             except RecordNotFoundError as error:
                 if error.args != (target,):
@@ -292,22 +301,41 @@ class Driver(metaclass=Substitutioner):
         else:
             raise RecordNotFoundError(target);
 
-        if not isinstance(protorecord['body'], list):
-            protorecord['body'] = list(protorecord['body'])
+        inpaths = protorecord['inpaths'] = []
         protorecord.setdefault('date', self.min_date(date_set))
-        protorecord['inpath list'] = inpath_list
 
-        style = record['$style']
-        for inpath in style:
-            assert isinstance(inpath, PurePath), inpath
+        body = protorecord.pop('body')
+        protorecord['body'] = [
+            self.digest_body_item(item)
+            for item in body ]
+        for item in body:
+            if 'input' not in item:
+                continue
+            inpath = item['input']
             if inpath not in self.inrecords:
                 raise RecordNotFoundError(inpath)
-        protorecord['style'] = style
+            inpaths.append(inpath)
+
+        style = record['$style']
+        style.extend(protorecord.pop('style', ()))
+        protorecord['style'] = [
+            self.digest_style_item(item)
+            for item in style ]
+        for item in style:
+            if 'style' not in item:
+                continue
+            inpath = item['style']
+            if inpath not in self.inrecords:
+                raise RecordNotFoundError(inpath)
+            inpaths.append(inpath)
+
+        # old key..
+        assert 'preamble' not in protorecord
 
         return protorecord
 
     def produce_rigid_protorecord(self, target, record,
-        *, inpath_list, date_set
+        *, date_set
     ):
         """Return protorecord with 'body'."""
         if '$rigid' not in record:
@@ -319,13 +347,13 @@ class Driver(metaclass=Substitutioner):
 
         body = []; append = body.append
         for page in rigid:
-            append(self.substitute_clearpage())
+            append({'verbatim' : self.substitute_clearpage()})
             if not page: # empty page
-                append(self.substitute_phantom())
+                append({'verbatim' : self.substitute_phantom()})
                 continue
             for item in page:
                 if isinstance(item, dict):
-                    append(self.constitute_special(item))
+                    append(item)
                     continue
                 if not isinstance(item, str):
                     raise TypeError(target, item)
@@ -335,16 +363,15 @@ class Driver(metaclass=Substitutioner):
                     subpath.with_suffix('.tex') )
                 if inrecord is None:
                     raise RecordNotFoundError(inpath, target);
-                inpath_list.append(inpath)
                 date_set.add(inrecord.get('$date'))
-                append({'inpath' : inpath, 'rigid' : True})
+                append({'input' : inpath, 'rigid' : True})
 
         protorecord = {'body' : body}
         protorecord.update(rigid_opt)
         return protorecord
 
     def produce_fluid_protorecord(self, target, record,
-        *, inpath_list, date_set, fluid_opt=None
+        *, date_set, fluid_opt=None
     ):
         """Return protorecord with 'body'."""
         fluid = record.get('$fluid', None)
@@ -366,13 +393,12 @@ class Driver(metaclass=Substitutioner):
             if inrecord is None:
                 # We tried everything..
                 raise RecordNotFoundError(target)
-            inpath_list.append(inpath)
             date_set.add(inrecord.get('$date'))
-            append({'inpath' : inpath})
+            append({'input' : inpath})
         else:
             for item in fluid:
                 if isinstance(item, dict):
-                    append(self.constitute_special(item))
+                    append(item)
                     continue
                 if not isinstance(item, str):
                     raise TypeError(target, item)
@@ -381,7 +407,7 @@ class Driver(metaclass=Substitutioner):
                     pure_join(target, item) )
                 subprotorecord = self.produce_fluid_protorecord(
                     subpath, subrecord, fluid_opt=fluid_opt,
-                    inpath_list=inpath_list, date_set=date_set )
+                    date_set=date_set )
                 body.extend(subprotorecord['body'])
 
         protorecord = {'body' : body}
@@ -578,37 +604,44 @@ class Driver(metaclass=Substitutioner):
             if style is None:
                 return parent_style
 
-            assimilate = cls.assimilate_style
             if not isinstance(style, dict):
-                return assimilate(style, path)
+                return cls.assimilate_style(style, path)
 
             for key, substyle in style.items():
                 if key == 'extend':
-                    return parent_style + assimilate(substyle, path)
+                    return parent_style + cls.assimilate_style(substyle, path)
                 else:
                     raise ValueError(key)
             return base_style
 
         @classmethod
         def assimilate_style(cls, style, path):
-            return [
-                pure_join(path, sty_path).with_suffix('.sty')
-                for sty_path in style
-            ]
+            assimilated = []
+            append = assimilated.append
+            for item in style:
+                if isinstance(item, str):
+                    inpath = pure_join(path, item).with_suffix('.sty')
+                    append({'style' : inpath})
+                elif isinstance(item, dict):
+                    append(item)
+                else:
+                    raise TypeError(item)
+            return assimilated
+
 
     ##########
     # LaTeX-level functions
 
-    def constitute_document(self, metarecord, metabody):
-        documentclass = self.select_documentclass(metarecord)
-        classoptions = self.generate_classoptions(metarecord)
-        metapreamble = self.generate_metapreamble(metarecord)
+    @classmethod
+    def constitute_document(cls, metarecord, metastyle, metabody):
+        documentclass = cls.select_documentclass(metarecord)
+        classoptions = cls.generate_classoptions(metarecord)
 
-        return self.substitute_document(
+        return cls.substitute_document(
             documentclass=documentclass,
-            classoptions=self.constitute_options(classoptions),
-            preamble=self.constitute_preamble(metapreamble),
-            body=self.constitute_body(metarecord, metabody)
+            classoptions=cls.constitute_options(classoptions),
+            preamble=cls.constitute_preamble(metarecord, metastyle),
+            body=cls.constitute_body(metarecord, metabody)
         )
 
     document_template = (
@@ -620,10 +653,12 @@ class Driver(metaclass=Substitutioner):
         r'\end{document}' '\n'
     )
 
-    def select_documentclass(self, metarecord):
+    @classmethod
+    def select_documentclass(cls, metarecord):
         return metarecord.get('class', 'article')
 
-    def generate_classoptions(self, metarecord):
+    @classmethod
+    def generate_classoptions(cls, metarecord):
         paper_option = metarecord.get('paper', 'a5paper')
         yield str(paper_option)
         font_option = metarecord.get('font', '10pt')
@@ -641,48 +676,64 @@ class Driver(metaclass=Substitutioner):
                 "bad font option '<YELLOW>{option}<NOCOLOUR>'<RESET>"
                 .format(name=metarecord.metaname, option=font_option) )
 
-    def generate_metapreamble(self, metarecord):
-        for inpath in metarecord['style']:
-            yield {'local package' : metarecord['aliases'][inpath]}
+#    def generate_metapreamble(self, metarecord):
+#        for item in metarecord['style']:
+#            assert isinstance(item, dict), item
+#            if 'verbatim' in item:
+#                yield item
+#            elif 'package' in item:
+#                yield item
+#            elif 'style' in item:
+#                item['alias'] = metarecord['aliases'][item['style']]
+#                yield item
+#        if 'selectsize' in metarecord:
+#            font, skip = metarecord['selectsize']
+#            yield {'verbatim' :
+#                self.substitute_selectsize(font=font, skip=skip) }
+#        yield from metarecord.get('preamble', ())
+
+    @classmethod
+    def constitute_preamble(cls, metarecord, metastyle):
+        aliases = metarecord['aliases']
+
+        preamble_items = []
+        for item in metastyle:
+            assert isinstance(item, dict), item
+            if 'style' in item:
+                inpath = item['style']
+                item['alias'] = aliases[inpath]
+            preamble_items.append(cls.constitute_preamble_item(item))
         if 'selectsize' in metarecord:
             font, skip = metarecord['selectsize']
-            yield {'verbatim' :
-                self.substitute_selectsize(font=font, skip=skip) }
-        yield from metarecord.get('preamble', ())
+            preamble_items.append(
+                cls.substitute_selectsize(font=font, skip=skip) )
+        return '\n'.join(preamble_items)
 
     selectsize_template = (
         r'\AtBeginDocument{\fontsize{$font}{$skip}\selectfont}' )
 
     @classmethod
-    def constitute_preamble(cls, metapreamble):
-        lines = []
-        for metaline in metapreamble:
-            if not isinstance(metaline, dict):
-                raise TypeError(metaline)
-            lines.append(cls.constitute_preamble_line(metaline))
-        return '\n'.join(lines)
-
-    @classmethod
-    def constitute_preamble_line(cls, metaline):
-        assert isinstance(metaline, dict)
-        if 'verbatim' in metaline:
-            return str(metaline['verbatim'])
-        elif 'package' in metaline:
-            package = metaline['package']
-            options = metaline.get('options', None)
+    def constitute_preamble_item(cls, item):
+        assert isinstance(item, dict), item
+        if 'verbatim' in item:
+            return item['verbatim']
+        elif 'package' in item:
+            package = item['package']
+            options = item.get('options', None)
             options = cls.constitute_options(options)
             return cls.substitute_usepackage(
                 package=package,
                 options=options )
-        elif 'local package' in metaline:
-            packagefile = metaline['local package']
-            assert packagefile.endswith('.sty')
-            return cls.substitute_usepackage(
-                package=packagefile[:-len('.sty')], options='' )
+        elif 'style' in item:
+            alias = item['alias']
+            assert alias.endswith('.sty')
+            return cls.substitute_uselocalpackage(
+                package=alias[:-len('.sty')], inpath=item['style'] )
         else:
-            raise ValueError(metaline)
+            raise ValueError(item)
 
     usepackage_template = r'\usepackage$options{$package}'
+    uselocalpackage_template = r'\usepackage{$package}% $inpath'
 
     @classmethod
     def constitute_options(cls, options):
@@ -692,51 +743,63 @@ class Driver(metaclass=Substitutioner):
             options = ','.join(options)
         return '[' + options + ']'
 
-    def constitute_body(self, metarecord, metabody):
-        aliases, inrecords, figname_maps = ( metarecord[key]
-            for key in ('aliases', 'inrecords', 'figname maps') )
+    @classmethod
+    def constitute_body(cls, metarecord, metabody):
+        aliases = metarecord['aliases']
+        inrecords = metarecord['inrecords']
+        figname_maps = metarecord['figname maps']
 
-        # Extension of self.consistute_input()
-        def constitute_input(item):
+        body_items = []
+        for item in metabody:
             assert isinstance(item, dict), item
-            assert 'inpath' in item, item
-            inpath = item['inpath']
-            item = item.copy()
-            item.update(
-                alias=aliases[inpath],
-                inrecord=inrecords[inpath],
-                figname_map=figname_maps[inpath])
-            return self.constitute_input(**item)
+            if 'input' in item:
+                inpath = item['input']
+                item['alias'] = aliases[inpath]
+                item['inrecord'] = inrecords[inpath]
+                item['figname map'] = figname_maps[inpath]
+            body_items.append(cls.constitute_body_item(item))
 
-        return '\n\n'.join(
-            item if isinstance(item, str) else constitute_input(item)
-            for item in metabody
-        )
+        return '\n\n'.join(body_items)
 
-    def constitute_input(self, inpath, *,
+    @classmethod
+    def constitute_body_item(cls, item):
+        assert isinstance(item, dict), item
+        if 'verbatim' in item:
+            return item['verbatim']
+        elif 'input' in item:
+            kwargs = dict(item)
+            kwargs['inpath'] = kwargs.pop('input')
+            kwargs['figname_map'] = kwargs.pop('figname map')
+            return cls.constitute_body_input(**kwargs)
+        else:
+            raise ValueError(item)
+
+    @classmethod
+    def constitute_body_input(cls, inpath, *,
         alias, inrecord, figname_map, rigid=False
     ):
-        caption = self.extract_inrecord_caption(inpath, inrecord)
-        body = self.substitute_input(caption=caption, filename=alias)
+        caption = cls.extract_inrecord_caption(inpath, inrecord)
+        body = cls.substitute_input(
+            caption=caption, filename=alias, inpath=inpath )
         date = inrecord.get('$date')
         if rigid:
-            body = self.substitute_jeolmheader() + '\n' + body
+            body = cls.substitute_jeolmheader() + '\n' + body
         if date is None:
-            body = self.substitute_datedef(date='(no date)') + '\n' + body
+            body = cls.substitute_datedef(date='(no date)') + '\n' + body
         else:
-            date = self.constitute_date(date)
-            body = self.substitute_datedef(date=date) + '\n' + body
+            date = cls.constitute_date(date)
+            body = cls.substitute_datedef(date=date) + '\n' + body
             if not rigid:
-                body = body + '\n' + self.substitute_datestamp()
+                body = body + '\n' + cls.substitute_datestamp()
         if figname_map:
-            body = self.constitute_figname_map(figname_map) + '\n' + body
+            body = cls.constitute_figname_map(figname_map) + '\n' + body
         return body
 
     input_template = (
         r'\section*{$caption%'
          '\n    }'
         r'\resetproblem' '\n'
-        r'\input{$filename}' )
+        r'\input{$filename}% $inpath' )
     jeolmheader_template = r'\jeolmheader'
     datedef_template = r'\def\jeolmdate{$date}'
     datestamp_template = (
@@ -745,15 +808,17 @@ class Driver(metaclass=Substitutioner):
         r'    \end{flushright}'
     )
 
-    def extract_inrecord_caption(self, inpath, inrecord):
+    @classmethod
+    def extract_inrecord_caption(cls, inpath, inrecord):
         caption = inrecord.get('$caption')
         if caption is None:
             caption = '{}'.format(inpath)
         return caption
 
-    def constitute_figname_map(self, figname_map):
+    @classmethod
+    def constitute_figname_map(cls, figname_map):
         return '\n'.join(
-            self.substitute_jeolmfiguremap(alias=figalias, name=figname)
+            cls.substitute_jeolmfiguremap(alias=figalias, name=figname)
             for figalias, figname in figname_map.items() )
 
     jeolmfiguremap_template = r'\jeolmfiguremap{$alias}{$name}'
@@ -772,12 +837,6 @@ class Driver(metaclass=Substitutioner):
         'января', 'февраля', 'марта', 'апреля',
         'мая', 'июня', 'июля', 'августа',
         'сентября', 'октября', 'ноября', 'декабря' ]
-
-    def constitute_special(self, special):
-        assert isinstance(special, dict), special
-        if len(special) != 1 or next(iter(special.keys())) != 'verbatim':
-            raise ValueError(special)
-        return str(next(iter(special.values())))
 
     clearpage_template = r'\clearpage'
     phantom_template = r'\phantom{Ы}'
@@ -821,4 +880,50 @@ class Driver(metaclass=Substitutioner):
         path = PurePath(*parts)
         assert not path.is_absolute() and len(path.suffixes) == 1, path
         return '-'.join(path.with_suffix('').parts) + suffix
+
+    @classmethod
+    def digest_style_item(cls, item):
+        assert isinstance(item, dict), item
+        if 'verbatim' in item:
+            if not item.keys() <= {'verbatim'}:
+                raise ValueError(item)
+            digested = {'verbatim' : str(item['verbatim'])}
+        elif 'package' in item:
+            if not item.keys() <= {'package', 'options'}:
+                raise ValueError(item)
+            digested = {'package' : str(item['package'])}
+            if 'options' in item:
+                digested['options'] = [
+                    str(option) for option in item['options'] ]
+        elif 'style' in item:
+            if not item.keys() <= {'style'}:
+                raise ValueError(item)
+            inpath = PurePath(item['style'])
+            if inpath.is_absolute():
+                raise ValueError(item)
+            digested = {'style' : inpath}
+        else:
+            raise ValueError(item)
+        return digested
+
+    @classmethod
+    def digest_body_item(cls, item):
+        assert isinstance(item, dict), item
+        if 'verbatim' in item:
+            if not item.keys() <= {'verbatim'}:
+                raise ValueError(item)
+            digested =  {
+                'verbatim' : str(item['verbatim']) }
+        elif 'input' in item:
+            if not item.keys() <= {'input', 'rigid'}:
+                raise ValueError(item)
+            inpath = PurePath(item['input'])
+            if inpath.is_absolute():
+                raise ValueError(item)
+            digested = {'input' : inpath}
+            if 'rigid' in item:
+                digested['rigid'] = bool(item['rigid'])
+        else:
+            raise ValueError(item)
+        return digested
 
