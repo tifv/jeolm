@@ -48,9 +48,8 @@ class Builder:
         self.prebuild_documents(self.fsmanager.build_dir/'documents')
 
         self.ultimate_node = Node(
-            name='ultimate'
-            needs=(
-                node
+            name='ultimate',
+            needs=( node
                 for fmt in self.build_formats
                 for node in self.exposed_nodes[fmt].values()
             ) )
