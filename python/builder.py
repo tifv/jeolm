@@ -1,4 +1,6 @@
 from collections import OrderedDict as ODict
+from itertools import chain
+from functools import partial
 from datetime import date
 
 import os
@@ -17,21 +19,13 @@ import logging
 logger = logging.getLogger(__name__)
 
 class Builder:
-    shipout_format = ('pdf', )
+    build_formats = ('pdf', )
+    known_formats = ('pdf', 'ps', 'dump')
 
     def __init__(self, targets, *, fsmanager, force_recompile):
         self.fsmanager = fsmanager
         self.root = self.fsmanager.root
         self.force_recompile = force_recompile
-
-        self.source_nodes = ODict()
-        self.autosource_nodes = ODict()
-        self.eps_nodes = ODict()
-        self.ps_nodes = ODict()
-        self.pdf_nodes = ODict()
-        self.shipout_ps_nodes = ODict()
-        self.shipout_pdf_nodes = ODict()
-        self.shipout_node = Node(name='shipout')
 
         self.driver = self.fsmanager.get_driver()
         self.metarecords_cache = self.fsmanager.load_metarecords_cache()
@@ -46,12 +40,23 @@ class Builder:
         if self.cache_updated:
             self.dump_meta_cache()
 
+        self.source_nodes = ODict()
+        assert set(self.known_formats) >= set(self.build_formats)
+        self.exposed_nodes = {fmt : ODict() for fmt in self.build_formats}
+
         self.prebuild_figures(self.fsmanager.build_dir/'figures')
         self.prebuild_documents(self.fsmanager.build_dir/'documents')
-        self.prebuild_shipout()
+
+        self.ultimate_node = Node(
+            name='ultimate'
+            needs=(
+                node
+                for fmt in self.build_formats
+                for node in self.exposed_nodes[fmt].values()
+            ) )
 
     def update(self):
-        self.shipout_node.update()
+        self.ultimate_node.update()
 
     def dump_meta_cache(self):
         self.fsmanager.dump_metarecords_cache(self.metarecords_cache)
@@ -86,18 +91,17 @@ class Builder:
         return metanode
 
     def prebuild_figures(self, build_dir):
-        eps_nodes = self.eps_nodes
+        self.eps_nodes = ODict()
         for figname, figrecord in self.figrecords.items():
-            eps_nodes[figname] = self.prebuild_figure(
-                figname, figrecord, build_dir/figname )
+            self.prebuild_figure(figname, figrecord, build_dir/figname)
 
     def prebuild_figure(self, figname, figrecord, build_dir):
         figtype = figrecord['type']
         if figtype == 'asy':
-            return self.prebuild_asy_figure(
+            self.prebuild_asy_figure(
                 figname, figrecord, build_dir=build_dir )
         elif figtype == 'eps':
-            return self.prebuild_eps_figure(
+            self.prebuild_eps_figure(
                 figname, figrecord, build_dir=build_dir )
         else:
             raise AssertionError(figtype, figname)
@@ -111,7 +115,7 @@ class Builder:
             source=self.get_source_node(figrecord['source']),
             path=build_dir/'main.asy',
             needs=(build_dir_node,) )
-        eps_node = FileNode(
+        eps_node = self.eps_nodes[figname] = FileNode(
             name='fig:{}:eps'.format(figname),
             path=build_dir/'main.eps',
             needs=(source_node, build_dir_node) )
@@ -125,12 +129,16 @@ class Builder:
             in figrecord['used'].items() )
         eps_node.add_subprocess_rule(
             ('asy', '-offscreen', 'main.asy'), cwd=build_dir )
-        return eps_node
 
     def prebuild_eps_figure(self, figname, figrecord, build_dir):
-        return self.get_source_node(figrecord['source'])
+        self.eps_nodes[figname] = self.get_source_node(figrecord['source'])
 
     def prebuild_documents(self, build_dir):
+        self.autosource_nodes = ODict()
+        self.dvi_nodes = ODict()
+        self.ps_nodes = ODict()
+        self.pdf_nodes = ODict()
+        self.dump_nodes = ODict()
         for metaname, metarecord in self.metarecords.items():
             self.prebuild_document(
                 metaname, metarecord, build_dir/metaname )
@@ -151,87 +159,119 @@ class Builder:
 
         latex_log_name = metaname + '.log'
 
-        tex_node = self.autosource_nodes[metaname] = FileNode(
+        autosource_node = self.autosource_nodes[metaname] = TextNode(
             name='doc:{}:source:main'.format(metaname),
             path=build_dir/'main.tex',
+            text=metarecord['document'],
             needs=(metanode, build_dir_node) )
-        tex_node_rule_repr = (
-            '<GREEN>Write generated source to {node.relative_path}<NOCOLOUR>'
-            .format(node=tex_node) )
-        @tex_node.add_rule
-        def latex_generator_rule():
-            tex_node.log(logging.INFO, tex_node_rule_repr)
-            s = metarecord['document']
-            with tex_node.open('w') as f:
-                f.write(s)
 
-        dvi_node = LaTeXNode(
-            name='doc:{}:dvi'.format(metaname),
-            source=tex_node,
-            path=(build_dir/metaname).with_suffix('.dvi'),
-            cwd=build_dir, )
-        dvi_node.extend_needs(
+        linked_sources = [
             LinkNode(
                 name='doc:{}:source:{}'.format(metaname, alias_name),
                 source=self.get_source_node(inpath),
                 path=build_dir/alias_name,
                 needs=(build_dir_node,) )
-            for alias_name, inpath in metarecord['sources'].items() )
-        dvi_node.extend_needs(
+            for alias_name, inpath in metarecord['sources'].items() ]
+        linked_figures = [
             LinkNode(
                 name='doc:{}:fig:{}'.format(metaname, figname),
                 source=self.eps_nodes[figname],
                 path=(build_dir/figname).with_suffix('.eps'),
                 needs=(build_dir_node,) )
-            for figname in metarecord['fignames'] )
+            for figname in metarecord['fignames'] ]
+
+        dvi_node = self.dvi_nodes[metaname] = LaTeXNode(
+            name='doc:{}:dvi'.format(metaname),
+            source=autosource_node,
+            path=(build_dir/metaname).with_suffix('.dvi'),
+            cwd=build_dir, )
+        dvi_node.extend_needs(linked_sources)
+        dvi_node.extend_needs(linked_figures)
         if self.force_recompile:
-            def needs_build():
+            def always_needs_build():
                 return True
-            dvi_node.needs_build = needs_build
+            dvi_node.needs_build = always_needs_build
 
-        pdf_node = self.pdf_nodes[metaname] = FileNode(
-            name='doc:{}:pdf'.format(metaname),
-            path=(build_dir/metaname).with_suffix('.pdf'),
-            needs=(dvi_node,) )
-        pdf_node.add_subprocess_rule(
-            ('dvipdf', local_name(dvi_node), local_name(pdf_node)),
-            cwd=build_dir )
-
-        ps_node = self.ps_nodes[metaname] = FileNode(
-            name='doc:{}:ps'.format(metaname),
-            path=(build_dir/metaname).with_suffix('.ps'),
-            needs=(dvi_node,) )
-        ps_node.add_subprocess_rule(
-            ('dvips', local_name(dvi_node), '-o', local_name(ps_node)),
-            cwd=build_dir )
-
-    def prebuild_shipout(self):
-        shipout_pdf_nodes = self.shipout_pdf_nodes
-        shipout_ps_nodes = self.shipout_ps_nodes
-        for metaname in self.metarecords:
-            shipout_pdf_nodes[metaname] = LinkNode(
-                name='doc:{}:shipout:pdf'.format(metaname),
-                source=self.pdf_nodes[metaname],
+        if 'pdf' in self.build_formats:
+            pdf_node = self.pdf_nodes[metaname] = FileNode(
+                name='doc:{}:pdf'.format(metaname),
+                path=(build_dir/metaname).with_suffix('.pdf'),
+                needs=(dvi_node,) )
+            pdf_node.extend_needs(linked_figures)
+            pdf_node.add_subprocess_rule(
+                ('dvipdf', local_name(dvi_node), local_name(pdf_node)),
+                cwd=build_dir )
+            self.exposed_nodes['pdf'][metaname] = LinkNode(
+                name='doc:{}:exposed:pdf'.format(metaname),
+                source=pdf_node,
                 path=(self.root/metaname).with_suffix('.pdf') )
-            shipout_ps_nodes[metaname] = LinkNode(
-                name='doc:{}:shipout:ps'.format(metaname),
-                source=self.ps_nodes[metaname],
+
+        if 'ps' in self.build_formats:
+            ps_node = self.ps_nodes[metaname] = FileNode(
+                name='doc:{}:ps'.format(metaname),
+                path=(build_dir/metaname).with_suffix('.ps'),
+                needs=(dvi_node,) )
+            ps_node.extend_needs(linked_figures)
+            ps_node.add_subprocess_rule(
+                ('dvips', local_name(dvi_node), '-o', local_name(ps_node)),
+                cwd=build_dir )
+            self.exposed_nodes['ps'][metaname] = LinkNode(
+                name='doc:{}:exposed:ps'.format(metaname),
+                source=ps_node,
                 path=(self.root/metaname).with_suffix('.ps') )
 
-        if 'ps' in self.shipout_format:
-            self.shipout_node.extend_needs(shipout_ps_nodes.values())
-        if 'pdf' in self.shipout_format:
-            self.shipout_node.extend_needs(shipout_pdf_nodes.values())
+        if 'dump' in self.build_formats:
+            dump_node = self.dump_nodes[metaname] = TextNode(
+                name='doc:{}:source:dump'.format(metaname),
+                path=build_dir/'dump.tex',
+                textfunc=partial(
+                    self.resolve_latex_inputs, metarecord['document'] ),
+                needs=(metanode, build_dir_node) )
+            dump_node.extend_needs(
+                self.get_source_node(inpath)
+                for inpath in metarecord['inpaths'] )
+            self.exposed_nodes['dump'][metaname] = LinkNode(
+                name='doc:{}:exposed:dump'.format(metaname),
+                source=dump_node,
+                path=(self.root/metaname).with_suffix('.dump.tex') )
 
-    def get_source_node(self, path):
-        assert isinstance(path, PurePath), repr(path)
-        assert not path.is_absolute(), path
-        if path in self.source_nodes:
-            return self.source_nodes[path]
-        node = self.source_nodes[path] = \
-            FileNode(name='source:{}'.format(path),
-                path=self.fsmanager.source_dir/path )
+    def get_source_node(self, inpath):
+        assert isinstance(inpath, PurePath), repr(inpath)
+        assert not inpath.is_absolute(), inpath
+        if inpath in self.source_nodes:
+            return self.source_nodes[inpath]
+        node = self.source_nodes[inpath] = \
+            FileNode(name='source:{}'.format(inpath),
+                path=self.fsmanager.source_dir/inpath )
         return node
+
+    def resolve_latex_inputs(self, document):
+        """
+        Create a standalone document (dump).
+
+        Substitute all local LaTeX file inputs (including sources and
+        styles).
+        """
+        return self.latex_input_pattern.sub(self._latex_resolver, document)
+
+    latex_input_pattern = re.compile(r'(?m)'
+        r'\\(?:input|usepackage){[^{}]+}'
+            r'% (?P<source>[-a-zA-Z/]*\.(?:tex|sty))$' )
+
+    def _latex_resolver(self, match):
+        inpath = PurePath(match.group('source'))
+        source_node = self.get_source_node(inpath)
+        with source_node.open('r') as f:
+            replacement = f.read()
+        if inpath.suffix == '.sty':
+            if '@' in replacement:
+                replacement = '\\makeatletter\n{}\\makeatother'.format(
+                    replacement )
+        elif inpath.suffix == '.tex':
+            pass
+        else:
+            raise AssertionError(inpath)
+        return replacement
 
     @classmethod
     def metarecord_hash(cls, metarecord):
@@ -250,13 +290,36 @@ class Builder:
         elif isinstance(obj, list):
             return [sterilize(i) for i in obj]
 #        elif isinstance(obj, set):
-#            return {sterilize(i):None for i in obj}
+#            return {sterilize(i) : None for i in obj}
         elif obj is None or isinstance(obj, (str, int, float)):
             return obj
         elif isinstance(obj, (PurePath, date)):
             return str(obj)
         else:
             raise TypeError(type(obj))
+
+class TextNode(FileNode):
+    """
+    Write some generated text to a file.
+    """
+    def __init__(self, path, text=None, textfunc=None, **kwargs):
+        super().__init__(path, **kwargs)
+        assert (text is None) + (textfunc is None) == 1
+        if text is not None:
+            assert isinstance(text, str), text
+            textfunc = lambda: text
+
+        rule_repr = (
+            '<GREEN>Write generated text to {node.relative_path}<NOCOLOUR>'
+            .format(node=self) )
+        @self.add_rule
+        def write_text_rule(textfunc=textfunc):
+            self.log(logging.INFO, rule_repr)
+            text = textfunc()
+            assert isinstance(text, str), text
+            with self.open('w') as f:
+                f.write(text)
+
 
 class LaTeXNode(ProductFileNode):
     """
@@ -387,4 +450,7 @@ class LaTeXNode(ProductFileNode):
             print(
                 '[{}]'.format(current_page(match.start())),
                 match.group(0) )
+
+class Dumper(Builder):
+    build_formats = ('dump', )
 
