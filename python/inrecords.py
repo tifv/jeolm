@@ -236,7 +236,7 @@ class InrecordReviewer:
         r'(?m)^% no caption$' )
     caption_pattern = re.compile(r'(?m)^'
         r'%+\n'
-        r'%+ +(?! )(?P<caption>[^%]+)(?<! ) *(?:%.*)?\n'
+        r'%+ +(?! )(?P<caption>[^%{}]+)(?<![ \\]) *(?:%.*)?\n'
         r'%+\n')
 
     def review_tex_date(self, inpath, s, oldrecord, newrecord):
