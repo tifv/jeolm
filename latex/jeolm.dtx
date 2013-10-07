@@ -296,10 +296,11 @@ This work has the LPPL maintenance status `author-maintained'.
 %
 % \subsection{Headers}
 %
-% \begin{macro}{\jeolmheaderset}
+% \begin{macro}{\jeolmheadertemplate}
 % \begin{macro}{\jeolmheader}
-% To use |\jeolmheader|, macro |\jeolmheaderset|\marg{institution}\marg{group}
-% should be called exactly once in preambule.
+% Macro |\jeolmheader| is not defined here, but used by jeolm driver.
+% It is advised to define it as
+% |\jeolmheadertemplate|\marg{institution}\marg{daterange}\marg{group}.
 %    \begin{macrocode}
 \newcommand\jeolmheadertemplate[3]{%
 {\Large\vspace{4ex}}\par%
