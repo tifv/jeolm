@@ -297,29 +297,6 @@ class Builder:
         else:
             raise TypeError(type(obj))
 
-class TextNode(FileNode):
-    """
-    Write some generated text to a file.
-    """
-    def __init__(self, path, text=None, textfunc=None, **kwargs):
-        super().__init__(path, **kwargs)
-        assert (text is None) + (textfunc is None) == 1
-        if text is not None:
-            assert isinstance(text, str), text
-            textfunc = lambda: text
-
-        rule_repr = (
-            '<GREEN>Write generated text to {node.relative_path}<NOCOLOUR>'
-            .format(node=self) )
-        @self.add_rule
-        def write_text_rule(textfunc=textfunc):
-            self.log(logging.INFO, rule_repr)
-            text = textfunc()
-            assert isinstance(text, str), text
-            with self.open('w') as f:
-                f.write(text)
-
-
 class LaTeXNode(ProductFileNode):
     """
     Represents a target of some latex command.

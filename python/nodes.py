@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 __all__ = [
     'Node', 'NodeCycleError',
     'DatedNode', 'PathNode', 'ProductNode',
-    'FileNode', 'ProductFileNode',
+    'FileNode', 'TextNode', 'ProductFileNode',
     'LinkNode', 'DirectoryNode'
 ]
 
@@ -385,6 +385,28 @@ class FileNode(PathNode):
         if self.path.exists() and self.path.is_symlink():
             self.path.unlink()
         super().run_rules()
+
+class TextNode(FileNode):
+    """
+    Write some generated text to a file.
+    """
+    def __init__(self, path, text=None, textfunc=None, **kwargs):
+        super().__init__(path, **kwargs)
+        assert (text is None) + (textfunc is None) == 1
+        if text is not None:
+            assert isinstance(text, str), text
+            textfunc = lambda: text
+
+        rule_repr = (
+            '<GREEN>Write generated text to {node.relative_path}<NOCOLOUR>'
+            .format(node=self) )
+        @self.add_rule
+        def write_text_rule(textfunc=textfunc):
+            self.log(INFO, rule_repr)
+            text = textfunc()
+            assert isinstance(text, str), text
+            with self.open('w') as f:
+                f.write(text)
 
 class ProductFileNode(ProductNode, FileNode):
     # Order is everything.
