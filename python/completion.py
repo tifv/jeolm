@@ -11,10 +11,10 @@ def main():
 
     subcommands = ('build', 'review', 'list', 'spell', 'clean', )
     subcommand_options = {
-        'build' : ('--force-recompile',),
+        'build' : ('--force-recompile', '--dump', ),
         'list' : ('--type',) }
     subcommand_short_options = {'build' : {'-f' : '--force-recompile'}}
-    subcommands_accepting_paths = ('review', )
+    subcommands_accepting_paths = ('r', 'review', )
     subcommands_accepting_targets = ('build', 'list', 'spell', )
 
     import sys
@@ -69,6 +69,7 @@ def main():
         for subcommand in subcommands:
             if subcommand.startswith(current):
                 print(subcommand)
+        return
     subcommand = args[0]
     if current.startswith('-'):
         if current in subcommand_short_options.get(subcommand, ()):

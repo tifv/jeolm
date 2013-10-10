@@ -187,9 +187,7 @@ class Builder:
         dvi_node.extend_needs(linked_sources)
         dvi_node.extend_needs(linked_figures)
         if self.force_recompile:
-            def always_needs_build():
-                return True
-            dvi_node.needs_build = always_needs_build
+            dvi_node.needs_build = lambda: True
 
         if 'pdf' in self.build_formats:
             pdf_node = self.pdf_nodes[metaname] = FileNode(
@@ -229,6 +227,8 @@ class Builder:
             dump_node.extend_needs(
                 self.get_source_node(inpath)
                 for inpath in metarecord['inpaths'] )
+            if self.force_recompile:
+                dump_node.needs_build = lambda: True
             self.exposed_nodes['dump'][metaname] = LinkNode(
                 name='doc:{}:exposed:dump'.format(metaname),
                 source=dump_node,
@@ -255,7 +255,7 @@ class Builder:
 
     latex_input_pattern = re.compile(r'(?m)'
         r'\\(?:input|usepackage){[^{}]+}'
-            r'% (?P<source>[-a-zA-Z/]*\.(?:tex|sty))$' )
+            r'% (?P<source>[-/\w]+\.(?:tex|sty))$' )
 
     def _latex_resolver(self, match):
         inpath = PurePath(match.group('source'))

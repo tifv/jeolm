@@ -115,10 +115,10 @@ class InrecordReviewer:
                 .format(inpath) )
 
         subnames = set(inrecord.keys())
-        subnames.update(
-            name for name in os.listdir(str(path))
+        subnames.update( name
+            for name in os.listdir(str(path))
             if not name.startswith('.') )
-        subnames = sorted(subnames)
+        subnames = sorted(subnames, key=self.natural_key)
         logger.debug('{} listing: {}'.format(inpath, subnames))
         for subname in subnames:
             assert isinstance(subname, str), subname
@@ -139,6 +139,16 @@ class InrecordReviewer:
 
         self.reorder_odict(inrecord, orderpath=path/'.order')
         return inrecord
+
+    @classmethod
+    def natural_key(cls, s, pattern=re.compile(r'(\d+)')):
+        return [
+             [
+                int(r) if r.isdigit() else r
+                for r in pattern.split(q)
+            ]
+            for q in s.split('.')
+        ]
 
     def report_screened_names(self, inpath, inrecord):
         """
