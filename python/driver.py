@@ -131,6 +131,9 @@ class Driver(metaclass=Substitutioner):
         return metarecords, figrecords
 
     def list_targets(self):
+        """
+        List some (usually most of) probably-working targets.
+        """
         yield from self.inrecords.list_targets()
         yield from self.outrecords.list_targets()
 
@@ -164,6 +167,9 @@ class Driver(metaclass=Substitutioner):
         self.metarecords[metaname] = metarecord
 
         self.select_aliases(metarecord)
+        metarecord['inrecords'] = {
+            inpath : self.inrecords[inpath]
+            for inpath in metarecord['inpaths'] }
 
         figname_maps = dict()
         fignames = set()
@@ -182,6 +188,11 @@ class Driver(metaclass=Substitutioner):
         return metaname
 
     def select_aliases(self, metarecord):
+        """
+        Define aliases for inpaths.
+
+        Basing on metarecord['inpaths'], define 'aliases', 'sources'.
+        """
         metarecord['aliases'] = aliases = dict()
 
         inpaths = metarecord['inpaths']
@@ -204,9 +215,6 @@ class Driver(metaclass=Substitutioner):
             raise ValueError({
                 metarecord['aliases'][inpath]
                 for inpath in clashed_inpaths })
-        metarecord['inrecords'] = {
-            inpath : self.inrecords[inpath]
-            for inpath in metarecord['inpaths'] }
 
     def produce_figname_map(self, inpath, inrecord):
         """
@@ -227,6 +235,8 @@ class Driver(metaclass=Substitutioner):
     def form_figrecord(self, figpath):
         """
         Return figname.
+
+        Update self.figrecords.
         """
         figtype, inpath, inrecord = self.find_figure_inrecord(figpath)
 
@@ -304,35 +314,48 @@ class Driver(metaclass=Substitutioner):
         inpaths = protorecord['inpaths'] = []
         protorecord.setdefault('date', self.min_date(date_set))
 
-        body = protorecord.pop('body')
-        protorecord['body'] = [
-            self.digest_body_item(item)
-            for item in body ]
-        for item in body:
-            if 'input' not in item:
-                continue
-            inpath = item['input']
-            if inpath not in self.inrecords:
-                raise RecordNotFoundError(inpath)
-            inpaths.append(inpath)
+        protorecord['body'] = list(self.digest_protorecord_body(
+            protorecord.pop('body'), inpaths ))
 
         style = record['$style']
         style.extend(protorecord.pop('style', ()))
-        protorecord['style'] = [
-            self.digest_style_item(item)
-            for item in style ]
-        for item in style:
-            if 'style' not in item:
-                continue
-            inpath = item['style']
-            if inpath not in self.inrecords:
-                raise RecordNotFoundError(inpath)
-            inpaths.append(inpath)
+        protorecord['style'] = list(self.digest_protorecord_style(
+            style, inpaths ))
 
         # old key..
         assert 'preamble' not in protorecord
 
         return protorecord
+
+    def digest_protorecord_body(self, body, inpaths):
+        """
+        Generator; yield body items.
+
+        Check if included inpaths are present in inrecords.
+        """
+        for item in body:
+            item = self.digest_body_item(item)
+            if 'input' in item:
+                inpath = item['input']
+                if inpath not in self.inrecords:
+                    raise RecordNotFoundError(inpath)
+                inpaths.append(inpath)
+            yield item
+
+    def digest_protorecord_style(self, style, inpaths):
+        """
+        Generator; yield style items.
+
+        Check if included style inpaths are present in inrecords.
+        """
+        for item in style:
+            item = self.digest_style_item(item)
+            if 'style' in item:
+                inpath = item['style']
+                if inpath not in self.inrecords:
+                    raise RecordNotFoundError(inpath)
+                inpaths.append(inpath)
+            yield item
 
     def produce_rigid_protorecord(self, target, record,
         *, date_set
@@ -675,22 +698,6 @@ class Driver(metaclass=Substitutioner):
                 "<BOLD><MAGENTA>{name}<NOCOLOUR> uses "
                 "bad font option '<YELLOW>{option}<NOCOLOUR>'<RESET>"
                 .format(name=metarecord.metaname, option=font_option) )
-
-#    def generate_metapreamble(self, metarecord):
-#        for item in metarecord['style']:
-#            assert isinstance(item, dict), item
-#            if 'verbatim' in item:
-#                yield item
-#            elif 'package' in item:
-#                yield item
-#            elif 'style' in item:
-#                item['alias'] = metarecord['aliases'][item['style']]
-#                yield item
-#        if 'selectsize' in metarecord:
-#            font, skip = metarecord['selectsize']
-#            yield {'verbatim' :
-#                self.substitute_selectsize(font=font, skip=skip) }
-#        yield from metarecord.get('preamble', ())
 
     @classmethod
     def constitute_preamble(cls, metarecord, metastyle):
