@@ -142,6 +142,8 @@ This work has the LPPL maintenance status `author-maintained'.
 % |\jeolmfigure|\oarg{graphics options}\marg{alias} will use this map to
 % determine actual figure name and delegate to
 % |\includegraphics|\oarg{graphics options}\marg{realname}.
+% These macros do not make much sense outside of automated build system, which
+% requires ability to <<relocate>> figure files.
 %
 % \subsection{Problem numbering}
 %
@@ -153,7 +155,7 @@ This work has the LPPL maintenance status `author-maintained'.
 % \problem For |\problem|.
 %
 % \DescribeMacro{\problemx}
-% Marking a problem (e.\,g. as hard) should be dome with the
+% Marking a problem (e.\,g. as hard) should be done with the
 % |\problemx|\marg{mark} macro, just like this:
 % \\
 % \problemx{*} For |\problemx{*}|.
@@ -218,9 +220,9 @@ This work has the LPPL maintenance status `author-maintained'.
 % For |\problem|.
 % \itemy{2.1}
 % For |\itemy{2.1}|, mentioning next problem:
-% \ref{another problem}.
+% \ref{another problem} for |\ref{another problem}|.
 % \itemyx{2.2}{*}\label{another problem}%
-% For |\itemyx{2.2}{*}|.
+% For |\itemyx{2.2}{*}\label{another problem}%|.
 % \end{problems}
 %
 % \subsection{Statements}
@@ -303,13 +305,13 @@ This work has the LPPL maintenance status `author-maintained'.
 % |\jeolmheadertemplate|\marg{institution}\marg{daterange}\marg{group}.
 %    \begin{macrocode}
 \newcommand\jeolmheadertemplate[3]{%
-{\Large\vspace{4ex}}\par%
-\begingroup\small\sffamily
-\strut\hfill{\bfseries#1}\hfill\strut\\
-\strut\hfill{\itshape#2}\qquad{#3}\qquad{\itshape\jeolmdate}\hfill\strut\\
-\rule[1ex]{\textwidth}{0.5pt}
-\endgroup
-{\vspace{-1ex}\Large\vspace{-4ex}\vspace{-\parskip}}}
+    {\Large\vspace{4ex}}\par%
+    \begingroup\small\sffamily%
+    \strut\hfill{\bfseries#1}\hfill\strut\\%
+    \strut\hfill{\itshape#2}\qquad{#3}\qquad{\itshape\jeolmdate}\hfill\strut\\%
+    \rule[1ex]{\textwidth}{0.5pt} %
+    \endgroup%
+    {\vspace{-1ex}\Large\vspace{-4ex}\vspace{-\parskip}}}
 %    \end{macrocode}
 % \end{macro}
 % \end{macro}
@@ -323,9 +325,10 @@ This work has the LPPL maintenance status `author-maintained'.
 % later.
 %    \begin{macrocode}
 \newcommand\problem{\problemx{}}
-\newcommand\problemx[1]{\problem@x{#1}\problem@space\ignorespaces}
+\newcommand\problemx[1]{\stepcounter{jeolmproblem}%
+    \problemyx{\arabic{jeolmproblem}}{#1}}
 \newcommand\problemy[1]{\problemyx{#1}{}}
-\newcommand\problemyx[2]{\problem@yx{#1}{#2}\problem@space\ignorespaces}
+\newcommand\problemyx[2]{\problem@yx{#1}{#2}\problem@space}
 %    \end{macrocode}
 % \end{macro}
 %
@@ -334,7 +337,7 @@ This work has the LPPL maintenance status `author-maintained'.
 % These macros boil down to |\subproblem@x|, which is defined later.
 %    \begin{macrocode}
 \newcommand\subproblem{\subproblemx{}}
-\newcommand\subproblemx[1]{\subproblem@x{#1}\subproblem@space\ignorespaces}
+\newcommand\subproblemx[1]{\subproblem@x{#1}\subproblem@space}
 \let\sbp\subproblem
 \let\sbpx\subproblemx
 %    \end{macrocode}
@@ -355,16 +358,15 @@ This work has the LPPL maintenance status `author-maintained'.
 % \end{macro}
 % \end{macro}
 %
-% \begin{macro}{\problem@x}
 % \begin{macro}{\problem@yx}
-% These macros boil down to |\problem@label| and |\problem@format|, which are
+% This macro boils down to |\problem@label| and |\problem@format|, which are
 % defined later.
 % The former allows |\label| to be used to reference the problem, while the
 % latter produces the visible output.
 %    \begin{macrocode}
-\newcommand\problem@x[1]{%
-\stepcounter{jeolmproblem}\problem@yx{\arabic{jeolmproblem}}{#1}}
-\newcommand\problem@yx[2]{\problem@label{#1}\problem@format{#1}{#2}}
+\newcommand\problem@yx[2]{%
+    \problem@label{#1}\setcounter{jeolmsubproblem}{0}%
+    \problem@format{#1}{#2}}
 %    \end{macrocode}
 % In items of |problem| environment, counter increment and labeling is
 % managed by |\item| command itself.
@@ -373,10 +375,9 @@ This work has the LPPL maintenance status `author-maintained'.
 \newcommand\problemx@in@item[1]{\problem@yx{\arabic{jeolmproblem}}{#1}}
 %    \end{macrocode}
 % \end{macro}
-% \end{macro}
 %
 % \begin{macro}{\subproblem@x}
-% These macros boil down to |\subproblem@label| and |\subproblem@format|,
+% This macro boils down to |\subproblem@label| and |\subproblem@format|,
 % which are defined later.
 % The former allows |\label| to be used to reference the subproblem, while the
 % latter produces the visible output.
@@ -389,18 +390,24 @@ This work has the LPPL maintenance status `author-maintained'.
 %
 % \subsubsection{Labeling}
 %
+% \begin{macro}{\problem@label}
+% \begin{macro}{\subproblem@label}
+% Manage labeling by directly setting |\@currentlabel|.
 %    \begin{macrocode}
+\newcommand\theproblem{}
 \newcommand\problem@label[1]{%
-\global\edef\theproblem{#1}%
-\edef\@currentlabel{\theproblem}%
-\setcounter{jeolmsubproblem}{0}}
+    \global\edef\theproblem{#1}%
+    \edef\@currentlabel{\theproblem}}
 %    \end{macrocode}
 %
 %    \begin{macrocode}
+\newcommand\thesubproblem{}
 \newcommand\subproblem@label[1]{%
-\global\edef\thesubproblem{{\theproblem}#1}%
-\edef\@currentlabel{\thesubproblem}}
+    \global\edef\thesubproblem{{\theproblem}#1}%
+    \edef\@currentlabel{\thesubproblem}}
 %    \end{macrocode}
+% \end{macro}
+% \end{macro}
 %
 % \subsubsection{Formatting}
 %
@@ -408,10 +415,10 @@ This work has the LPPL maintenance status `author-maintained'.
 % \begin{macro}{\subproblem@format}
 %    \begin{macrocode}
 \newlength\problem@space@length
-\problem@space@length=1.5ex
-\newcommand\problem@space{\hspace{\problem@space@length}}
+\problem@space@length=1em
+\newcommand\problem@space{\hspace{\problem@space@length}\ignorespaces}
 \newcommand\problem@format[2]{\textbf{#1.\rlap{\!#2}}}
-\newcommand\subproblem@space{\hspace{1ex}}
+\newcommand\subproblem@space{\hspace{1ex}\ignorespaces}
 \newcommand\subproblem@format[2]{{\bfseries(\rlap{#1#2)}\phantom{m#2)}}}
 %    \end{macrocode}
 % \end{macro}
@@ -439,7 +446,7 @@ This work has the LPPL maintenance status `author-maintained'.
 % This is used by |\itemx|.
 %    \begin{macrocode}
 \begin{list}{\problem@in@item@current}{%
-\leftmargin=5ex\labelsep=\problem@space@length%
+\leftmargin=2.45em\labelsep=\problem@space@length%
 \@nmbrlisttrue\def\@listctr{jeolmproblem}}%
 }{\end{list}}
 %    \end{macrocode}
@@ -452,9 +459,9 @@ This work has the LPPL maintenance status `author-maintained'.
 \item%
 \let\problem@in@item@current\problem@in@item}
 \newcommand\problem@itemy[1]{%
-\item[\problem@format{#1}{}]\problem@label{#1}}
+\item[\problem@format{#1}{}]\problem@label{#1}\setcounter{jeolmsubproblem}{0}}
 \newcommand\problem@itemyx[2]{%
-\item[\problem@format{#1}{#2}]\problem@label{#1}}
+\item[\problem@format{#1}{#2}]\problem@label{#1}\setcounter{jeolmsubproblem}{0}}
 %    \end{macrocode}
 %
 % \subsection{Statements}
