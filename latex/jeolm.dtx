@@ -308,10 +308,13 @@ This work has the LPPL maintenance status `author-maintained'.
     {\Large\vspace{4ex}}\par%
     \begingroup\small\sffamily%
     \strut\hfill{\bfseries#1}\hfill\strut\\%
-    \strut\hfill{\itshape#2}\qquad{#3}\qquad{\itshape\jeolmdate}\hfill\strut\\%
+    \strut\hfill{\itshape#2}\qquad{#3}%
+        \ifx\jeolmdate\relax\else\qquad{\itshape\jeolmdate}\fi%
+        \hfill\strut\\%
     \rule[1ex]{\textwidth}{0.5pt} %
     \endgroup%
     {\vspace{-1ex}\Large\vspace{-4ex}\vspace{-\parskip}}}
+\let\jeolmdate\relax
 %    \end{macrocode}
 % \end{macro}
 % \end{macro}

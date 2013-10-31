@@ -1,4 +1,9 @@
+import re
+from collections import OrderedDict
+
 from pathlib import PurePosixPath as PurePath
+
+from . import yaml
 
 def pure_join(*paths):
     """
@@ -18,4 +23,59 @@ def pure_join(*paths):
         else:
             parts.pop()
     return PurePath(*parts)
+
+def natural_key(s, pattern=re.compile(r'(\d+)')):
+    assert isinstance(s, str), type(s)
+    return [
+         [
+            int(r) if r.isdigit() else r
+            for r in pattern.split(q)
+        ]
+        for q in s.split('.')
+    ]
+
+def dict_is_ordered(d):
+    return isinstance(d, OrderedDict) or len(d) <= 1
+
+def dict_ordered_keys(d):
+    """Provide persistently ordered dictionary items."""
+    if dict_is_ordered(d):
+        return d.keys()
+    assert type(d) is dict, type(d)
+    return sorted(d.keys(), key=natural_key)
+
+def dict_ordered_items(d):
+    """Provide persistently ordered dictionary items."""
+    if dict_is_ordered(d):
+        return d.items()
+    assert type(d) is dict, type(d)
+    def key(item):
+        key, value = item
+        return natural_key(key)
+    return sorted(d.items(), key=key)
+
+
+#class NaturallyOrderedDict(dict):
+#    """
+#    Yields its keys in natural order.
+#    """
+#    def __iter__(self):
+#        return iter(sorted(super().__iter__(), key=natural_key))
+#
+#    def keys(self):
+#        return sorted(super().keys(), key=natural_key)
+#
+#    def items(self):
+#        return sorted(super().items(), key=lambda kv: natural_key(kv[0]))
+#
+#    def values(self):
+#        return [value for key, value in self.items()]
+#
+#    def copy(self):
+#        return type(self)(self)
+#
+#yaml.JeolmDumper.add_representer(NaturallyOrderedDict,
+#    yaml.JeolmDumper.represent_dict )
+
+
 

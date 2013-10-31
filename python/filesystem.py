@@ -32,8 +32,8 @@ class FSManager:
         self.root = root
         self.build_dir = self.root/'build'
         self.source_dir = self.root/'source'
-        self.inrecords_path = self.root/'.jeolm/in.yaml'
-        self.metarecords_cache_path = self.build_dir/'meta.cache.yaml'
+        self.metadata_path = self.build_dir/'metadata.pickle'
+        self.outrecords_cache_path = self.build_dir/'outrecords.cache.pickle'
         self.completion_cache_path = self.build_dir/'completion.cache.list'
 
     @classmethod
@@ -86,9 +86,8 @@ class FSManager:
         Return driver.
         """
         Driver = self.get_driver_class()
-        inrecords = self.load_inrecords()
-        outrecords = self.load_outrecords()
-        return Driver(inrecords, outrecords)
+        metarecords = self.load_metarecords()
+        return Driver(metarecords)
 
     def get_driver_class(self):
         """
@@ -96,7 +95,7 @@ class FSManager:
         """
         Driver = self.get_local_driver_class()
         if Driver is None:
-            from jeolm.driver import Driver
+            from .driver import Driver
         return Driver
 
     def get_local_driver_class(self):
@@ -110,34 +109,6 @@ class FSManager:
             return None
         try:
             return local_module.Driver
-        except AttributeError:
-            return None
-
-    def get_reviewer(self):
-        """
-        Return inrecord reviewer.
-        """
-        InrecordReviewer = self.get_reviewer_class()
-        return InrecordReviewer(fsmanager=self)
-
-    def get_reviewer_class(self):
-        """
-        Return appropriate InrecordReviewer class.
-        """
-        InrecordReviewer = self.get_local_reviewer_class()
-        if InrecordReviewer is None:
-            from jeolm.inrecords import InrecordReviewer
-        return InrecordReviewer
-
-    def get_local_reviewer_class(self):
-        """
-        Return InrecordReviewer class from local_module, or None.
-        """
-        local_module = self.load_local_module()
-        if local_module is None:
-            return None
-        try:
-            return local_module.InrecordReviewer
         except AttributeError:
             return None
 
@@ -160,69 +131,59 @@ class FSManager:
             .format(module_name) )
         return local_module
 
-    def load_inrecords(self):
+    def load_metarecords(self):
+        metadata_manager = self.get_metadata_manager()
+        Driver = self.get_driver_class()
+        return metadata_manager.construct_metarecords(Driver.Metarecords)
+
+    def get_metadata_manager(self):
+        metadata = self.load_metadata()
+        from .metadata import MetadataManager
+        return MetadataManager(metadata, fsmanager=self)
+
+    def load_metadata(self):
         try:
-            with self.inrecords_path.open('r') as f:
-                s = f.read()
-        except FileNotFoundError:
-            from collections import OrderedDict
-            return OrderedDict()
-        else:
-            from jeolm.yaml import load
-            return load(s)
-
-    def dump_inrecords(self, inrecords):
-        from jeolm import yaml
-        s = yaml.dump(inrecords, default_flow_style=False)
-        new_path = Path('.in.yaml.new')
-        with new_path.open('w') as f:
-            f.write(s)
-        new_path.rename(self.inrecords_path)
-
-    def load_outrecords(self):
-        from jeolm.yaml import load
-        outrecords = {}
-        for outrecords_path in self.list_outrecords_paths():
-            with outrecords_path.open('r') as f:
-                s = f.read()
-            outrecords.update(load(s))
-        return outrecords
-
-    def list_outrecords_paths(self):
-        yield from self._list_outrecords_paths(self.root)
-
-    @staticmethod
-    @lru_cache()
-    def _list_outrecords_paths(root):
-        return [ path
-            for path in root/'.jeolm'
-            if path.name == 'out.yaml' or path.name.endswith('.out.yaml')
-        ]
-
-    def load_metarecords_cache(self):
-        try:
-            with self.metarecords_cache_path.open('r') as f:
+            with self.metadata_path.open('rb') as f:
                 s = f.read()
         except FileNotFoundError:
             return {}
         else:
-            from jeolm.yaml import load
-            return load(s)
+            from pickle import loads
+            return loads(s)
 
-    def dump_metarecords_cache(self, metarecords_cache):
+    def dump_metadata(self, metadata):
         self.ensure_build_dir()
-        from jeolm import yaml
-        s = yaml.dump(metarecords_cache, default_flow_style=False)
-        new_path = Path('.meta.cache.yaml.new')
-        with new_path.open('w') as f:
+        from pickle import dumps
+        s = dumps(metadata)
+        new_path = Path('.metadata.new')
+        with new_path.open('wb') as f:
             f.write(s)
-        new_path.rename(self.metarecords_cache_path)
+        new_path.rename(self.metadata_path)
+
+    def load_outrecords_cache(self):
+        try:
+            with self.outrecords_cache_path.open('rb') as f:
+                s = f.read()
+        except FileNotFoundError:
+            return {}
+        else:
+            from pickle import loads
+            return loads(s)
+
+    def dump_outrecords_cache(self, outrecords_cache):
+        self.ensure_build_dir()
+        from pickle import dumps
+        s = dumps(outrecords_cache)
+        new_path = Path('.outrecords.cache.new')
+        with new_path.open('wb') as f:
+            f.write(s)
+        new_path.rename(self.outrecords_cache_path)
 
     def load_updated_completion_cache(self):
         cache_path = self.completion_cache_path
         if not cache_path.exists():
             return None
-        if cache_path.st_mtime_ns <= self.records_mtime:
+        if cache_path.st_mtime_ns <= self.metadata_mtime:
             # Do not load if the cache is outdated
             return None
         from pathlib import PurePosixPath as PurePath
@@ -240,11 +201,8 @@ class FSManager:
         new_path.rename(self.completion_cache_path)
 
     @property
-    def records_mtime(self):
-        mtimes = [self.inrecords_path.st_mtime_ns]
-        mtimes.extend(outrecords_path.st_mtime_ns
-            for outrecords_path in self.list_outrecords_paths() )
-        return max(mtimes)
+    def metadata_mtime(self):
+        return self.metadata_path.st_mtime_ns
 
     def ensure_build_dir(self):
         if self.build_dir.exists():

@@ -1,0 +1,211 @@
+import os
+import re
+from collections import OrderedDict
+
+from pathlib import PurePosixPath as PurePath
+
+from .utils import pure_join, dict_ordered_keys, dict_ordered_items
+
+from . import yaml
+from .records import Records, RecordNotFoundError
+
+import logging
+logger = logging.getLogger(__name__)
+from jeolm import difflogger
+
+class MetadataManager(Records):
+    dict_type = dict
+
+    source_types = {
+        '' : 'directory',
+        '.tex' : 'latex',
+        '.sty' : 'latex style',
+        '.asy' : 'asymptote image',
+        '.eps' : 'eps image'
+    }
+
+    def __init__(self, *args, fsmanager):
+        super().__init__(*args)
+        self.fsmanager = fsmanager
+        self.source_dir = self.fsmanager.source_dir
+
+    def construct_metarecords(self, Records=Records):
+        metarecords = Records()
+        for inpath, record in self.items():
+            if inpath.suffix == '':
+                metapath = inpath
+            else:
+                if len(inpath.suffixes) > 1:
+                    raise ValueError(path)
+                metapath = inpath.with_suffix('')
+            metadata = record.get('$metadata')
+            if metadata is not None:
+                metarecords.merge({metapath : metadata})
+                metarecords.reorder(metapath, metadata)
+        return metarecords
+
+    def review(self, inpath, recursive=True):
+        path = self.source_dir/inpath
+        exists = path.exists()
+        recorded = inpath in self
+        is_dir = (inpath.suffix == '')
+        if not is_dir and not inpath.suffix in self.source_types:
+            raise ValueError(inpath)
+        if not exists:
+            assert inpath.name # non-empty path
+            if recorded:
+                self.get(inpath.parent(), original=True).pop(inpath.name)
+                self.invalidate_cache()
+            else:
+                logger.warning(
+                    '{} was not recorded and does not exist as file. No-op.'
+                    .format(inpath) )
+            return
+        if is_dir and not path.is_dir():
+            raise NotADirectoryError(inpath)
+        if not is_dir and path.is_dir():
+            raise IsADirectoryError(inpath)
+        if is_dir and recorded and recursive:
+            if __debug__ and inpath == PurePath():
+                assert self.get(inpath, original=True) is self.records
+                logger.debug('Metadata invalidated')
+            self.get(inpath, original=True).clear()
+            self.invalidate_cache()
+        metadata = OrderedDict()
+        if is_dir:
+            metadata = self.query_dir(inpath)
+            if recursive:
+                self.review_subpaths(inpath)
+        else:
+            metadata = self.query_file(inpath)
+        self.merge({inpath : {'$metadata' : metadata}}, overwrite=True)
+
+    def review_subpaths(self, inpath):
+        for subname in os.listdir(str(self.source_dir/inpath)):
+            if subname.startswith('.'):
+                continue
+            subpath = inpath/subname
+            if subpath.suffix not in self.source_types:
+                logger.warning('<BOLD><MAGENTA>{}<NOCOLOUR>: suffix of '
+                    '<YELLOW>{}<NOCOLOUR> unrecognized<RESET>'
+                    .format(inpath, subname) )
+                continue
+            self.review(subpath)
+
+    def query_dir(self, inpath):
+        metadata_path = self.source_dir/inpath/'.meta.yaml'
+        if metadata_path.exists():
+            with metadata_path.open('r') as f:
+                metadata = yaml.load(f)
+            if not isinstance(metadata, dict):
+                raise TypeError(
+                    '{} metadata found in {}'
+                    .format(type(metadata), inpath) )
+        else:
+            metadata = {}
+        metadata.setdefault('$source', True)
+        return metadata
+
+    def query_file(self, inpath):
+        if inpath.suffix == '.tex':
+            metadata = self.query_tex_file(inpath)
+            metadata.setdefault('$source', True)
+            metadata.setdefault('$tex$source', True)
+        elif inpath.suffix == '.asy':
+            metadata = self.query_asy_file(inpath)
+            metadata.setdefault('$asy$source', True)
+        elif inpath.suffix == '.sty':
+            metadata = {'$sty$source' : True}
+        elif inpath.suffix == '.eps':
+            metadata = {'$eps$source' : True}
+        else:
+            raise AssertionError(inpath)
+        return metadata
+
+    def query_tex_file(self, inpath):
+        with (self.source_dir/inpath).open('r') as f:
+            s = f.read()
+        return self.query_tex_content(inpath, s)
+
+    def query_tex_content(self, inpath, s):
+        metadata = OrderedDict()
+        metadata.update(self.query_tex_metadata(inpath, s))
+        if not metadata:
+            metadata = {}
+        metadata.update(self.query_tex_figures(inpath, s))
+        return metadata
+
+    def query_tex_figures(self, inpath, s):
+        if self.tex_includegraphics_pattern.search(s) is not None:
+            logger.warning("<BOLD><MAGENTA>{}<NOCOLOUR>: "
+                "<YELLOW>\\includegraphics<NOCOLOUR> command found<RESET>"
+                .format(inpath) )
+        figures = self.unique(
+            match.group('figure')
+            for match in self.tex_figure_pattern.finditer(s) )
+        parent = inpath.parent()
+        if figures:
+            return {'$tex$figures' : OrderedDict(
+                (figure, str(pure_join(parent, figure)))
+                for figure in figures ) }
+        else:
+            return {}
+
+    tex_figure_pattern = re.compile(
+        r'\\jeolmfigure(?:\[.*?\])?\{(?P<figure>.*?)\}' )
+    tex_includegraphics_pattern = re.compile(
+        r'\\includegraphics')
+
+    def query_tex_metadata(self, inpath, s):
+        metadata = OrderedDict()
+        for match in self.tex_metadata_pattern.finditer(s):
+            piece = match.group(0).splitlines()
+            assert all(line.startswith('% ') for line in piece)
+            piece = '\n'.join(line[2:] for line in piece)
+            piece = yaml.load(piece)
+            if not isinstance(piece, dict):
+                logger.warning("<BOLD><MAGENTA>{}<NOCOLOUR>: "
+                    "unrecognized metadata piece<RESET>"
+                    .format(inpath) )
+                logger.warning(piece)
+            metadata.update(piece)
+        return metadata
+
+    tex_metadata_pattern = re.compile('(?m)^'
+        r'% \$[\w\$\-]+:.*'
+        r'(?:\n%  .+)*')
+
+    def query_asy_file(self, inpath):
+        with (self.source_dir/inpath).open('r') as f:
+            s = f.read()
+        return self.query_asy_content(inpath, s)
+
+    def query_asy_content(self, inpath, s):
+        metadata = self.query_asy_used(inpath, s)
+        return metadata or {}
+
+    def query_asy_used(self, inpath, s):
+        parent = inpath.parent()
+        used = OrderedDict(
+            ( match.group('used_name'),
+                str(pure_join(parent, match.group('original_name'))) )
+            for match in self.asy_use_pattern.finditer(s) )
+        if used:
+            return {'$asy$used' : used}
+        else:
+            return {}
+
+    asy_use_pattern = re.compile(
+        r'(?m)^// use (?P<original_name>[-.a-zA-Z0-9/]*?\.asy) '
+        r'as (?P<used_name>[-a-zA-Z0-9]*?\.asy)$' )
+
+    @staticmethod
+    def unique(iterable):
+        seen = set()
+        unique = []
+        for i in iterable:
+            if i not in seen:
+                unique.append(i)
+                seen.add(i)
+        return unique
+

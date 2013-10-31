@@ -11,11 +11,16 @@ def main():
 
     subcommands = ('build', 'review', 'list', 'spell', 'clean', )
     subcommand_options = {
-        'build' : ('--force-recompile', '--dump', ),
-        'list' : ('--type',) }
-    subcommand_short_options = {'build' : {'-f' : '--force-recompile'}}
+        'build' : ('--force-latex', '--dump',),
+        'list' : ('--type',),
+        'review' : ('--recursive',),
+    }
+    subcommand_short_options = {
+        'build' : {'-f' : '--force-latex', '-F' : '--force-generate'},
+        'review' : {'-r' : '--recursive'}
+    }
     subcommands_accepting_paths = ('r', 'review', )
-    subcommands_accepting_targets = ('build', 'list', 'spell', )
+    subcommands_accepting_targets = ('build', 'list', 'spell', 'expose', )
 
     import sys
     n = int(sys.argv[1]) - 1

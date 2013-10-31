@@ -23,12 +23,16 @@ def get_parser(prog='jeolm'):
         help='build specified targets', )
     build_parser.add_argument('targets',
         nargs='*', metavar='TARGET', )
-    build_parser.add_argument('-f', '--force-recompile',
+    force_build_group = build_parser.add_mutually_exclusive_group()
+    force_build_group.add_argument('-f', '--force-latex',
         help='force recompilation on LaTeX stage',
         action='store_true', )
-    build_parser.add_argument('--dump',
-        help='instead of building create standalone version of document',
+    force_build_group.add_argument('-F', '--force-generate',
+        help='force overwriting of generated LaTeX file',
         action='store_true', )
+#    build_parser.add_argument('--dump',
+#        help='instead of building create standalone version of document',
+#        action='store_true', )
     build_parser.set_defaults(main_func=main_build)
 
     list_parser = subparsers.add_parser('list',
@@ -41,6 +45,12 @@ def get_parser(prog='jeolm'):
         dest='source_type', metavar='SOURCE_TYPE', )
     list_parser.set_defaults(main_func=main_list)
 
+    expose_parser = subparsers.add_parser('expose',
+        help='list generated main.tex files for given targets' )
+    expose_parser.add_argument('targets',
+        nargs='*', metavar='TARGET', )
+    expose_parser.set_defaults(main_func=main_expose)
+
     spell_parser = subparsers.add_parser('spell',
         help='spell-check all infiles for given targets' )
     spell_parser.add_argument('targets',
@@ -48,9 +58,11 @@ def get_parser(prog='jeolm'):
     spell_parser.set_defaults(main_func=main_spell)
 
     review_parser = subparsers.add_parser('review', aliases=['r'],
-        help='review given inrecords' )
+        help='review given infiles' )
     review_parser.add_argument('inpaths',
         nargs='*', metavar='INPATH', )
+    review_parser.add_argument('-r', '--recursive',
+        action='store_true', )
     review_parser.set_defaults(main_func=main_review)
 
     clean_parser = subparsers.add_parser('clean',
@@ -82,12 +94,17 @@ def main():
 
 def main_build(args, *, fsmanager):
     from jeolm.builder import Builder
-    if args.dump:
-        from jeolm.builder import Dumper as Builder
+#    if args.dump:
+#        from jeolm.builder import Dumper as Builder
     if not args.targets:
-        logger.warn('No-op: no targets for source list')
-    builder = Builder(args.targets,
-        fsmanager=fsmanager, force_recompile=args.force_recompile, )
+        logger.warn('No-op: no targets for building')
+    if args.force_latex:
+        force = 'latex'
+    elif args.force_generate:
+        force = 'generate'
+    else:
+        force = None
+    builder = Builder(args.targets, fsmanager=fsmanager, force=force)
     builder.update()
 
 def main_review(args, *, fsmanager):
@@ -95,7 +112,7 @@ def main_review(args, *, fsmanager):
     if not args.inpaths:
         logger.warn('No-op: no inpaths for review')
     review(args.inpaths, viewpoint=Path.cwd(),
-            fsmanager=fsmanager )
+            fsmanager=fsmanager, recursive=args.recursive )
 
 def main_list(args, *, fsmanager):
     from jeolm.commands import print_source_list
@@ -104,6 +121,15 @@ def main_list(args, *, fsmanager):
     print_source_list(args.targets,
         fsmanager=fsmanager, viewpoint=Path.cwd(),
         source_type=args.source_type, )
+
+def main_expose(args, *, fsmanager):
+    from jeolm.builder import Builder
+    if not args.targets:
+        logger.warn('No-op: no targets for exposing source')
+    builder = Builder(args.targets, fsmanager=fsmanager, force=None)
+    for node in builder.autosource_nodes.values():
+        node.update()
+        print(node.path)
 
 def main_spell(args, *, fsmanager):
     from jeolm.commands import check_spelling

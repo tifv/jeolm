@@ -30,7 +30,7 @@ def print_source_list(targets, *, fsmanager, viewpoint, source_type):
 
 def check_spelling(targets, *, fsmanager):
     from difflib import unified_diff as diff
-    from jeolm.spell import prepare_original, correct
+    from .spell import prepare_original, correct
 
     path_generator = list_sources(targets,
         fsmanager=fsmanager, source_type='tex' )
@@ -75,15 +75,38 @@ def check_spelling(targets, *, fsmanager):
                 difflogger.info(line)
     indicator_clean()
 
-def review(paths, *, fsmanager, viewpoint):
+def review(paths, *, fsmanager, viewpoint, recursive):
+    from difflib import unified_diff as diff
+    from . import yaml
+
     inpaths = resolve_inpaths(paths,
         source_dir=fsmanager.source_dir, viewpoint=viewpoint )
+    metadata_manager = fsmanager.get_metadata_manager()
 
-    reviewer = fsmanager.get_reviewer()
-    reviewer.load_inrecords()
+    old_dump = yaml.dump(metadata_manager.construct_metarecords().records)
     for inpath in inpaths:
-        reviewer.review(inpath)
-    reviewer.dump_inrecords()
+        metadata_manager.review(inpath, recursive=recursive)
+
+    new_dump = yaml.dump(metadata_manager.construct_metarecords().records)
+    delta = diff(
+        old_dump.splitlines(), new_dump.splitlines(), n=4,
+        lineterm='', fromfile='old/metarecords.yaml', tofile='new/metarecords.yaml',
+    )
+    for line in delta:
+        if line.startswith('--- '):
+            pass
+        elif line.startswith('+++ '):
+            pass
+        elif line.startswith('-'):
+            difflogger.info('<RED>{}<RESET>'.format(line))
+        elif line.startswith('+'):
+            difflogger.info('<GREEN>{}<RESET>'.format(line))
+        elif line.startswith('@'):
+            difflogger.info('<MAGENTA>{}<RESET>'.format(line))
+        else:
+            difflogger.info(line)
+
+    fsmanager.dump_metadata(metadata_manager.records)
 
 def list_sources(targets, *, fsmanager, source_type):
     driver = fsmanager.get_driver()

@@ -120,6 +120,9 @@ class Node:
         self.extend_needs(needs)
         return self
 
+    def force(self):
+        self.needs_build = lambda: True
+
     def add_rule(self, rule):
         """Decorator."""
         self.rules.append(rule)
