@@ -1,4 +1,5 @@
 import os
+import io
 import re
 from collections import OrderedDict
 
@@ -17,11 +18,12 @@ class MetadataManager(Records):
     dict_type = dict
 
     source_types = {
-        '' : 'directory',
-        '.tex' : 'latex',
-        '.sty' : 'latex style',
-        '.asy' : 'asymptote image',
-        '.eps' : 'eps image'
+        ''      : 'directory',
+        '.tex'  : 'latex',
+        '.sty'  : 'latex style',
+        '.asy'  : 'asymptote image',
+        '.eps'  : 'eps image',
+        '.yaml' : 'metadata',
     }
 
     def __init__(self, *args, fsmanager):
@@ -34,6 +36,8 @@ class MetadataManager(Records):
         for inpath, record in self.items():
             if inpath.suffix == '':
                 metapath = inpath
+            elif inpath.suffix == '.yaml':
+                metapath = inpath.parent()
             else:
                 if len(inpath.suffixes) > 1:
                     raise ValueError(path)
@@ -71,9 +75,8 @@ class MetadataManager(Records):
                 logger.debug('Metadata invalidated')
             self.get(inpath, original=True).clear()
             self.invalidate_cache()
-        metadata = OrderedDict()
         if is_dir:
-            metadata = self.query_dir(inpath)
+            metadata = {'$source' : True}
             if recursive:
                 self.review_subpaths(inpath)
         else:
@@ -92,22 +95,10 @@ class MetadataManager(Records):
                 continue
             self.review(subpath)
 
-    def query_dir(self, inpath):
-        metadata_path = self.source_dir/inpath/'.meta.yaml'
-        if metadata_path.exists():
-            with metadata_path.open('r') as f:
-                metadata = yaml.load(f)
-            if not isinstance(metadata, dict):
-                raise TypeError(
-                    '{} metadata found in {}'
-                    .format(type(metadata), inpath) )
-        else:
-            metadata = {}
-        metadata.setdefault('$source', True)
-        return metadata
-
     def query_file(self, inpath):
-        if inpath.suffix == '.tex':
+        if inpath.suffix == '.yaml':
+            metadata = self.query_yaml_file(inpath)
+        elif inpath.suffix == '.tex':
             metadata = self.query_tex_file(inpath)
             metadata.setdefault('$source', True)
             metadata.setdefault('$tex$source', True)
@@ -120,6 +111,13 @@ class MetadataManager(Records):
             metadata = {'$eps$source' : True}
         else:
             raise AssertionError(inpath)
+        return metadata
+
+    def query_yaml_file(self, inpath):
+        with (self.source_dir/inpath).open('r') as f:
+            metadata = yaml.load(f)
+        if not isinstance(metadata, dict):
+            raise TypeError(inpath, type(metadata))
         return metadata
 
     def query_tex_file(self, inpath):
@@ -162,7 +160,9 @@ class MetadataManager(Records):
             piece = match.group(0).splitlines()
             assert all(line.startswith('% ') for line in piece)
             piece = '\n'.join(line[2:] for line in piece)
-            piece = yaml.load(piece)
+            piece_io = io.StringIO(piece)
+            piece_io.name = inpath
+            piece = yaml.load(piece_io)
             if not isinstance(piece, dict):
                 logger.warning("<BOLD><MAGENTA>{}<NOCOLOUR>: "
                     "unrecognized metadata piece<RESET>"
@@ -172,8 +172,8 @@ class MetadataManager(Records):
         return metadata
 
     tex_metadata_pattern = re.compile('(?m)^'
-        r'% \$[\w\$\-]+:.*'
-        r'(?:\n%  .+)*')
+        r'% \$[\w\$\-\[\],]+:.*'
+        r'(?:\n% [ -].+)*')
 
     def query_asy_file(self, inpath):
         with (self.source_dir/inpath).open('r') as f:

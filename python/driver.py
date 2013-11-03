@@ -61,6 +61,7 @@ Inpaths
 
 """
 
+import re
 import datetime
 from itertools import chain
 from functools import wraps
@@ -93,17 +94,16 @@ class Substitutioner(type):
 
 def fetch_metarecord(method):
     @wraps(method)
-    def wrapper(self, metapath, options, metarecord=None, **kwargs):
+    def wrapper(self, metapath, flags, metarecord=None, **kwargs):
         if metarecord is None:
             metarecord = self.metarecords[metapath]
-        return method(self, metapath, options, metarecord=metarecord, **kwargs )
+        return method(self, metapath, flags, metarecord=metarecord, **kwargs)
     return wrapper
 
 class Driver(metaclass=Substitutioner):
     """
     Driver for course-like projects.
     """
-
 
     ##########
     # High-level functions
@@ -117,16 +117,29 @@ class Driver(metaclass=Substitutioner):
         self.outnames_by_target = dict()
 
     def produce_outrecords(self, targets):
-        # Target options: 'no-delegate', 'matter', 'multidate', 'contained
+        """
+        Target flags:
+            'no-delegate'
+                ignore delegation mechanics
+            'matter'
+                ignore $manner and $manner$opt
+            'multidate'
+                place date after each file instead of in header
+            'no-header'
+                place no header
+            'every-header'
+                prepend each subsequently resolved matter item with header
+                (ignored when combined with 'no-header')
+        """
         targets = self.split_produced_targets(targets)
         targets = list(chain.from_iterable(
-            self.trace_delegators(metapath, options)
-            for metapath, options in targets ))
+            self.trace_delegators(metapath, flags)
+            for metapath, flags in targets ))
 
         # Generate outrecords and store them in self.outrecords
         outnames = [
-            self.form_outrecord(metapath, options)
-            for metapath, options in targets ]
+            self.form_outrecord(metapath, flags)
+            for metapath, flags in targets ]
 
         # Extract requested outrecords
         outrecords = OrderedDict(
@@ -156,27 +169,25 @@ class Driver(metaclass=Substitutioner):
                         yield inpath
         elif 'asy' == source_type:
             for figrecord in figrecords.values():
-                for inpath in figrecord['source']:
-                    yield inpath
+                yield figrecord['source']
 
-    def form_outrecord(self, metapath, options):
+    def form_outrecord(self, metapath, flags):
         """
         Return outname.
 
         Update self.outrecords and self.figrecords.
         """
         try:
-            return self.outnames_by_target[metapath, options]
+            return self.outnames_by_target[metapath, flags]
         except KeyError:
             pass
 
-        outrecord = self.produce_protorecord(metapath, options)
+        outrecord = self.produce_protorecord(metapath, flags)
         assert outrecord.keys() >= {
             'date', 'inpaths', 'fignames', 'metastyle', 'metabody'
         }, outrecord.keys()
 
-        outname = self.select_outname(metapath, options,
-            date=outrecord['date'] )
+        outname = self.select_outname(metapath, flags, date=outrecord['date'])
         outrecord['outname'] = outname
         if outname in self.outrecords:
             raise ValueError("Metaname '{}' duplicated.".format(outname))
@@ -188,7 +199,7 @@ class Driver(metaclass=Substitutioner):
             outrecord,
             metastyle=outrecord.pop('metastyle'),
             metabody=outrecord.pop('metabody'), )
-        self.outnames_by_target[metapath, options] = outname
+        self.outnames_by_target[metapath, flags] = outname
         return outname
 
     def revert_aliases(self, outrecord):
@@ -254,64 +265,71 @@ class Driver(metaclass=Substitutioner):
     # Record-level functions
 
     @fetch_metarecord
-    def trace_delegators(self, metapath, options, metarecord,
+    def trace_delegators(self, metapath, flags, metarecord,
         *, seen_targets=frozenset()
     ):
-        """Generate (metapath, options) pairs."""
-        target = (metapath, options)
+        """Generate (metapath, flags) pairs."""
+        target = (metapath, flags)
         if target in seen_targets:
             raise ValueError(target)
         assert not metapath.is_absolute(), metapath
         seen_targets |= {target}
 
-        if 'no-delegate' in options:
-            yield metapath, options.difference(('no-delegate',))
+        if 'no-delegate' in flags:
+            yield metapath, flags.difference(('no-delegate',))
             return
 
-        delegators = list(self.find_delegators(metapath, options, metarecord))
+        delegators = list(self.find_delegators(metapath, flags, metarecord))
         if not delegators:
-            yield metapath, options
+            yield metapath, flags
             return
-        for d_metapath, d_options in delegators:
-            yield from self.trace_delegators(d_metapath, d_options,
+        for submetapath, subflags in delegators:
+            yield from self.trace_delegators(submetapath, subflags,
                 seen_targets=seen_targets )
 
-    def find_delegators(self, metapath, options, metarecord):
-        """Yield (metapath, options) pairs."""
-        if '$delegate' not in metarecord:
+    def find_delegators(self, metapath, flags, metarecord):
+        """Yield (metapath, flags) pairs."""
+        delegators = self.get_flagged_value(metarecord, '$delegate',
+            flags=flags )
+        if delegators is None:
             return
-        delegators = metarecord['$delegate']
         if not isinstance(delegators, list):
             raise TypeError(delegators)
-        for delegator in delegators:
-            if isinstance(delegator, str):
-                delegator = {'delegate' : delegator}
-            if not isinstance(delegator, dict):
-                raise TypeError(delegator)
-            if 'delegate' not in delegator:
-                raise ValueError(delegator)
-            if 'condition' in delegator:
-                if not self.check_condition(delegator['condition'], options):
+        for item in delegators:
+            if isinstance(item, str):
+                subpath, add_flags, remove_flags = self.split_target(item)
+                item = {
+                    'delegate' : subpath,
+                    'add flags' : add_flags, 'remove flags' : remove_flags }
+            if not isinstance(item, dict):
+                raise TypeError(item)
+            item = self.derive_item_flags(item, flags)
+            if 'condition' in item:
+                item = item.copy()
+                if not self.check_condition(item.pop('condition'), flags):
                     continue
-            delegator = delegator['delegate']
-            if not isinstance(delegator, str):
-                raise TypeError(delegator)
-            subpath, suboptions, antioptions = self.split_target(delegator)
-            yield ( pure_join(metapath, subpath),
-                (options | suboptions) - antioptions )
+            if item.keys() != {'delegate', 'flags'}:
+                raise ValueError(item)
+            submetapath = item['delegate']
+            subflags = item['flags']
+            assert isinstance(subflags, frozenset), type(subflags)
+            yield pure_join(metapath, submetapath), subflags
 
     @fetch_metarecord
-    def produce_protorecord(self, metapath, options, metarecord):
+    def produce_protorecord(self, metapath, flags, metarecord):
         """
         Return protorecord.
         """
         date_set = set()
 
         protorecord = {}
-        if 'matter' not in options:
-            protorecord.update(metarecord.get('$manner$opt', ()))
-        protorecord['metabody'] = list(self.generate_manner(
-            metapath, options, metarecord, date_set=date_set ))
+        manner, manner_style, manner_options = self.generate_manner(
+            metapath, flags, metarecord )
+        protorecord.update(manner_options)
+        protorecord['metabody'] = list(self.generate_metabody(
+            metapath, flags, metarecord, date_set=date_set, manner=manner ))
+        protorecord['metastyle'] = list(self.generate_metastyle(
+            metapath, flags, metarecord, manner=manner_style ))
 
         inpaths = protorecord['inpaths'] = list()
         aliases = protorecord['aliases'] = dict()
@@ -322,39 +340,43 @@ class Driver(metaclass=Substitutioner):
             protorecord.pop('metabody'), inpaths, aliases, fignames ))
 
         protorecord['metastyle'] = list(self.digest_metastyle(
-            self.Metarecords.derive_styles(
-                metarecord['$style'], protorecord.pop('style', None),
-                path=metapath ),
-            inpaths, aliases ))
+            protorecord.pop('metastyle'), inpaths, aliases ))
 
         # dropped keys
         assert 'preamble' not in protorecord, 'style'
-        assert '$out$options' not in metarecord, '$manner$opt'
+        assert 'style' not in protorecord, '$manner$style'
+        assert '$out$options' not in metarecord, '$manner$options'
         assert '$rigid' not in metarecord, '$manner'
-        assert '$rigid$opt' not in metarecord, '$manner$opt'
+        assert '$rigid$opt' not in metarecord, '$manner$options'
         assert '$fluid' not in metarecord, '$matter'
-        assert '$fluid$opt' not in metarecord, '$matter$opt'
+        assert '$fluid$opt' not in metarecord
+        assert '$manner$opt' not in metarecord, '$manner$options'
 
         return protorecord
 
+    def generate_manner(self, metapath, flags, metarecord):
+        if 'matter' in flags:
+            return self.generate_manner(metapath, frozenset(), {})
+        manner = self.get_flagged_value(
+            metarecord, '$manner',
+            flags=flags, default=[['.']] )
+        manner_style = self.get_flagged_value(
+            metarecord, '$manner$style',
+            flags=flags, default=['.'] )
+        manner_options = self.get_flagged_value(
+            metarecord, '$manner$options',
+            flags=flags, default={} )
+        return manner, manner_style, manner_options
+
     @fetch_metarecord
-    def generate_manner(self, metapath, options, metarecord,
-        *, date_set
+    def generate_metabody(self, metapath, flags, metarecord,
+        *, date_set, manner
     ):
         """
         Yield metabody items.
 
         Update date_set.
         """
-        if 'matter' in options:
-            yield from self.generate_matter(
-                metapath, options - {'matter'}, metarecord,
-                date_set=date_set )
-            return
-        if '$manner' in metarecord:
-            manner = metarecord['$manner']
-        else:
-            manner = [['.']]
         if '$date' in metarecord:
             date_set.add(metarecord['$date']); date_set = set()
 
@@ -364,34 +386,16 @@ class Driver(metaclass=Substitutioner):
                 matter.append({'verbatim' : self.substitute_emptypage()})
                 continue
             matter.extend(page)
-#            for item in page:
-#                matter.appennd
-#                if isinstance(item, str)
-#                if isinstance(item, dict):
-#                    if 'condition' in item:
-#                        condition = self.check_condition(
-#                            item['condition'], options)
-#                        if not condition:
-#                            continue
-#                    yield item
-#                    continue
-#                if not isinstance(item, str):
-#                    raise TypeError(metapath, options, item)
-#
-#                subpath, suboptions, antioptions = self.split_target(item)
-#                yield from self.generate_matter(
-#                    pure_join(metapath, subpath),
-#                    (options | suboptions) - antioptions,
-#                    date_set=date_set )
             matter.append({'verbatim' : self.substitute_clearpage()})
-        metarecord = metarecord.copy()
-        metarecord['$matter'] = matter
-        yield from self.generate_matter(
-            metapath, options | {'every-header'}, metarecord,
+        pseudorecord = metarecord.copy()
+        self.clear_flagged_keys(pseudorecord, '$matter')
+        pseudorecord['$matter'] = matter
+        yield from self.generate_matter_metabody(
+            metapath, flags | {'every-header'}, pseudorecord,
             date_set=date_set )
 
     @fetch_metarecord
-    def generate_matter(self, metapath, options, metarecord,
+    def generate_matter_metabody(self, metapath, flags, metarecord,
         *, date_set
     ):
         """
@@ -399,80 +403,128 @@ class Driver(metaclass=Substitutioner):
 
         Update date_set.
         """
-        if '$matter' in metarecord:
-            matter = metarecord['$matter']
+        matter = self.get_flagged_value(metarecord, '$matter', flags=flags)
+        if matter is not None:
+            pass
         else:
-            matter = self.auto_generate_matter(metapath, options, metarecord)
+            matter = self.generate_matter(metapath, flags, metarecord)
         if '$date' in metarecord:
             date_set.add(metarecord['$date']); date_set = set()
 
-        if 'no-header' not in options and 'every-header' not in options:
+        if not flags & {'no-header', 'every-header'}:
             date_subset = set()
-            metabody = list(self.generate_matter(
-                metapath, options | {'no-header'}, metarecord,
+            metabody = list(self.generate_matter_metabody(
+                metapath, flags | {'no-header'}, metarecord,
                 date_set=date_subset ))
-            yield from self.generate_matter_header(
-                metapath, options, metarecord,
+            yield from self.generate_header_metabody(
+                metapath, flags, metarecord,
                 date=self.min_date(date_subset) )
             yield from metabody
             date_set.update(date_subset)
             return # recurse
-        options -= {'every-header'}
+        flags -= {'every-header'}
 
         for item in matter:
             if isinstance(item, str):
-                item = {'matter' : item}
+                subpath, add_flags, remove_flags = self.split_target(item)
+                item = {
+                    'matter' : subpath,
+                    'add flags' : add_flags, 'remove flags' : remove_flags }
             if not isinstance(item, dict):
                 raise TypeError(item)
             if 'condition' in item:
                 item = item.copy()
                 condition = item.pop('condition')
-                if not self.check_condition(condition, options):
+                if not self.check_condition(condition, flags):
                     continue
             if 'matter' not in item:
                 yield item
                 continue
-            if not item.keys() <= {'matter', 'condition'}:
+            item = self.derive_item_flags(item, flags)
+            if not item.keys() <= {'matter', 'flags'}:
                 raise ValueError(item)
-            submatter = item['matter']
+            submetapath = item['matter']
+            subflags = item['flags']
 
-            subpath, suboptions, antioptions = self.split_target(submatter)
-            yield from list(self.generate_matter(
-                pure_join(metapath, subpath),
-                (options | suboptions) - antioptions,
+            yield from list(self.generate_matter_metabody(
+                pure_join(metapath, submetapath), subflags,
                 date_set=date_set ))
 
-    def generate_matter_header(self, metapath, options, metarecord, *, date):
-        if 'multidate' not in options:
+    def generate_header_metabody(self, metapath, flags, metarecord, *, date):
+        if 'multidate' not in flags:
             yield {'verbatim' : self.constitute_datedef(date=date)}
         else:
             yield {'verbatim' : self.constitute_datedef(date=None)}
         yield {'verbatim' : self.substitute_jeolmheader()}
         yield {'verbatim' : self.substitute_resetproblem()}
 
-    def auto_generate_matter(self, metapath, options, metarecord):
+    def generate_matter(self, metapath, flags, metarecord):
         """Yield matter items."""
         if not metarecord.get('$source', False):
             return
         if '$tex$source' in metarecord:
-            yield from self.auto_generate_tex_matter(
-                metapath, options, metarecord )
+            yield from self.generate_tex_matter(
+                metapath, flags, metarecord )
         for name in metarecord:
             if name.startswith('$'):
                 continue
             if metarecord[name].get('$source', False):
                 yield name
 
-    def auto_generate_tex_matter(self, metapath, options, metarecord):
+    def generate_tex_matter(self, metapath, flags, metarecord):
         assert metarecord.get('$tex$source', False)
         item = {'inpath' : metapath.with_suffix('.tex')}
         has_date = '$date' in metarecord
         if has_date:
             date = metarecord['$date']
         yield item
-        if has_date and 'multidate' in options:
+        if has_date and 'multidate' in flags:
             yield {'verbatim' : self.constitute_datedef(date=date)}
             yield {'verbatim' : self.substitute_datestamp()}
+
+    @fetch_metarecord
+    def generate_metastyle(self, metapath, flags, metarecord, *, manner):
+        pseudorecord = metarecord.copy()
+        self.clear_flagged_keys(pseudorecord, '$style')
+        pseudorecord['$style'] = manner
+        yield from self.generate_matter_metastyle(
+            metapath, flags, pseudorecord )
+
+    @fetch_metarecord
+    def generate_matter_metastyle(self, metapath, flags, metarecord):
+        style = self.get_flagged_value(metarecord, '$style',
+            flags=flags, default=None )
+        if style is not None:
+            pass
+        elif '$sty$source' in metarecord:
+            style = [{'inpath' : metapath.with_suffix('.sty')}]
+        else:
+            style = ['..']
+
+        for item in style:
+            if isinstance(item, str):
+                subpath, add_flags, remove_flags = self.split_target(item)
+                item = {
+                    'style' : subpath,
+                    'add flags' : add_flags, 'remove flags' : remove_flags }
+            if not isinstance(item, dict):
+                raise TypeError(item)
+            if 'condition' in item:
+                item = item.copy()
+                condition = item.pop('condition')
+                if not self.check_condition(condition, flags):
+                    continue
+            if 'style' not in item:
+                yield item
+                continue
+            item = self.derive_item_flags(item, flags)
+            if not item.keys() == {'style', 'flags'}:
+                raise ValueError(item)
+            submetapath = item['style']
+            subflags = item['flags']
+
+            yield from list(self.generate_matter_metastyle(
+                pure_join(metapath, submetapath), subflags, ))
 
     def digest_metabody(self, metabody, inpaths, aliases, fignames):
         """
@@ -574,43 +626,7 @@ class Driver(metaclass=Substitutioner):
             else:
                 path = parent_path/name
             child_record['$path'] = path
-            child_record['$style'] = self.derive_styles(
-                parent_record.get('$style'), child_record.get('$style'),
-                path )
             super().derive_attributes(parent_record, child_record, name)
-
-        @classmethod
-        def derive_styles(cls, parent_style, child_style, path):
-            if parent_style is None:
-                parent_style = []
-            else:
-                parent_style = parent_style.copy()
-            if child_style is None:
-                return parent_style
-
-            if not isinstance(child_style, dict):
-                return cls.assimilate_style(child_style, path)
-
-            for key, substyle in child_style.items():
-                if key == 'extend':
-                    parent_style += cls.assimilate_style(substyle, path)
-                else:
-                    raise ValueError(key)
-            return parent_style
-
-        @classmethod
-        def assimilate_style(cls, style, path):
-            assimilated = []
-            append = assimilated.append
-            for item in style:
-                if isinstance(item, str):
-                    inpath = pure_join(path, item).with_suffix('.sty')
-                    append({'inpath' : inpath})
-                elif isinstance(item, dict):
-                    append(item)
-                else:
-                    raise TypeError(item)
-            return assimilated
 
 
     ##########
@@ -666,8 +682,6 @@ class Driver(metaclass=Substitutioner):
         preamble_items = []
         for item in metastyle:
             assert isinstance(item, dict), item
-            if 'style' in item:
-                inpath = item['style']
             preamble_items.append(cls.constitute_preamble_item(item))
         if 'scale font' in outrecord:
             font, skip = outrecord['scale font']
@@ -716,8 +730,6 @@ class Driver(metaclass=Substitutioner):
         body_items = []
         for item in metabody:
             assert isinstance(item, dict), item
-            if 'inpath' in item:
-                inpath = item['inpath']
             body_items.append(cls.constitute_body_item(item))
 
         return '\n'.join(body_items)
@@ -791,10 +803,10 @@ class Driver(metaclass=Substitutioner):
     # Supplementary finctions
 
     @staticmethod
-    def select_outname(metapath, options, date=None):
+    def select_outname(metapath, flags, date=None):
         outname = '-'.join(metapath.parts)
-        if options:
-            outname += '[' + ','.join(sorted(options)) + ']'
+        if flags:
+            outname += '[' + ','.join(sorted(flags)) + ']'
         if isinstance(date, datetime.date):
             date_prefix = '{0.year:04}-{0.month:02}-{0.day:02}'.format(date)
             outname = date_prefix + '-' + outname
@@ -802,38 +814,38 @@ class Driver(metaclass=Substitutioner):
 
     @classmethod
     def split_produced_targets(cls, targets, absolute=False):
-        """Yield (metapath, options) pairs."""
+        """Yield (metapath, flags) pairs."""
         for target in targets:
             if '.' in target:
                 raise ValueError(target)
-            metapath, options, antioptions = cls.split_target(target)
+            metapath, flags, antiflags = cls.split_target(target)
             if metapath.is_absolute():
                 raise ValueError(target)
-            if antioptions:
+            if antiflags:
                 raise ValueError("Antioption in produced target", target)
-            yield metapath, options
+            yield metapath, flags
 
     @classmethod
     def split_target(cls, target):
-        """Return (metapath, options, no_options)."""
+        """Return (metapath, flags, no_options)."""
         assert isinstance(target, str), target
-        basetarget, braket, options_string = target.partition('[')
+        basetarget, braket, flags_string = target.partition('[')
         if braket == '[':
-            if not options_string.endswith(']'):
+            if not flags_string.endswith(']'):
                 raise ValueError(target)
-            raw_options = frozenset(options_string[:-1].split(','))
+            raw_options = frozenset(flags_string[:-1].split(','))
         else:
             raw_options = frozenset()
-        options = set(); antioptions = set()
-        for option in raw_options:
-            if option.startswith('-'):
-                antioptions.add(option[1:])
+        flags = set(); antiflags = set()
+        for flag in raw_options:
+            if flag.startswith('-'):
+                antiflags.add(flag[1:])
             else:
-                options.add(option)
+                flags.add(flag)
         if not basetarget or ' ' in basetarget:
             raise ValueError(target)
         metapath = PurePath(basetarget)
-        return metapath, frozenset(options), frozenset(antioptions)
+        return metapath, frozenset(flags), frozenset(antiflags)
 
     @staticmethod
     def min_date(date_set):
@@ -898,29 +910,102 @@ class Driver(metaclass=Substitutioner):
         return digested
 
     @classmethod
-    def check_condition(cls, condition, options):
+    def check_condition(cls, condition, flags):
         if isinstance(condition, str):
-            return condition in options
+            return condition in flags
         elif not isinstance(condition, dict):
             raise ValueError(condition)
         elif len(condition) != 1:
             raise ValueError(condition)
         (key, subcondition), = condition.items()
         if key == 'not':
-            return not cls.check_condition(subcondition, options)
+            return not cls.check_condition(subcondition, flags)
         elif key == 'or':
-            return any(cls.check_condition(item, options)
+            return any(cls.check_condition(item, flags)
                 for item in subcondition )
         elif key == 'and':
-            return all(cls.check_condition(item, options)
+            return all(cls.check_condition(item, flags)
                 for item in subcondition )
 
+    @classmethod
+    def get_flagged_value(cls, mapping, key, *, flags, default=None):
+        the_key = key
+        assert isinstance(the_key, str), type(the_key)
+        assert the_key.startswith('$')
+        the_flags = flags
+        assert isinstance(the_flags, frozenset), type(the_flags)
+
+        matched_flagsets = set()
+        matched_values = {}
+        for key, value in mapping.items():
+            if not key.startswith(the_key):
+                continue
+            flags = key[len(the_key):]
+            if not flags:
+                flags = frozenset()
+            else:
+                if not flags.startswith('[') or not flags.endswith(']'):
+                    continue
+                flags = frozenset(flags[1:-1].split(','))
+                if not flags <= the_flags:
+                    continue
+            if any(flags < flagset for flagset in matched_flagsets):
+                # we are overmatched
+                continue
+            elif any(flags == flagset for flagset in matched_flagsets):
+                raise ValueError('Flag set {!r} duplicated'.format(flags))
+            else:
+                overmatched_flagsets = frozenset(filter(
+                    flags.__gt__, matched_flagsets ))
+                matched_flagsets.difference_update(overmatched_flagsets)
+                matched_flagsets.add(flags)
+                matched_values[flags] = value
+        if not matched_flagsets:
+            return default
+        if len(matched_flagsets) > 1:
+            raise ValueError(*matched_flagsets)
+        matched_flagset, = matched_flagsets
+        return matched_values[matched_flagset]
+
+    @classmethod
+    def clear_flagged_keys(cls, mapping, key):
+        the_key = key
+        flagged_keys = set()
+        for key in mapping:
+            if not key.startswith(the_key):
+                continue
+            flags = key[len(the_key):]
+            if flags:
+                if not flags.startswith('[') or not flags.endswith(']'):
+                    continue
+            flagged_keys.add(key)
+        for key in flagged_keys:
+            del mapping[key]
+
+    @classmethod
+    def derive_item_flags(cls, item, flags):
+        assert isinstance(flags, frozenset), type(flags)
+        item = item.copy()
+        if 'flags' in item:
+            if 'add flags' in item or 'remove flags' in item:
+                raise ValueError(item)
+            item['flags'] = frozenset(item.pop('flags'))
+            return item
+        add_flags = frozenset(item.pop('add flags', ()))
+        remove_flags = frozenset(item.pop('remove flags', ()))
+        if add_flags & remove_flags:
+            raise ValueError(item)
+
+        item['flags'] = (flags - remove_flags) | add_flags
+        assert add_flags or remove_flags or item['flags'] == flags
+        return item
+
 class TestFilteringDriver(Driver):
-    def auto_generate_tex_matter(self, metapath, options, metarecord):
-        super_matter = list(super().auto_generate_tex_matter(
-            metapath, options, metarecord ))
+    def generate_matter_tex(self, metapath, flags, metarecord):
+        super_matter = list(super().generate_matter_tex(
+            metapath, flags, metarecord ))
         if metarecord.get('$test', False):
-            if not super_matter or 'exclude-test' in options:
+            if not super_matter or 'exclude-test' in flags:
                 return
             yield {'verbatim' : self.substitute_begingroup()}
             yield {'verbatim' : self.substitute_interrobang_section()}

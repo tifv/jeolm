@@ -123,11 +123,11 @@ class Records:
     def derive_attributes(self, parent_record, child_record, name):
         pass
 
-    def items(self, path=PurePath()):
+    def items(self, path=PurePath(), *, keyfunc=None):
         """Yield (path, record) pairs."""
         record = self.get(path)
         yield path, record
-        for key in dict_ordered_keys(record):
+        for key in dict_ordered_keys(record, keyfunc=keyfunc):
             if key.startswith('$'):
                 continue
             yield from self.items(path=path/key)

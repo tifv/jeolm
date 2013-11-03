@@ -117,7 +117,10 @@ def list_sources(targets, *, fsmanager, source_type):
 
 def resolve_inpaths(inpaths, *, source_dir, viewpoint):
     for inpath in inpaths:
-        yield PurePath(
-            Path(viewpoint, inpath).resolve()
-        ).relative(source_dir)
+        path = Path(viewpoint, inpath)
+        try:
+            path = path.resolve()
+        except FileNotFoundError:
+            pass
+        yield PurePath(path).relative(source_dir)
 
