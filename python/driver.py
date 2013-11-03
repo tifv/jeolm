@@ -72,6 +72,7 @@ from pathlib import PurePosixPath as PurePath
 
 from .utils import pure_join
 from .records import Records, RecordNotFoundError
+from .flags import FlagSet
 
 import logging
 logger = logging.getLogger(__name__)
@@ -182,7 +183,10 @@ class Driver(metaclass=Substitutioner):
         except KeyError:
             pass
 
-        outrecord = self.produce_protorecord(metapath, flags)
+        flag_set = FlagSet(flags)
+        outrecord = self.produce_protorecord(metapath, flag_set)
+        flag_set.check_unutilized_flags(recursive=__debug__)
+
         assert outrecord.keys() >= {
             'date', 'inpaths', 'fignames', 'metastyle', 'metabody'
         }, outrecord.keys()
@@ -303,15 +307,14 @@ class Driver(metaclass=Substitutioner):
                     'add flags' : add_flags, 'remove flags' : remove_flags }
             if not isinstance(item, dict):
                 raise TypeError(item)
-            item = self.derive_item_flags(item, flags)
+            item, subflags = self.derive_item_flags(item, flags)
             if 'condition' in item:
                 item = item.copy()
                 if not self.check_condition(item.pop('condition'), flags):
                     continue
-            if item.keys() != {'delegate', 'flags'}:
+            if item.keys() != {'delegate'}:
                 raise ValueError(item)
             submetapath = item['delegate']
-            subflags = item['flags']
             assert isinstance(subflags, frozenset), type(subflags)
             yield pure_join(metapath, submetapath), subflags
 
@@ -391,7 +394,7 @@ class Driver(metaclass=Substitutioner):
         self.clear_flagged_keys(pseudorecord, '$matter')
         pseudorecord['$matter'] = matter
         yield from self.generate_matter_metabody(
-            metapath, flags | {'every-header'}, pseudorecord,
+            metapath, flags.union(('every-header',)), pseudorecord,
             date_set=date_set )
 
     @fetch_metarecord
@@ -411,10 +414,10 @@ class Driver(metaclass=Substitutioner):
         if '$date' in metarecord:
             date_set.add(metarecord['$date']); date_set = set()
 
-        if not flags & {'no-header', 'every-header'}:
+        if not flags.intersection(('no-header', 'every-header')):
             date_subset = set()
             metabody = list(self.generate_matter_metabody(
-                metapath, flags | {'no-header'}, metarecord,
+                metapath, flags.union(('no-header',)), metarecord,
                 date_set=date_subset ))
             yield from self.generate_header_metabody(
                 metapath, flags, metarecord,
@@ -422,7 +425,8 @@ class Driver(metaclass=Substitutioner):
             yield from metabody
             date_set.update(date_subset)
             return # recurse
-        flags -= {'every-header'}
+        if 'every-header' in flags:
+            flags = flags.difference(('every-header',))
 
         for item in matter:
             if isinstance(item, str):
@@ -440,11 +444,10 @@ class Driver(metaclass=Substitutioner):
             if 'matter' not in item:
                 yield item
                 continue
-            item = self.derive_item_flags(item, flags)
-            if not item.keys() <= {'matter', 'flags'}:
+            item, subflags = self.derive_item_flags(item, flags)
+            if item.keys() != {'matter'}:
                 raise ValueError(item)
             submetapath = item['matter']
-            subflags = item['flags']
 
             yield from list(self.generate_matter_metabody(
                 pure_join(metapath, submetapath), subflags,
@@ -517,11 +520,10 @@ class Driver(metaclass=Substitutioner):
             if 'style' not in item:
                 yield item
                 continue
-            item = self.derive_item_flags(item, flags)
-            if not item.keys() == {'style', 'flags'}:
+            item, subflags = self.derive_item_flags(item, flags)
+            if not item.keys() == {'style'}:
                 raise ValueError(item)
             submetapath = item['style']
-            subflags = item['flags']
 
             yield from list(self.generate_matter_metastyle(
                 pure_join(metapath, submetapath), subflags, ))
@@ -933,7 +935,7 @@ class Driver(metaclass=Substitutioner):
         assert isinstance(the_key, str), type(the_key)
         assert the_key.startswith('$')
         the_flags = flags
-        assert isinstance(the_flags, frozenset), type(the_flags)
+        assert isinstance(the_flags, (frozenset, FlagSet)), type(the_flags)
 
         matched_flagsets = set()
         matched_values = {}
@@ -947,7 +949,7 @@ class Driver(metaclass=Substitutioner):
                 if not flags.startswith('[') or not flags.endswith(']'):
                     continue
                 flags = frozenset(flags[1:-1].split(','))
-                if not flags <= the_flags:
+                if not the_flags.issuperset(flags):
                     continue
             if any(flags < flagset for flagset in matched_flagsets):
                 # we are overmatched
@@ -984,21 +986,23 @@ class Driver(metaclass=Substitutioner):
 
     @classmethod
     def derive_item_flags(cls, item, flags):
-        assert isinstance(flags, frozenset), type(flags)
+        the_flags = flags
+        assert isinstance(the_flags, (frozenset, FlagSet)), type(the_flags)
         item = item.copy()
         if 'flags' in item:
             if 'add flags' in item or 'remove flags' in item:
                 raise ValueError(item)
-            item['flags'] = frozenset(item.pop('flags'))
-            return item
+            flags = item.pop('flags')
+            if not isinstance(flags, FlagSet):
+                flags = frozenset(flags)
+                if isinstance(the_flags, FlagSet):
+                    flags = the_flags.bastard(frozenset(flags))
+            return item, flags
         add_flags = frozenset(item.pop('add flags', ()))
         remove_flags = frozenset(item.pop('remove flags', ()))
         if add_flags & remove_flags:
             raise ValueError(item)
-
-        item['flags'] = (flags - remove_flags) | add_flags
-        assert add_flags or remove_flags or item['flags'] == flags
-        return item
+        return item, the_flags.union(add_flags).difference(remove_flags)
 
 class TestFilteringDriver(Driver):
     def generate_matter_tex(self, metapath, flags, metarecord):
