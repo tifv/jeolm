@@ -141,10 +141,10 @@ class MetadataManager(Records):
         figures = self.unique(
             match.group('figure')
             for match in self.tex_figure_pattern.finditer(s) )
-        parent = inpath.parent()
+        figdir = inpath.with_suffix('')
         if figures:
             return {'$tex$figures' : OrderedDict(
-                (figure, str(pure_join(parent, figure)))
+                (figure, str(pure_join(figdir, figure)))
                 for figure in figures ) }
         else:
             return {}

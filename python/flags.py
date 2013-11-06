@@ -39,11 +39,13 @@ class FlagSet:
     def intersection(self, iterable):
         return {x for x in iterable if x in self}
 
-    def union(self, iterable):
-        iterable = list(iterable)
+    def union(self, iterable, overadd=True):
+        assert not isinstance(iterable, str)
+        iterable = [x for x in iterable if overadd or x not in self]
         return self.child(iterable, PositiveFlagSet) if iterable else self
 
     def difference(self, iterable):
+        assert not isinstance(iterable, str)
         iterable = list(iterable)
         return self.child(iterable, NegativeFlagSet) if iterable else self
 
