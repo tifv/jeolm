@@ -185,7 +185,7 @@ class Driver(metaclass=Substitutioner):
 
         flag_set = FlagSet(flags)
         outrecord = self.produce_protorecord(metapath, flag_set)
-        flag_set.check_unutilized_flags(recursive=__debug__)
+        flag_set.check_unutilized_flags(recursive=__debug__, error=False)
 
         assert outrecord.keys() >= {
             'date', 'inpaths', 'fignames', 'metastyle', 'metabody'
@@ -385,7 +385,9 @@ class Driver(metaclass=Substitutioner):
 
         matter = []
         for page in manner:
-            if not page:
+            if isinstance(page, str):
+                page = [page]
+            elif not page:
                 matter.append({'verbatim' : self.substitute_emptypage()})
                 continue
             matter.extend(page)
@@ -551,7 +553,9 @@ class Driver(metaclass=Substitutioner):
                     in metarecord.get('$tex$figures', {}).items() )
                 figname_map = self.produce_figname_map(figures)
                 item['figname map'] = figname_map
-                fignames.extend(figname_map.values())
+                for figname in figname_map.values():
+                    if figname not in fignames:
+                        fignames.append(figname)
             yield item
 
     def digest_metastyle(self, metastyle, inpaths, aliases):
@@ -919,38 +923,63 @@ class Driver(metaclass=Substitutioner):
             raise ValueError(condition)
         elif len(condition) != 1:
             raise ValueError(condition)
-        (key, subcondition), = condition.items()
-        if key == 'not':
-            return not cls.check_condition(subcondition, flags)
-        elif key == 'or':
-            return any(cls.check_condition(item, flags)
-                for item in subcondition )
-        elif key == 'and':
-            return all(cls.check_condition(item, flags)
-                for item in subcondition )
+        (key, value), = condition.items()
+        try:
+            if key == 'not':
+                return not cls.check_condition(value, flags)
+            elif key == 'or':
+                return any(cls.check_condition(item, flags)
+                    for item in value )
+            elif key == 'and':
+                return all(cls.check_condition(item, flags)
+                    for item in value )
+            else:
+                raise ValueError(condition)
+        except ValueError as error:
+            error.args += (condition,)
 
     @classmethod
-    def get_flagged_value(cls, mapping, key, *, flags, default=None):
+    def get_flagged_value(cls, mapping, key, *, flags, default=None,
+        flag_pattern=re.compile(
+            r'(?:'
+                r'(?:(?P<braket>\[)|(?P<brace>\{))'
+                r'(?P<flags>.+)'
+                r'(?(braket)\])(?(brace)\})'
+            r')?$' )
+    ):
         the_key = key
         assert isinstance(the_key, str), type(the_key)
         assert the_key.startswith('$')
         the_flags = flags
         assert isinstance(the_flags, (frozenset, FlagSet)), type(the_flags)
+        if isinstance(the_flags, FlagSet):
+            the_flags_set = None
+        else:
+            the_flags_set = the_flags
 
         matched_flagsets = set()
         matched_values = {}
         for key, value in mapping.items():
             if not key.startswith(the_key):
                 continue
-            flags = key[len(the_key):]
-            if not flags:
+            flag_match = flag_pattern.match(key[len(the_key):])
+            if flag_match is None:
+                continue
+            flags = flag_match.group('flags')
+            if flags is None:
                 flags = frozenset()
             else:
-                if not flags.startswith('[') or not flags.endswith(']'):
-                    continue
-                flags = frozenset(flags[1:-1].split(','))
+                flags = frozenset(flags.split(','))
                 if not the_flags.issuperset(flags):
                     continue
+                if flag_match.group('braket') is not None:
+                    if the_flags_set is None:
+                        the_flags_set = the_flags.as_set()
+                    if flags != the_flags_set:
+                        continue
+                    matched_value = value
+                    break
+                assert flag_match.group('brace') is not None, match.group(0)
             if any(flags < flagset for flagset in matched_flagsets):
                 # we are overmatched
                 continue
@@ -962,12 +991,14 @@ class Driver(metaclass=Substitutioner):
                 matched_flagsets.difference_update(overmatched_flagsets)
                 matched_flagsets.add(flags)
                 matched_values[flags] = value
-        if not matched_flagsets:
-            return default
-        if len(matched_flagsets) > 1:
-            raise ValueError(*matched_flagsets)
-        matched_flagset, = matched_flagsets
-        return matched_values[matched_flagset]
+        else:
+            if not matched_flagsets:
+                return default
+            if len(matched_flagsets) > 1:
+                raise ValueError(*matched_flagsets)
+            matched_flagset, = matched_flagsets
+            matched_value = matched_values[matched_flagset]
+        return matched_value
 
     @classmethod
     def clear_flagged_keys(cls, mapping, key):

@@ -62,16 +62,19 @@ class FlagSet:
     def _unutilized(self):
         return self.flags - self.utilized
 
-    def check_unutilized_flags(self, recursive=False):
-        if self._unutilized:
-            logger.error(''.join(traceback.format_list(self.tb)))
-            raise UnutilizedError(self._unutilized)
+    def check_unutilized_flags(self, recursive=False, error=True):
+        unutilized = self._unutilized
+        if unutilized:
+            logger.error(
+                'Unutilised flags: {}\n'.format(unutilized) +
+                ''.join(traceback.format_list(self.tb)) )
+            if error:
+                raise UnutilizedError(self._unutilized)
         if recursive:
             for child in self.children:
-                child.check_unutilized_flags()
+                child.check_unutilized_flags(recursive=recursive, error=error)
 
     def as_set(self):
-        """Debug only."""
         return self.flags
 
 class ChildFlagSet(FlagSet):
@@ -82,13 +85,12 @@ class ChildFlagSet(FlagSet):
         instance.parent = parent
         return instance
 
-    def as_set(self):
-        """Debug only."""
-        return self.flags.union(parent.as_set())
-
 class PositiveFlagSet(ChildFlagSet):
     def __contains__(self, x):
         return super().__contains__(x) or self.parent.__contains__(x)
+
+    def as_set(self):
+        return self.parent.as_set().union(self.flags)
 
 class NegativeFlagSet(ChildFlagSet):
     def __contains__(self, x):
@@ -97,4 +99,7 @@ class NegativeFlagSet(ChildFlagSet):
     @property
     def _unutilized(self):
         return {'-' + flag for flag in self.flags - self.utilized}
+
+    def as_set(self):
+        return self.parent.as_set().difference(self.flags)
 
