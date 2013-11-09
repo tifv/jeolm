@@ -241,8 +241,8 @@ class PathNode(DatedNode):
             if path in self.seen_paths:
                 warnings.warn(
                     "Duplicate {node.__class__.__qualname__}"
-                    "(path='{node.relative_path}') detected"
-                    .format(node=self),
+                    "(path='{path}') detected"
+                    .format(node=self, path=path),
                     stacklevel=2 )
             self.seen_paths.add(path)
         if 'name' not in kwargs:
