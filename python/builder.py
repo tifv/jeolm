@@ -182,6 +182,7 @@ class Builder:
                 path=(build_dir/figname).with_suffix('.eps'),
                 needs=(build_dir_node,) )
             for figname in outrecord['fignames'] ]
+        assert len(set(node.name for node in linked_figures)) == len(linked_figures)
 
         dvi_node = self.dvi_nodes[outname] = LaTeXNode(
             name='doc:{}:dvi'.format(outname),
@@ -405,9 +406,21 @@ class LaTeXNode(ProductFileNode):
         last_page = 1; last_mark = 0
         while True:
             for match in cls.page_latexlog_pattern.finditer(s):
-                value = int(match.group('number').replace('\n', ''))
-                if value == last_page + 1:
-                    break
+                value = match.group('number').replace('\n', '')
+                if not value:
+                    continue
+                try:
+                    value = int(value)
+                except ValueError:
+                    logger.warning(
+                        "Error while parsing log file: '{}'".format(
+                            match.group(0)
+                                .encode('unicode_escape').decode('utf-8')
+                        ) )
+                    continue
+                else:
+                    if value == last_page + 1:
+                        break
             else:
                 break
             last_page += 1
