@@ -343,69 +343,75 @@ class LaTeXNode(ProductFileNode):
         @self.add_rule
         def latex_rule():
             source_path = self.source.path
-            old_ns = source_path.st_atime_ns-1, source_path.st_mtime_ns-1
             self.log(logging.INFO, rule_repr)
             try:
                 output = subprocess.check_output(callargs, cwd=str(cwd),
                     universal_newlines=False )
             except subprocess.CalledProcessError as exception:
-                self.print_some_latex_log(exception.output,
-                    logpath=None, critical=True )
+                self.check_latex_log(
+                    exception.output, logpath=None, critical=True )
                 self.log(logging.CRITICAL,
                     '{exc.cmd} returned code {exc.returncode}<RESET>'
                     .format(node=self, exc=exception) )
                 exception.reported = True
                 raise
-            log_is_interesting = self.print_some_latex_log(
+            self.check_latex_log(
                 output, logpath=self.path.with_suffix('.log') )
-            if log_is_interesting:
-                try:
-                    os.utime(str(self.path), ns=old_ns)
-                    self.modified = True
-                    logger.warning(
-                        '<BOLD>[<YELLOW>{node.name}<NOCOLOUR>] '
-                        'Next run will rebuild the target.<RESET>'
-                        .format(node=self) )
-                except FileNotFoundError:
-                    pass
-
-    interesting_latexlog_pattern = re.compile(
-        '(?m)^! |[Ee]rror|[Ww]arning|No pages of output.' )
-    overfull_latexlog_pattern = re.compile(
-        r'(?m)^(Overfull|Underfull)\s+\\hbox\s+\([^()]*?\)\s+'
-        r'in\s+paragraph\s+at\s+lines\s+\d+--\d+' )
-    page_latexlog_pattern = re.compile(r'\[(?P<number>(?:\d|\s)+)\]')
 
     latex_decoding_kwargs = {'encoding' : 'cp1251', 'errors' : 'replace'}
 
-    @classmethod
-    def print_some_latex_log(cls, output, logpath, critical=False):
+    def check_latex_log(self, output, logpath, critical=False):
         """
         Print some of LaTeX output from its stdout and log.
 
         Print output if it is interesting or critical is True.
         Otherwise, print overfulls from log (if logpath is not None).
-        Return (bool) if output is interesting.
         """
-        output = output.decode(**cls.latex_decoding_kwargs)
-        is_interesting = (
-            cls.interesting_latexlog_pattern.search(output) is not None )
-        if critical or is_interesting:
+        output = output.decode(**self.latex_decoding_kwargs)
+        if critical:
             print(output)
+        elif self.latex_output_need_rerun(output):
+            print(output)
+            try:
+                sourcepath = self.source.path
+                os.utime(
+                    str(self.path),
+                    ns=(sourcepath.st_atime_ns-1, sourcepath.st_mtime_ns-1) )
+                self.modified = True
+                self.log(logging.WARNING, 'Next run will rebuild the target.')
+            except FileNotFoundError:
+                pass
+        elif self.latex_output_is_alarming(output):
+            print(output)
+            self.log(logging.WARNING, 'Alarming LaTeX output detected.')
         elif logpath is not None:
-            cls.print_overfulls(logpath)
-        return is_interesting
+            self.print_overfulls(logpath)
 
+    latex_output_alarming_pattern = re.compile(
+        r'(?m)^! |[Ee]rror|[Ww]arning|No pages of output.' )
     @classmethod
-    def print_overfulls(cls, logpath):
+    def latex_output_is_alarming(cls, output):
+        return cls.latex_output_alarming_pattern.search(output) is not None
+
+    latex_output_rerun_pattern = re.compile(r'[Rr]erun to')
+    @classmethod
+    def latex_output_need_rerun(cls, output):
+        return cls.latex_output_rerun_pattern.search(output) is not None
+
+    latex_log_overfull_pattern = re.compile(
+        r'(?m)^(Overfull|Underfull)\s+\\hbox\s+\([^()]*?\)\s+'
+        r'in\s+paragraph\s+at\s+lines\s+\d+--\d+' )
+    latex_log_page_pattern = re.compile(r'\[(?P<number>(?:\d|\s)+)\]')
+
+    def print_overfulls(self, logpath):
         enc_args = {}
-        with logpath.open(**cls.latex_decoding_kwargs) as f:
+        with logpath.open(**self.latex_decoding_kwargs) as f:
             s = f.read()
 
         page_marks = {1 : 0}
         last_page = 1; last_mark = 0
         while True:
-            for match in cls.page_latexlog_pattern.finditer(s):
+            for match in self.latex_log_page_pattern.finditer(s):
                 value = match.group('number').replace('\n', '')
                 if not value:
                     continue
@@ -438,7 +444,7 @@ class LaTeXNode(ProductFileNode):
             else:
                 return page + 1
 
-        for match in cls.overfull_latexlog_pattern.finditer(s):
+        for match in self.latex_log_overfull_pattern.finditer(s):
             start = match.start()
             print(
                 '[{}]'.format(current_page(match.start())),

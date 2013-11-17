@@ -278,12 +278,12 @@ class PathNode(DatedNode):
             .format(node=self) )
 
     def run_rules(self):
-        mtime = self.mtime
+        prerun_mtime = self.mtime
         try:
             super().run_rules()
         except:
             self.load_mtime()
-            if self.mtime_less(mtime, self.mtime):
+            if self.mtime_less(prerun_mtime, self.mtime):
                 # Failed program resulted in a file written.
                 # We have to clear it.
                 self.log(ERROR, 'deleting {}'.format(self.relative_path))
@@ -295,7 +295,7 @@ class PathNode(DatedNode):
             raise FileNotFoundError(
                 "Path is missing after command execution: '{}'"
                 .format(self.path) )
-        if mtime != self.mtime:
+        if prerun_mtime != self.mtime:
             self.modified = True
 
     def add_subprocess_rule(self, callargs, *, cwd, **kwargs):
