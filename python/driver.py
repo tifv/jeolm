@@ -337,13 +337,17 @@ class Driver(metaclass=Substitutioner):
         inpaths = protorecord['inpaths'] = list()
         aliases = protorecord['aliases'] = dict()
         fignames = protorecord['fignames'] = list()
+        tex_packages = protorecord['tex packages'] = list()
         protorecord.setdefault('date', self.min_date(date_set))
 
         protorecord['metabody'] = list(self.digest_metabody(
-            protorecord.pop('metabody'), inpaths, aliases, fignames ))
+            protorecord.pop('metabody'),
+            inpaths=inpaths, aliases=aliases, fignames=fignames,
+            tex_packages=tex_packages ))
 
         protorecord['metastyle'] = list(self.digest_metastyle(
-            protorecord.pop('metastyle'), inpaths, aliases ))
+            protorecord.pop('metastyle'),
+            inpaths=inpaths, aliases=aliases ))
 
         # dropped keys
         assert 'preamble' not in protorecord, 'style'
@@ -530,7 +534,9 @@ class Driver(metaclass=Substitutioner):
             yield from list(self.generate_matter_metastyle(
                 pure_join(metapath, submetapath), subflags, ))
 
-    def digest_metabody(self, metabody, inpaths, aliases, fignames):
+    def digest_metabody(self, metabody, *,
+        inpaths, aliases, fignames, tex_packages
+    ):
         """
         Yield metabody items.
 
@@ -556,9 +562,14 @@ class Driver(metaclass=Substitutioner):
                 for figname in figname_map.values():
                     if figname not in fignames:
                         fignames.append(figname)
+                for tex_package in metarecord.get('$tex$packages', ()):
+                    if tex_package not in tex_packages:
+                        tex_packages.append(tex_package)
             yield item
 
-    def digest_metastyle(self, metastyle, inpaths, aliases):
+    def digest_metastyle(self, metastyle, *,
+        inpaths, aliases
+    ):
         """
         Yield metastyle items.
 
@@ -684,11 +695,13 @@ class Driver(metaclass=Substitutioner):
 
     @classmethod
     def constitute_preamble(cls, outrecord, metastyle):
-
         preamble_items = []
         for item in metastyle:
             assert isinstance(item, dict), item
             preamble_items.append(cls.constitute_preamble_item(item))
+        for tex_package in outrecord['tex packages']:
+            preamble_items.append(cls.constitute_preamble_item(
+                {'package' : tex_package} ))
         if 'scale font' in outrecord:
             font, skip = outrecord['scale font']
             preamble_items.append(
@@ -1036,8 +1049,8 @@ class Driver(metaclass=Substitutioner):
         return item, the_flags.union(add_flags).difference(remove_flags)
 
 class TestFilteringDriver(Driver):
-    def generate_matter_tex(self, metapath, flags, metarecord):
-        super_matter = list(super().generate_matter_tex(
+    def generate_tex_matter(self, metapath, flags, metarecord):
+        super_matter = list(super().generate_tex_matter(
             metapath, flags, metarecord ))
         if metarecord.get('$test', False):
             if not super_matter or 'exclude-test' in flags:
