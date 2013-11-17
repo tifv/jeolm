@@ -77,6 +77,11 @@ class FlagSet:
     def as_set(self):
         return self.flags
 
+    def __repr__(self):
+        return '{flag_set.__class__.__qualname__}({flags})'.format(
+            flag_set=self,
+            flags=', '.join(repr(flag) for flag in self.as_set()) )
+
 class ChildFlagSet(FlagSet):
     __slots__ = ['parent']
 

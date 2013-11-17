@@ -496,13 +496,25 @@ class Driver(metaclass=Substitutioner):
         pseudorecord = metarecord.copy()
         self.clear_flagged_keys(pseudorecord, '$style')
         pseudorecord['$style'] = manner
-        yield from self.generate_matter_metastyle(
-            metapath, flags, pseudorecord )
+        try:
+            yield from self.generate_matter_metastyle(
+                metapath, flags, pseudorecord )
+        except ValueError as error:
+            raise ValueError(
+                "Error detected while processing {} with flags {}"
+                .format(metapath, flags)
+            ) from error
 
     @fetch_metarecord
     def generate_matter_metastyle(self, metapath, flags, metarecord):
-        style = self.get_flagged_value(metarecord, '$style',
-            flags=flags, default=None )
+        try:
+            style = self.get_flagged_value(metarecord, '$style',
+                flags=flags, default=None )
+        except ValueError as error:
+            raise ValueError(
+                "Error detected while processing {} with flags {}"
+                .format(metapath, flags)
+            ) from error
         if style is not None:
             pass
         elif '$sty$source' in metarecord:
@@ -625,7 +637,13 @@ class Driver(metaclass=Substitutioner):
     # Record accessor
 
     class Metarecords(Records):
-        def list_targets(self, path=PurePath(), root=True):
+
+        def list_targets(self, path=None):
+            if path is None:
+                path = PurePath()
+                root = True
+            else:
+                root = False
             record = self.get(path)
             if not record.get('$targetable', True):
                 return

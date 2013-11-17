@@ -26,8 +26,8 @@ class MetadataManager(Records):
         '.yaml' : 'metadata',
     }
 
-    def __init__(self, *args, fsmanager):
-        super().__init__(*args)
+    def __init__(self, *, fsmanager):
+        super().__init__()
         self.fsmanager = fsmanager
         self.source_dir = self.fsmanager.source_dir
 

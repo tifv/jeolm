@@ -14,11 +14,9 @@ class RecordNotFoundError(KeyError):
 class Records:
     dict_type = OrderedDict
 
-    def __init__(self, data=None):
+    def __init__(self):
         self.records = self.dict_type()
         self.cache = dict()
-        if data is not None:
-            self.merge(data)
 
     def invalidate_cache(self):
         self.cache.clear()
@@ -32,8 +30,6 @@ class Records:
             record = self.records
         for key, value in dict_ordered_items(piece):
             self._merge_item(key, value, overwrite=overwrite, record=record)
-
-        self.invalidate_cache()
 
     def reorder(self, path, sample):
         self.reorder_omap(self.get(path, original=True), sample)
@@ -58,12 +54,14 @@ class Records:
         if key.startswith('$'):
             if key not in record or overwrite:
                 record[key] = value
+                self.invalidate_cache()
             else:
                 pass # discard value
         else:
             child_record = record.get(key)
             if child_record is None:
                 child_record = record[key] = self.dict_type()
+                self.invalidate_cache()
             self.merge(value, overwrite=overwrite, record=child_record)
 
     def get(self, path, *, record=None, create_path=False, original=False):
@@ -112,6 +110,7 @@ class Records:
         except KeyError:
             if create_path:
                 child_record = record[name] = self.dict_type()
+                self.invalidate_cache()
             else:
                 raise RecordNotFoundError from None
         assert isinstance(child_record, dict), child_record

@@ -139,7 +139,9 @@ class FSManager:
     def get_metadata_manager(self):
         metadata = self.load_metadata()
         from .metadata import MetadataManager
-        return MetadataManager(metadata, fsmanager=self)
+        metadata_manager = MetadataManager(fsmanager=self)
+        metadata_manager.merge(metadata)
+        return metadata_manager
 
     def load_metadata(self):
         try:
