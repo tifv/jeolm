@@ -663,6 +663,16 @@ class Driver(metaclass=Substitutioner):
             child_record['$path'] = path
             super().derive_attributes(parent_record, child_record, name)
 
+        def _get_child(self, record, name, *, original, **kwargs):
+            child_record = super()._get_child(
+                record, name, original=original, **kwargs )
+            if '$library' not in child_record or original:
+                return child_record
+            return self.load_library_metadata(child_record['$library'])
+
+        def load_library_metadata(self, library_name):
+            if library_name == 'pgfpages':
+                return pgfpages_library
 
     ##########
     # LaTeX-level functions
@@ -1086,4 +1096,26 @@ class TestFilteringDriver(Driver):
     )
     begingroup_template = r'\begingroup'
     endgroup_template = r'\endgroup'
+
+pgfpages_library = OrderedDict([
+    ('$targetable', False),
+    ('$style', [
+        {'package' : 'pgfpages'},
+        {'style' : 'uselayout'},
+    ]),
+    ('uselayout', OrderedDict([
+        ('$style', [{'verbatim' :
+            '\\pgfpagesuselayout{resize to}[a4paper]'
+        }]),
+        ('$style{2on1}', [{'verbatim' :
+            '\\pgfpagesuselayout{2 on 1}[a4paper,landscape]'
+        }]),
+        ('$style{2on1-portrait}', [{'verbatim' :
+            '\\pgfpagesuselayout{2 on 1}[a4paper]'
+        }]),
+        ('$style{4on1}', [{'verbatim' :
+            '\\pgfpagesuselayout{4 on 1}[a4paper,landscape]'
+        }]),
+    ]))
+])
 
