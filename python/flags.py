@@ -58,6 +58,9 @@ class FlagSet:
         self.children.append(child)
         return child
 
+    def clean_copy(self):
+        return FlagSet(self.as_set())
+
     @property
     def _unutilized(self):
         return self.flags - self.utilized
@@ -77,10 +80,22 @@ class FlagSet:
     def as_set(self):
         return self.flags
 
+    def as_frozenset(self):
+        the_set = self.as_set()
+        assert isinstance(the_set, frozenset), type(the_set)
+        return the_set
+
     def __repr__(self):
-        return '{flag_set.__class__.__qualname__}({flags})'.format(
-            flag_set=self,
-            flags=', '.join(repr(flag) for flag in self.as_set()) )
+        return '{instance.__class__.__qualname__}({flags})'.format(
+            instance=self,
+            flags=', '.join( repr(flag) for flag in sorted(self.as_set()) )
+        )
+
+    def as_flags(self):
+        sorted_flags = sorted(self.as_set())
+        if not sorted_flags:
+            return ''
+        return '[{}]'.format(','.join(sorted_flags))
 
 class ChildFlagSet(FlagSet):
     __slots__ = ['parent']
