@@ -30,6 +30,9 @@ def get_parser(prog='jeolm'):
     force_build_group.add_argument('-F', '--force-generate',
         help='force overwriting of generated LaTeX file',
         action='store_true', )
+    build_parser.add_argument('-r', '--review',
+        help='review included infiles prior to build',
+        action='store_true', )
 #    build_parser.add_argument('--dump',
 #        help='instead of building create standalone version of document',
 #        action='store_true', )
@@ -93,11 +96,21 @@ def main():
     return args.main_func(args, fsmanager=fsmanager)
 
 def main_build(args, *, fsmanager):
+
     from jeolm.builder import Builder
 #    if args.dump:
 #        from jeolm.builder import Dumper as Builder
     if not args.targets:
         logger.warn('No-op: no targets for building')
+
+    if args.review:
+        from jeolm.commands import list_sources, review
+        review(
+            list_sources( args.targets,
+                fsmanager=fsmanager, source_type='tex' ),
+            viewpoint=Path.cwd(),
+            fsmanager=fsmanager, recursive=False )
+
     if args.force_latex:
         force = 'latex'
     elif args.force_generate:

@@ -11,12 +11,14 @@ def main():
 
     subcommands = ('build', 'review', 'list', 'spell', 'clean', )
     subcommand_options = {
-        'build' : ('--force-latex', '--dump',),
+        'build' : ('--force-latex', '--force-generate', '--review', '--dump'),
         'list' : ('--type',),
         'review' : ('--recursive',),
     }
     subcommand_short_options = {
-        'build' : {'-f' : '--force-latex', '-F' : '--force-generate'},
+        'build' : {
+            '-f' : '--force-latex', '-F' : '--force-generate',
+            '-r' : '--review' },
         'review' : {'-r' : '--recursive'}
     }
     subcommands_accepting_paths = ('r', 'review', )

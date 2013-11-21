@@ -2,7 +2,7 @@ from collections import OrderedDict
 
 from pathlib import PurePosixPath as PurePath
 
-from .utils import dict_ordered_keys, dict_ordered_items
+from .utils import unique, dict_ordered_keys, dict_ordered_items
 
 import logging
 logger = logging.getLogger(__name__)
@@ -64,7 +64,10 @@ class Records:
                 self.invalidate_cache()
             self.merge(value, overwrite=overwrite, record=child_record)
 
-    def get(self, path, *, record=None, create_path=False, original=False):
+    def get(self, path, *, record=None,
+        create_path=False, original=False,
+        error_not_found=True
+    ):
         use_cache = record is None and not create_path and not original
         if use_cache:
             try:
@@ -83,15 +86,18 @@ class Records:
         elif name.startswith('$'):
             raise ValueError(path)
         else:
-            # Recurse, making use of cache
-            parent_record = self.get(path.parent, record=record,
-                create_path=create_path, original=original )
             try:
+                # Recurse, making use of cache
+                parent_record = self.get(path.parent, record=record,
+                    create_path=create_path, original=original )
                 record = self._get_child(parent_record, name,
                     create_path=create_path, original=original )
             except RecordNotFoundError as error:
-                error.args += (path,)
-                raise
+                if error_not_found:
+                    error.args += (path,)
+                    raise
+                else:
+                    return None
 
         if use_cache:
             self.cache[path] = record
@@ -122,11 +128,11 @@ class Records:
     def derive_attributes(self, parent_record, child_record, name):
         pass
 
-    def items(self, path=PurePath(), *, keyfunc=None):
+    def items(self, path=PurePath()):
         """Yield (path, record) pairs."""
         record = self.get(path)
         yield path, record
-        for key in dict_ordered_keys(record, keyfunc=keyfunc):
+        for key in dict_ordered_keys(record):
             if key.startswith('$'):
                 continue
             yield from self.items(path=path/key)
@@ -159,4 +165,41 @@ class Records:
 #            return d.items()
 #        else:
 #            return NaturallyOrderedDict(d).items()
+
+    @classmethod
+    def compare_items(cls, records1, records2, path=PurePath(),
+        *, wipe_subrecords=False
+    ):
+        """
+        Yield (path, record1, record2) triples.
+        """
+
+        dict_type = records1.dict_type
+        assert dict_type is records2.dict_type
+
+        record1 = records1.get(path, error_not_found=False)
+        record2 = records2.get(path, error_not_found=False)
+        if wipe_subrecords:
+            record1 = cls._wipe_subrecords(record1)
+            record2 = cls._wipe_subrecords(record2)
+        yield path, record1, record2
+
+        if record1 is None or record2 is None:
+            return
+        keys = unique(dict_ordered_keys(record1), dict_ordered_keys(record2))
+        for key in keys:
+            if key.startswith('$'):
+                continue
+            yield from cls.compare_items(records1, records2, path/key,
+                wipe_subrecords=wipe_subrecords )
+
+    @staticmethod
+    def _wipe_subrecords(record):
+        if record is None:
+            return record
+        record = record.copy()
+        for key in record:
+            if not key.startswith('$'):
+                record[key] = ['<subrecord>']
+        return record
 

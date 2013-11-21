@@ -76,35 +76,37 @@ def check_spelling(targets, *, fsmanager):
     indicator_clean()
 
 def review(paths, *, fsmanager, viewpoint, recursive):
-    from difflib import unified_diff as diff
-    from . import yaml
+    import difflib
+    from . import yaml, diffprint
 
     inpaths = resolve_inpaths(paths,
         source_dir=fsmanager.source_dir, viewpoint=viewpoint )
     metadata_manager = fsmanager.get_metadata_manager()
 
-    old_dump = yaml.dump(metadata_manager.construct_metarecords().records)
+    old_metarecords = metadata_manager.construct_metarecords()
     for inpath in inpaths:
         metadata_manager.review(inpath, recursive=recursive)
+    new_metarecords = metadata_manager.construct_metarecords()
+    Metarecords = type(old_metarecords)
+    assert isinstance(new_metarecords, Metarecords)
 
-    new_dump = yaml.dump(metadata_manager.construct_metarecords().records)
-    delta = diff(
-        old_dump.splitlines(), new_dump.splitlines(), n=4,
-        lineterm='', fromfile='old/metarecords.yaml', tofile='new/metarecords.yaml',
-    )
-    for line in delta:
-        if line.startswith('--- '):
-            pass
-        elif line.startswith('+++ '):
-            pass
-        elif line.startswith('-'):
-            difflogger.info('<RED>{}<RESET>'.format(line))
-        elif line.startswith('+'):
-            difflogger.info('<GREEN>{}<RESET>'.format(line))
-        elif line.startswith('@'):
-            difflogger.info('<MAGENTA>{}<RESET>'.format(line))
-        else:
-            difflogger.info(line)
+    for inpath, old_record, new_record in Metarecords.compare_items(
+            old_metarecords, new_metarecords, wipe_subrecords=True ):
+        if old_record == new_record:
+            continue;
+        old_dump = yaml.dump(old_record).splitlines()
+        new_dump = yaml.dump(new_record).splitlines()
+
+        delta = difflib.ndiff(a=old_dump, b=new_dump)
+#        delta = difflib.unified_diff(
+#            a=old_dump, fromfile='a/{}'.format(inpath),
+#            b=new_dump, tofile='b/{}'.format(inpath),
+#            n=4, lineterm='', )
+        diffprint.difflogger.info(
+            '<BOLD>Changes in <YELLOW>{}<RESET>'.format(inpath) )
+        diffprint.print_delta(delta,
+            line_formats=diffprint.NDIFF_LINE_FORMATS,
+            fix_newlines=True )
 
     fsmanager.dump_metadata(metadata_manager.records)
 

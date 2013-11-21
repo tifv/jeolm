@@ -5,7 +5,7 @@ from collections import OrderedDict
 
 from pathlib import PurePosixPath as PurePath
 
-from .utils import pure_join, dict_ordered_keys, dict_ordered_items
+from .utils import unique, pure_join, dict_ordered_keys, dict_ordered_items
 
 from . import yaml
 from .records import Records, RecordNotFoundError
@@ -138,7 +138,7 @@ class MetadataManager(Records):
             logger.warning("<BOLD><MAGENTA>{}<NOCOLOUR>: "
                 "<YELLOW>\\includegraphics<NOCOLOUR> command found<RESET>"
                 .format(inpath) )
-        figures = self.unique(
+        figures = unique(
             match.group('figure')
             for match in self.tex_figure_pattern.finditer(s) )
         figdir = inpath.with_suffix('')
@@ -198,14 +198,4 @@ class MetadataManager(Records):
     asy_use_pattern = re.compile(
         r'(?m)^// use (?P<original_name>[-.a-zA-Z0-9/]*?\.asy) '
         r'as (?P<used_name>[-a-zA-Z0-9]*?\.asy)$' )
-
-    @staticmethod
-    def unique(iterable):
-        seen = set()
-        unique = []
-        for i in iterable:
-            if i not in seen:
-                unique.append(i)
-                seen.add(i)
-        return unique
 

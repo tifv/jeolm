@@ -253,7 +253,7 @@ class PathNode(DatedNode):
         """
         Set node.mtime to appropriate value.
 
-        Set node.mtime to None if file does not exist.
+        Set node.mtime to None if path does not exist.
         Otherwise, use st_mtime_ns attribute for the structure
         returned by node.stat().
         """
@@ -395,10 +395,18 @@ class TextNode(FileNode):
     """
     def __init__(self, path, text=None, textfunc=None, **kwargs):
         super().__init__(path, **kwargs)
-        assert (text is None) + (textfunc is None) == 1
         if text is not None:
-            assert isinstance(text, str), text
+            if textfunc is not None:
+                raise ValueError(
+                    "Exactly one of the 'text' and 'textfunc' arguments "
+                    "must be supplied" )
+            if not isinstance(text, str):
+                raise TypeError(type(text))
             textfunc = lambda: text
+        if textfunc is None:
+            raise ValueError(
+                "Exactly one of the 'text' and 'textfunc' arguments "
+                "must be supplied" )
 
         rule_repr = (
             '<GREEN>Write generated text to {node.relative_path}<NOCOLOUR>'

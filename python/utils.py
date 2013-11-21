@@ -5,6 +5,16 @@ from pathlib import PurePosixPath as PurePath
 
 from . import yaml
 
+def unique(*iterables):
+    seen = set()
+    unique = list()
+    for iterable in iterables:
+        for i in iterable:
+            if i not in seen:
+                unique.append(i)
+                seen.add(i)
+    return unique
+
 def pure_join(*paths):
     """
     Join PurePaths, resolving '..' parts.
@@ -58,29 +68,4 @@ def dict_ordered_items(d, *, keyfunc=None):
         key, value = item
         return keyfunc(key)
     return sorted(d.items(), key=item_keyfunc)
-
-
-#class NaturallyOrderedDict(dict):
-#    """
-#    Yields its keys in natural order.
-#    """
-#    def __iter__(self):
-#        return iter(sorted(super().__iter__(), key=natural_key))
-#
-#    def keys(self):
-#        return sorted(super().keys(), key=natural_key)
-#
-#    def items(self):
-#        return sorted(super().items(), key=lambda kv: natural_key(kv[0]))
-#
-#    def values(self):
-#        return [value for key, value in self.items()]
-#
-#    def copy(self):
-#        return type(self)(self)
-#
-#yaml.JeolmDumper.add_representer(NaturallyOrderedDict,
-#    yaml.JeolmDumper.represent_dict )
-
-
 
