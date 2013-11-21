@@ -90,23 +90,30 @@ def review(paths, *, fsmanager, viewpoint, recursive):
     Metarecords = type(old_metarecords)
     assert isinstance(new_metarecords, Metarecords)
 
-    for inpath, old_record, new_record in Metarecords.compare_items(
-            old_metarecords, new_metarecords, wipe_subrecords=True ):
+    comparing_iterator = Metarecords.compare_items(
+        old_metarecords, new_metarecords, wipe_subrecords=True )
+    for inpath, old_record, new_record in comparing_iterator:
+        assert old_record is not None or new_record is not None, inpath
         if old_record == new_record:
-            continue;
+            continue
         old_dump = yaml.dump(old_record).splitlines()
         new_dump = yaml.dump(new_record).splitlines()
-
+        if old_record is None:
+            diffprint.difflogger.info(
+                '<BOLD><GREEN>{}<NOCOLOUR> metarecord added<RESET>'
+                .format(inpath) )
+            old_dump = []
+        elif new_record is None:
+            diffprint.difflogger.info(
+                '<BOLD><RED>{}<NOCOLOUR> metarecord removed<RESET>'
+                .format(inpath) )
+            new_dump = []
+        else:
+            diffprint.difflogger.info(
+                '<BOLD><YELLOW>{}<NOCOLOUR> metarecord changed<RESET>'
+                .format(inpath) )
         delta = difflib.ndiff(a=old_dump, b=new_dump)
-#        delta = difflib.unified_diff(
-#            a=old_dump, fromfile='a/{}'.format(inpath),
-#            b=new_dump, tofile='b/{}'.format(inpath),
-#            n=4, lineterm='', )
-        diffprint.difflogger.info(
-            '<BOLD>Changes in <YELLOW>{}<RESET>'.format(inpath) )
-        diffprint.print_delta(delta,
-            line_formats=diffprint.NDIFF_LINE_FORMATS,
-            fix_newlines=True )
+        diffprint.print_ndiff_delta(delta, fix_newlines=True)
 
     fsmanager.dump_metadata(metadata_manager.records)
 

@@ -23,8 +23,19 @@ def print_delta(delta, *, line_formats, fix_newlines=False):
             line = line[:-1]
         for prefix, fmt in line_formats.items():
             if line.startswith(prefix):
-                difflogger.info(fmt.format(line))
+                if fmt is not None:
+                    difflogger.info(fmt.format(line))
                 break
         else:
-            raise RuntimeError("line_format does not describe delta line", line)
+            raise RuntimeError(
+                "line_formats does not describe delta line '{}'"
+                .format(line) )
+
+def print_ndiff_delta(delta, **kwargs):
+    return print_delta( delta,
+        line_formats=NDIFF_LINE_FORMATS, **kwargs )
+
+def print_unified_diff_delta(delta, **kwargs):
+    return print_delta( delta,
+        line_formats=UNIFIED_DIFF_LINE_FORMATS, **kwargs )
 
