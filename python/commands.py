@@ -15,9 +15,9 @@ def clean(root):
     Remove all symbolic links to 'build/*whatever*' from the toplevel.
     """
     assert isinstance(root, Path), root
-    for x in root:
+    for x in root.iterdir():
         if not x.is_symlink():
-            continue;
+            continue
         target = os.readlink(str(x))
         if target.startswith('build/'):
             x.unlink()
@@ -26,7 +26,7 @@ def print_source_list(targets, *, fsmanager, viewpoint, source_type):
     path_generator = list_sources(targets,
         fsmanager=fsmanager, source_type=source_type )
     for path in path_generator:
-        print(path.relative(viewpoint))
+        print(path.relative_to(viewpoint))
 
 def check_spelling(targets, *, fsmanager):
     from difflib import unified_diff as diff
@@ -57,7 +57,7 @@ def check_spelling(targets, *, fsmanager):
         indicator_clean()
         delta = diff(
             original.splitlines(), corrected.splitlines(),
-            lineterm='', fromfile=path.relative(fsmanager.source_dir),
+            lineterm='', fromfile=path.relative_to(fsmanager.source_dir),
             tofile='*autocorrector*'
         )
         for line in delta:
@@ -116,11 +116,13 @@ def list_sources(targets, *, fsmanager, source_type):
         yield source_dir/inpath
 
 def resolve_inpaths(inpaths, *, source_dir, viewpoint):
+    assert isinstance(viewpoint, Path), viewpoint
+    assert viewpoint.is_absolute(), viewpoint
     for inpath in inpaths:
         path = Path(viewpoint, inpath)
         try:
             path = path.resolve()
         except FileNotFoundError:
             pass
-        yield PurePath(path).relative(source_dir)
+        yield PurePath(path).relative_to(source_dir)
 

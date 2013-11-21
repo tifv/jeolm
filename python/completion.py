@@ -129,11 +129,11 @@ class Completer:
             if uncompleted_parent in self.target_list:
                 yield str(uncompleted_parent) + '/'
         else:
-            uncompleted_parent = uncompleted_path.parent()
+            uncompleted_parent = uncompleted_path.parent
             uncompleted_name = uncompleted_path.name
 
         for path in self.target_list:
-            if uncompleted_parent != path.parent():
+            if uncompleted_parent != path.parent:
                 continue;
             name = path.name
             assert path.suffix == ''

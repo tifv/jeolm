@@ -14,15 +14,16 @@ def pure_join(*paths):
     The leading '/', if any, will be stripped from the result.
     """
     path = PurePath(*paths)
+    parts = path.parts
     if path.is_absolute():
-        path = path.parts[1:]
-    parts = []
-    for part in path.parts:
+        parts = parts[1:]
+    path = PurePath()
+    for part in parts:
         if part != '..':
-            parts.append(part)
+            path /= part
         else:
-            parts.pop()
-    return PurePath(*parts)
+            path = path.parent
+    return path
 
 def natural_keyfunc(s, pattern=re.compile(r'(\d+)')):
     assert isinstance(s, str), type(s)

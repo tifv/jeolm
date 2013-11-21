@@ -3,7 +3,6 @@ Nodes, and dependency trees constructed of them.
 """
 
 from itertools import chain
-import weakref
 
 import os
 from stat import S_ISDIR
@@ -227,7 +226,7 @@ class PathNode(DatedNode):
     root = Path.cwd()
 
     if __debug__:
-        seen_paths = weakref.WeakSet()
+        seen_paths = set()
 
     def __init__(self, path, **kwargs):
         if not isinstance(path, Path):
@@ -333,15 +332,16 @@ class PathNode(DatedNode):
             raise ValueError(path)
         if not root.is_absolute():
             raise ValueError(root)
-        if any('..' in path.parts for path in (path, root)):
+        if any('..' in p.parts for p in (path, root)):
             raise ValueError(path, root)
         upstairs = 0
-        path_parents = set(path.parents())
-        while root not in path_parents:
-            root = root.parts[:-1]
+        while root not in path.parents:
+            parent = root.parent
+            assert parent != root
+            root = parent
             upstairs += 1
         return PurePath(*
-            ['..'] * upstairs + [path.relative(root)] )
+            ['..'] * upstairs + [path.relative_to(root)] )
 
 class ProductNode(PathNode):
     """
@@ -432,7 +432,7 @@ class LinkNode(ProductNode):
             self.source_path = source.path
         else:
             self.source_path = self.pure_relative(
-                source.path, self.path.parent(), )
+                source.path, self.path.parent )
 
         rule_repr = (
             '<source=<BLUE>{node.source.name}<NOCOLOUR>> '

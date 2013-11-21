@@ -84,7 +84,7 @@ class Records:
             raise ValueError(path)
         else:
             # Recurse, making use of cache
-            parent_record = self.get(path.parent(), record=record,
+            parent_record = self.get(path.parent, record=record,
                 create_path=create_path, original=original )
             try:
                 record = self._get_child(parent_record, name,

@@ -156,7 +156,7 @@ class Builder:
         outnode = self.outnodes[outname]
 
         def local_name(node):
-            return str(node.path.relative(build_dir))
+            return str(node.path.relative_to(build_dir))
 
         latex_log_name = outname + '.log'
 
@@ -324,20 +324,21 @@ class LaTeXNode(ProductFileNode):
 
         # Ensure that both latex source and target are in the same directory
         # and this directory is cwd.
-        assert path.parent() == cwd == source.path.parent()
+        assert path.parent == cwd == source.path.parent
         assert path.suffix == '.dvi'
         assert source.path.suffix == '.tex'
+        jobname = path.stem
 
         rule_repr = (
             '<cwd=<BLUE>{cwd}<NOCOLOUR>> '
-            '<GREEN>{node.latex_command} -jobname={node.path.basename} '
+            '<GREEN>{node.latex_command} -jobname={jobname} '
                 '{node.source.path.name}<NOCOLOUR>'
             .format(
-                cwd=self.pure_relative(cwd, self.root),
+                cwd=self.pure_relative(cwd, self.root), jobname=jobname,
                 node=self )
         )
         callargs = (self.latex_command,
-            '-jobname={}'.format(self.path.basename),
+            '-jobname={}'.format(jobname),
             '-interaction=nonstopmode', '-halt-on-error', '-file-line-error',
             self.source.path.name )
         @self.add_rule
@@ -373,10 +374,10 @@ class LaTeXNode(ProductFileNode):
         elif self.latex_output_need_rerun(output):
             print(output)
             try:
-                sourcepath = self.source.path
+                sourcestat = self.source.stat()
                 os.utime(
                     str(self.path),
-                    ns=(sourcepath.st_atime_ns-1, sourcepath.st_mtime_ns-1) )
+                    ns=(sourcestat.st_atime_ns-1, sourcestat.st_mtime_ns-1) )
                 self.modified = True
                 self.log(logging.WARNING, 'Next run will rebuild the target.')
             except FileNotFoundError:

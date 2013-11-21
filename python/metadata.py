@@ -37,7 +37,7 @@ class MetadataManager(Records):
             if inpath.suffix == '':
                 metapath = inpath
             elif inpath.suffix == '.yaml':
-                metapath = inpath.parent()
+                metapath = inpath.parent
             else:
                 if len(inpath.suffixes) > 1:
                     raise ValueError(path)
@@ -58,7 +58,7 @@ class MetadataManager(Records):
         if not exists:
             assert inpath.name # non-empty path
             if recorded:
-                self.get(inpath.parent(), original=True).pop(inpath.name)
+                self.get(inpath.parent, original=True).pop(inpath.name)
                 self.invalidate_cache()
             else:
                 logger.warning(
@@ -185,10 +185,10 @@ class MetadataManager(Records):
         return metadata or {}
 
     def query_asy_used(self, inpath, s):
-        parent = inpath.parent()
+        asydir = inpath.with_suffix('')
         used = OrderedDict(
             ( match.group('used_name'),
-                str(pure_join(parent, match.group('original_name'))) )
+                str(pure_join(asydir, match.group('original_name'))) )
             for match in self.asy_use_pattern.finditer(s) )
         if used:
             return {'$asy$used' : used}

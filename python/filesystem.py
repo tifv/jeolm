@@ -25,7 +25,7 @@ class FSManager:
             while len(root.parts) > 1:
                 if self.check_root(root):
                     break
-                root = root.parent()
+                root = root.parent
             else:
                 self.report_failed_check()
                 raise RootNotFoundError()
@@ -55,7 +55,7 @@ class FSManager:
 
     def report_broken_links(self):
         broken_links = {
-            path.relative(self.root)
+            path.relative_to(self.root)
             for path in self.iter_broken_links(self.root, recursive=False) }
         if broken_links:
             logger.warning(
@@ -66,7 +66,7 @@ class FSManager:
 
     @classmethod
     def iter_broken_links(cls, root, *, recursive):
-        for path in root:
+        for path in root.iterdir():
             if not path.exists():
                 yield path
                 continue
@@ -75,10 +75,9 @@ class FSManager:
 
     @classmethod
     def clean_broken_links(cls, root, *, recursive):
-        trash = list(cls.iter_broken_links(root, recursive=recursive))
-        for path in trash:
+        for path in cls.iter_broken_links(root, recursive=recursive):
             logger.info("Removing broken link at '{}'"
-                .format(path.relative(root)) )
+                .format(path.relative_to(root)) )
             path.unlink()
 
     def get_driver(self):
@@ -185,7 +184,7 @@ class FSManager:
         cache_path = self.completion_cache_path
         if not cache_path.exists():
             return None
-        if cache_path.st_mtime_ns <= self.metadata_mtime:
+        if cache_path.stat().st_mtime_ns <= self.metadata_mtime:
             # Do not load if the cache is outdated
             return None
         from pathlib import PurePosixPath as PurePath
@@ -204,7 +203,7 @@ class FSManager:
 
     @property
     def metadata_mtime(self):
-        return self.metadata_path.st_mtime_ns
+        return self.metadata_path.stat().st_mtime_ns
 
     def ensure_build_dir(self):
         if self.build_dir.exists():
