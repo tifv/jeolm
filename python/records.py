@@ -6,7 +6,6 @@ from .utils import unique, dict_ordered_keys, dict_ordered_items
 
 import logging
 logger = logging.getLogger(__name__)
-from jeolm import difflogger
 
 class RecordNotFoundError(KeyError):
     pass
@@ -184,9 +183,9 @@ class Records:
             record2 = cls._wipe_subrecords(record2)
         yield path, record1, record2
 
-        if record1 is None or record2 is None:
-            return
-        keys = unique(dict_ordered_keys(record1), dict_ordered_keys(record2))
+        keys = unique(
+            dict_ordered_keys(record1 or {}),
+            dict_ordered_keys(record2 or {}))
         for key in keys:
             if key.startswith('$'):
                 continue

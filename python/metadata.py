@@ -12,7 +12,6 @@ from .records import Records, RecordNotFoundError
 
 import logging
 logger = logging.getLogger(__name__)
-from jeolm import difflogger
 
 class MetadataManager(Records):
     dict_type = dict

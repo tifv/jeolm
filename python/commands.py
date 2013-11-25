@@ -8,7 +8,6 @@ from pathlib import Path, PurePosixPath as PurePath
 
 import logging
 logger = logging.getLogger(__name__)
-from jeolm import difflogger
 
 def clean(root):
     """
@@ -28,12 +27,10 @@ def print_source_list(targets, *, fsmanager, viewpoint, source_type):
     for path in path_generator:
         print(path.relative_to(viewpoint))
 
-def check_spelling(targets, *, fsmanager):
-    from difflib import unified_diff as diff
-    from .spell import prepare_original, correct
+def check_spelling(targets, *, fsmanager, context=0):
+    from . import cleanlogger, spell
+    from .spell import IncorrectWord
 
-    path_generator = list_sources(targets,
-        fsmanager=fsmanager, source_type='tex' )
     indicator_length = 0
     def indicator_clean():
         nonlocal indicator_length
@@ -44,40 +41,49 @@ def check_spelling(targets, *, fsmanager):
         nonlocal indicator_length
         print(s, end='\r')
         indicator_length = len(str(s))
+
+    path_generator = list_sources(targets,
+        fsmanager=fsmanager, source_type='tex' )
     for path in path_generator:
         indicator_clean()
         indicator_show(str(path))
 
         with path.open('r') as f:
-            original = f.read()
-        original = prepare_original(original, lang='ru_RU')
-        corrected = correct(original, lang='ru_RU')
-        if original == corrected:
+            text = f.read()
+        lines = ['']
+        printed_line_numbers = set()
+        try:
+            for text_piece in spell.Speller(text, lang='ru_RU'):
+                if isinstance(text_piece, IncorrectWord):
+                    lineno = len(lines) - 1
+                    printed_line_numbers.update(
+                        range(lineno-context, lineno+context+1) )
+                text_piece = str(text_piece).split('\n')
+                lines[-1] += text_piece[0]
+                for subpiece in text_piece[1:]:
+                    lines.append(subpiece)
+        except ValueError as error:
+            raise ValueError(
+                "Error while spell-checking {}"
+                .format(path.relative_to(fsmanager.root))
+            ) from error
+        if not printed_line_numbers:
             continue
         indicator_clean()
-        delta = diff(
-            original.splitlines(), corrected.splitlines(),
-            lineterm='', fromfile=path.relative_to(fsmanager.source_dir),
-            tofile='*autocorrector*'
-        )
-        for line in delta:
-            if line.startswith('--- '):
-                difflogger.info('<YELLOW>*** <BOLD>{}<RESET>'.format(line[4:]))
-            elif line.startswith('+++ '):
-                pass
-            elif line.startswith('-'):
-                difflogger.info('<RED><BOLD>{}<RESET>'.format(line))
-            elif line.startswith('+'):
-                difflogger.info('<GREEN>{}<RESET>'.format(line))
-            elif line.startswith('@'):
-                difflogger.info('<MAGENTA>{}<RESET>'.format(line))
-            else:
-                difflogger.info(line)
+        cleanlogger.info(
+            '<BOLD><YELLOW>{}<NOCOLOUR> possible misspellings<RESET>'
+            .format(path.relative_to(fsmanager.source_dir)) )
+        line_range = range(len(lines))
+        for lineno in sorted(printed_line_numbers):
+            if lineno not in line_range:
+                continue
+            cleanlogger.info(
+                '<MAGENTA>{}<NOCOLOUR>:{}'.format(lineno+1, lines[lineno]) )
     indicator_clean()
 
 def review(paths, *, fsmanager, viewpoint, recursive):
     import difflib
-    from . import yaml, diffprint
+    from . import yaml, diffprint, cleanlogger
 
     inpaths = resolve_inpaths(paths,
         source_dir=fsmanager.source_dir, viewpoint=viewpoint )
@@ -99,17 +105,17 @@ def review(paths, *, fsmanager, viewpoint, recursive):
         old_dump = yaml.dump(old_record).splitlines()
         new_dump = yaml.dump(new_record).splitlines()
         if old_record is None:
-            diffprint.difflogger.info(
+            cleanlogger.info(
                 '<BOLD><GREEN>{}<NOCOLOUR> metarecord added<RESET>'
                 .format(inpath) )
             old_dump = []
         elif new_record is None:
-            diffprint.difflogger.info(
+            cleanlogger.info(
                 '<BOLD><RED>{}<NOCOLOUR> metarecord removed<RESET>'
                 .format(inpath) )
             new_dump = []
         else:
-            diffprint.difflogger.info(
+            cleanlogger.info(
                 '<BOLD><YELLOW>{}<NOCOLOUR> metarecord changed<RESET>'
                 .format(inpath) )
         delta = difflib.ndiff(a=old_dump, b=new_dump)

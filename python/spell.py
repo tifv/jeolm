@@ -1,215 +1,315 @@
 import re
+from collections import OrderedDict
 
 import enchant
 
 import logging
 logger = logging.getLogger(__name__)
 
-prepare_pattern = re.compile('(?m)'
-    r'^% (?P<delimiter>.)(?P<from>.*?)(?P=delimiter)'
-    r' -> '
-    r'(?P=delimiter)(?P<to>.*?)(?P=delimiter)$' )
+class TextPiece:
+    __slots__ = ['s']
 
-def prepare_original(s, *, lang):
-    assert lang == 'ru_RU'
-    s = s.replace('ё', 'е')
-    for match in prepare_pattern.finditer(s):
-        logger.debug(match.groupdict())
-        s = s.replace(match.group('from'), match.group('to'))
-    return s
+    def __init__(self, s):
+        if isinstance(s, str):
+            self.s = s
+        elif isinstance(s, TextPiece):
+            self.s = s.s
+        else:
+            raise RuntimeError(type(s))
 
-def correct(s, *, lang):
-    return ''.join(_correct_iter(s, lang=lang))
+    def __str__(self):
+        return self.s
 
-def _correct_iter(s, *, lang):
-    clean_position = 0
-    for match, suggestions in misspellings(s, lang=lang):
-        yield s[clean_position:match.start()]
-        yield '['
-        yield ','.join(
-            suggestions[:3] or
-            '?' * max(1, match.end() - match.start() - 2) )
-        yield ']'
-        clean_position = match.end()
-    yield s[clean_position:]
+class Word(TextPiece):
 
-def misspellings(s, *, lang):
-    dictionary = enchant.Dict(lang)
-    for match in words(s, lang=lang):
-        if match.group('dotted_abbr') is not None:
-            continue
-        if dictionary.check(match.group()):
-            continue
-        yield match, dictionary.suggest(match.group())
+    def correct(self, is_correct=True):
+        if is_correct:
+            return CorrectWord(self)
+        else:
+            return self.incorrect()
 
-ru_word_pattern = re.compile(
-    r'(?P<dotted_abbr>[а-яА-Я]\.(?:\\\,[а-яА-Я]\.)+)'
-        '|'
-    r'(?P<word>(?<![а-яА-Я\-])(?![-])[а-яА-Я\-]+)' )
+    def incorrect(self):
+        return IncorrectWord(self)
 
-en_word_pattern = re.compile(
-    r'(?P<dotted_abbr>[a-zA-Z]\.(?:\\,[a-zA-Z]\.)+)'
-        '|'
-    r'(?P<word>(?!-)[a-zA-Z\-]+)' )
+class DottedAbbr(Word):
+    pass
 
-def words(s, *, lang):
-    """Generate matches"""
-    if lang.startswith('ru'):
-        word_pattern = ru_word_pattern
-    elif lang.startswith('en'):
-        word_pattern = en_word_pattern
-    word_iter = word_pattern.finditer
-    for text_slice in detex(s):
-        for match in word_iter(s, text_slice.start, text_slice.stop):
-            yield match
+class CorrectWord(Word):
+    def __str__(self):
+        return '<GREEN>' + super().__str__() + '<NOCOLOUR>'
 
-latex_pattern = re.compile(
-    r'(?P<comment>%.*\n)'
-        '|'
-    r'(?P<brace_open>\{)'
-        '|'
-    r'(?P<brace_close>\})'
-        '|'
-    r'\\begin{(?P<latex_begin>.+?)}'
-        '|'
-    r'\\end{(?P<latex_end>.+?)}'
-        '|'
-    r'(?P<tex_display_math>\$\$)'
-        '|'
-    r'(?P<tex_inline_math>\$)'
-        '|'
-    r'(?P<latex_display_math_begin>\\\[)'
-        '|'
-    r'(?P<latex_display_math_end>\\\])'
-        '|'
-    r'(?P<latex_inline_math_begin>\\\()'
-        '|'
-    r'(?P<latex_inline_math_end>\\\))'
-        '|'
-    r'(?P<text_open>\\(?:inter)?text{)'
-        '|'
-    r'(?P<label_macro>\\(?:label|ref){[^{}]+?})'
-        '|'
-    r'(?P<space_macro>\\(?:vspace|hspace){[^{}]+?})'
-        '|'
-    r'(?P<newline>\\\\(?:\[[^{}[\]]+?\])?)'
-        '|'
-    r'(?P<macro>\\[a-zA-Z]+(?![a-zA-Z]))'
-        '|'
-    r'(?P<escape>\\(?:[${}%]))'
-#        '|'
-#    r'(?P<char_macro>\\(?:[^a-zA-Z]))'
-)
-_latex_pattern_index = {v : k for k, v in latex_pattern.groupindex.items()}
+class IncorrectWord(Word):
+    def __str__(self):
+        return '<RED>' + super().__str__() + '<NOCOLOUR>'
 
-latex_rubbish = frozenset((
-    'label_macro', 'space_macro',
-    'newline',
-    'macro', 'escape',
-))
+class Speller:
+    def __init__(self, text, lang):
+        self.lang = lang
+        self.text = self.prepare_text(text, lang=lang)
 
-math_environments = frozenset((
-    'math', 'displaymath', 'equation', 'equation*',
-    'align', 'align*',
-    'eqnarray', 'eqnarray*',
-    'multline', 'multline*',
-    'gather', 'gather*',
-    'flalign', 'flalign*',
-    'alignat', 'alignat*',
-))
+    known_langs = frozenset(('en_US', 'ru_RU'))
+    dotted_abbrs = {
+        'en_US' : frozenset(('e.\,g.', 'i.\,e.')),
+        'ru_RU' : frozenset(('т.\,д.', 'т.\,е.')),
+    }
 
-def detex(s, fatal=False):
-    """
-    Find text pieces in LaTeX string s.
+    def __iter__(self):
+        dictionary = enchant.Dict(self.lang)
 
-    Generate slices so that s[slice] is a text piece.
-    """
+        for text_piece in LaTeXSlicer(self.text):
+            assert isinstance(text_piece, TextPiece), type(text_piece)
+            if not isinstance(text_piece, Word):
+                yield text_piece
+                continue
+            if isinstance(text_piece, DottedAbbr):
+                yield text_piece.correct(
+                    text_piece.s in self.dotted_abbrs[self.lang] )
+                continue
+            yield text_piece.correct(dictionary.check(text_piece.s))
 
-    stack = ['document']
-    math_mode = False
-    clean_position = 0
+    prepare_text_pattern = re.compile('(?m)'
+        r'^% spell (?P<delimiter>.)(?P<from>.*?)(?P=delimiter)'
+        r' -> '
+        r'(?P=delimiter)(?P<to>.*?)(?P=delimiter)$' )
 
-    def enter_math():
-        nonlocal math_mode
-        if math_mode:
-            error()
-        math_mode = True
-    def exit_math():
-        nonlocal math_mode
-        if not math_mode:
-            error()
-        math_mode = False
-    def error():
-        args = (match.start(), stack, match.group())
-        logger.error(args)
-        if fatal:
-            raise ValueError(*args)
+    @classmethod
+    def prepare_text(cls, text, *, lang):
+        if lang == 'ru_RU':
+            text = text.replace('ё', 'е')
+        for match in cls.prepare_text_pattern.finditer(text):
+            logger.debug(match.groupdict())
+            text = text.replace(match.group('from'), match.group('to'))
+        return text
 
-    def comment(group):
-        pass
-    def brace_open(group):
-        stack.append('{')
-    def brace_close(group):
-        closed = stack[-1]
+class LaTeXSlicer:
+    def __init__(self, text):
+        self.text = text
+
+    latex_optarg = r'(?:\[[^%{}\[\]\n]+\])?'
+    latex_reqarg = r'(?:\{[^%{}\[\]\n]+\})'
+    latex_possible_args = (
+        r'(?:'
+            r'\*'
+        r'|'
+            r'\{[^%{}\[\]\n]+\}'
+        r'|'
+            r'\[[^%{}\[\]\n]+\]'
+        r')*' )
+    LATEX_PATTERNS = OrderedDict((
+        ('nospell', r'(?ms)^% nospell begin$.*?^% nospell end$\n'),
+        ('comment',                 r'%.*\n'),
+        ('tex_begin',               r'\{'),
+        ('tex_end',                 r'\}'),
+        ('latex_begin',
+            r'\\begin\{(?P<environment>[^%{}\n]+)\}' + latex_possible_args),
+        ('latex_end',
+            r'\\end\{(?P<environment>[^%{}\n]+)\}'),
+        ('tex_display_math',        r'\$\$'),
+        ('tex_inline_math',         r'\$'),
+        ('latex_display_math_begin',    r'\\\['),
+        ('latex_display_math_end',      r'\\\]'),
+        ('latex_inline_math_begin',     r'\\\('),
+        ('latex_inline_math_end',       r'\\\)'),
+        ('text_macro_begin',        r'\\(?:inter)?text\{'),
+        ('label_macro',             r'\\(?:label|ref)' + latex_reqarg),
+        ('space_macro',             r'\\(?:vspace|hspace)' + latex_reqarg),
+        ('latex_style_macro_begin',     r'\\(?:emph|textbf){' ),
+        ('linebreak_macro',         r'\\\\\*?' + latex_optarg),
+        ('newline',                 r'\n'),
+        ('macro',                   r'\\[a-zA-Z]+' + latex_possible_args),
+        ('escape_macro',            r'\\(?:[${}%])'),
+        ('char_macro',              r'\\(?:[^a-zA-Z${}%\n])'),
+        ('tex_size_argument',
+            r'(?:\d+\.?\d*|\.\d+)(?:em|ex|in|pt|cm)' ),
+        ('dotted_abbr',             r'(?!\d)\w\.(?:(?:\\,)?(?!\d)\w\.)+'),
+        ('word',
+            r'(?<![\-\w])(?!-)'
+                r'(?:(?!\d)[\w\-])+'
+            r'(?<!-)' ),
+    ))
+
+    math_environments = frozenset((
+        'math', 'displaymath', 'equation', 'equation*',
+        'align', 'align*',
+        'eqnarray', 'eqnarray*',
+        'multline', 'multline*',
+        'gather', 'gather*',
+        'flalign', 'flalign*',
+        'alignat', 'alignat*',
+    ))
+
+    def __iter__(self):
+
+        text = self.text
+        length = len(text)
+        patterns = [
+            (name, re.compile(pattern))
+            for name, pattern in self.LATEX_PATTERNS.items()
+        ]
+
+        pos = clean_pos = 0
+        stack = self.LaTeXStack()
+        while pos < length:
+            for name, pattern in patterns:
+                match = pattern.match(text, pos)
+                if match is not None:
+                    break
+            else:
+                pos = pos + 1
+                continue
+            if pos > clean_pos:
+                yield TextPiece(text[clean_pos:pos])
+                clean_pos = pos
+            matched_piece = match.group(0)
+            if not stack.math_mode and name in {'dotted_abbr', 'word'}:
+                if name == 'word':
+                    yield Word(matched_piece)
+                elif name == 'dotted_abbr':
+                    yield DottedAbbr(matched_piece)
+            else:
+                method = getattr(self, name, None)
+                if method is not None:
+                    try:
+                        method(match, stack)
+                    except self.LaTeXStack.Error as error:
+                        error.args += ("<char={}>".format(match.group(0)),)
+                yield TextPiece(matched_piece)
+            pos = clean_pos = match.end()
+        stack.finish()
+
+    @staticmethod
+    def tex_begin(match, stack):
+        stack.push('{')
+
+    @staticmethod
+    def tex_end(match, stack):
+        closed = stack.pop(('{', r'\text{'), '}')
         if closed == '{':
             pass
         elif closed == r'\text{':
-            enter_math()
-        else: error()
-        stack.pop()
-    def latex_begin(environment, math_environments=math_environments):
+            stack.enter_math()
+        else:
+            raise RuntimeError
+
+    @staticmethod
+    def latex_begin(match, stack, math_environments=math_environments):
+        environment = match.group('environment')
+        stack.push_environment(environment)
         if environment in math_environments:
-            enter_math()
-        stack.append(environment)
-    def latex_end(environment, math_environments=math_environments):
-        if stack[-1] != environment: error()
+            stack.enter_math()
+
+    @staticmethod
+    def latex_end(match, stack, math_environments=math_environments):
+        environment = match.group('environment')
+        stack.pop_environment(environment)
         if environment in math_environments:
-            exit_math()
-        stack.pop()
-    def tex_display_math(group):
-        if stack[-1] != '$$':
-            enter_math(); stack.append('$$')
+            stack.exit_math()
+
+    @staticmethod
+    def tex_display_math(match, stack):
+        if stack.topmost != '$$':
+            stack.push('$$')
+            stack.enter_math()
         else:
-            exit_math(); stack.pop()
-    def tex_inline_math(group):
-        if stack[-1] != '$':
-            enter_math(); stack.append('$')
+            stack.pop('$$', '$$')
+            logger.warning("'$$' usage in LaTeX document detected")
+            stack.exit_math()
+
+    @staticmethod
+    def tex_inline_math(match, stack):
+        if stack.topmost != '$':
+            stack.push('$')
+            stack.enter_math()
         else:
-            exit_math(); stack.pop()
-    def latex_display_math_begin(group):
-        enter_math(); stack.append(r'\[')
-    def latex_display_math_end(group):
-        if stack[-1] == r'\[':
+            stack.pop('$', '$')
+            stack.exit_math()
+
+    @staticmethod
+    def latex_display_math_begin(match, stack):
+        stack.push(r'\[')
+        stack.enter_math()
+
+    @staticmethod
+    def latex_display_math_end(match, stack):
+        stack.pop(r'\[', r'\]')
+        stack.exit_math()
+
+    @staticmethod
+    def latex_inline_math_begin(match, stack):
+        stack.push(r'\(')
+        stack.enter_math()
+
+    @staticmethod
+    def latex_inline_math_end(match, stack):
+        stack.pop(r'\(', r'\)')
+        stack.exit_math()
+
+    @staticmethod
+    def latex_style_macro_begin(match, stack):
+        stack.push('{')
+
+    @staticmethod
+    def text_macro_begin(match, stack):
+        if stack.math_mode:
+            stack.push(r'\text{')
+            stack.exit_math()
+        else:
+            stack.push('{')
+
+    class LaTeXStack:
+        __slots__ = ['_stack', 'math_mode']
+        fatal = True
+
+        class Error(ValueError):
             pass
-        else: error()
-        exit_math(); stack.pop()
-    def latex_inline_math_begin(group):
-        enter_math(); stack.append(r'\(')
-    def latex_inline_math_end(group):
-        if stack[-1] == r'\(':
-            pass
-        else: error()
-        exit_math(); stack.pop()
-    def text_open(group):
-        if math_mode:
-            exit_math(); stack.append(r'\text{')
-        else:
-            stack.append(r'{')
-    def rubbish(group):
-        pass
 
-    namespace = locals()
-    function_index = [
-        namespace.get(_latex_pattern_index.get(i, 'nothing'), rubbish)
-        for i in range(len(_latex_pattern_index)+1)
-    ]
+        def __init__(self):
+            super().__init__()
+            self._stack = ['document']
+            self.math_mode = False
 
-    for match in latex_pattern.finditer(s):
-        if not math_mode:
-            yield slice(clean_position, match.start())
-        clean_position = match.end()
+        @property
+        def topmost(self):
+            return self._stack[-1]
 
-        group, = (v for v in match.groups() if v is not None)
-        function_index[match.lastindex](group)
-    yield slice(clean_position, len(s))
+        def push(self, value):
+            return self._stack.append(value)
+
+        def push_environment(self, environment):
+            return self.push(r'\begin{{{}}}'.format(environment))
+
+        def pop(self, expected, right):
+            if isinstance(expected, str):
+                expected = (expected,)
+            assert isinstance(expected, tuple), type(expected)
+            left = self.topmost
+            if left not in expected:
+                self.error("{} is closed by {}".format(left, right))
+            self._stack.pop()
+            return left
+
+        def pop_environment(self, environment):
+            return self.pop(
+                r'\begin{{{}}}'.format(environment),
+                r'\end{{{}}}'.format(environment) )
+
+        def enter_math(self):
+            if self.math_mode:
+                self.error('Double-entered math mode.')
+            self.math_mode = True
+
+        def exit_math(self):
+            if not self.math_mode:
+                self.error("Double-exited math mode.")
+            self.math_mode = False
+
+        def finish(self):
+            if self.topmost != 'document':
+                self.error("Unclosed groups by the end of the document.")
+
+        def error(self, message):
+            message += ' <stack={}>'.format( list(self) )
+            logger.error(message)
+            if self.fatal:
+                raise self.Error(message)
 

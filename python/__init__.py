@@ -4,9 +4,9 @@ import logging
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 logger.addHandler(logging.NullHandler())
-difflogger = logging.getLogger(__name__ + '.diff')
-difflogger.setLevel(logging.INFO)
-difflogger.addHandler(logging.NullHandler())
+cleanlogger = logging.getLogger(__name__ + '.clean')
+cleanlogger.setLevel(logging.INFO)
+cleanlogger.addHandler(logging.NullHandler())
 
 def get_parser(prog='jeolm'):
     from argparse import ArgumentParser
@@ -165,9 +165,9 @@ def setup_logging(verbose):
     handler.setLevel(logging.INFO if not verbose else logging.DEBUG)
     handler.setFormatter(Formatter("%(name)s: %(message)s"))
     logger.addHandler(handler)
-    diffhandler = logging.StreamHandler()
-    diffhandler.setLevel(logging.INFO)
-    diffhandler.setFormatter(Formatter("%(message)s"))
-    difflogger.propagate = False
-    difflogger.addHandler(diffhandler)
+    cleanhandler = logging.StreamHandler()
+    cleanhandler.setLevel(logging.INFO)
+    cleanhandler.setFormatter(Formatter("%(message)s"))
+    cleanlogger.propagate = False
+    cleanlogger.addHandler(cleanhandler)
 

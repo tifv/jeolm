@@ -1,5 +1,5 @@
 from collections import OrderedDict
-from jeolm import difflogger
+from jeolm import cleanlogger as difflogger
 
 UNIFIED_DIFF_LINE_FORMATS = OrderedDict((
     ('--- ', '<RED><BOLD>{}<RESET>'),
