@@ -4,18 +4,24 @@ import traceback
 import logging
 logger = logging.getLogger(__name__)
 
-class UnutilizedError(Exception):
-    pass
+class UnutilizedFlagsError(Exception):
+    def __init__(self, *args, origin_tb=None):
+        super().__init__(*args)
+        self.origin_tb = origin_tb
 
 class FlagSet:
-    __slots__ = ['flags', 'utilized', 'children', 'tb']
+    __slots__ = ['flags', 'utilized_flags', 'children', 'origin_tb', 'user']
 
-    def __new__(cls, iterable=()):
+    def __new__(cls, iterable=(), *, user):
         instance = super().__new__(cls)
         instance.flags = frozenset(iterable)
-        instance.utilized = set()
+        instance.utilized_flags = set()
         instance.children = []
-        instance.tb = traceback.extract_stack()
+        instance.user = user
+        if not user:
+            instance.origin_tb = traceback.extract_stack()
+        else:
+            instance.origin_tb = None
         return instance
 
     def __iter__(self):
@@ -29,53 +35,63 @@ class FlagSet:
 
     def __contains__(self, x):
         if x in self.flags:
-            self.utilized.add(x)
+            self.utilized_flags.add(x)
             return True
         return False
 
     def issuperset(self, iterable):
-        return all(x in self for x in iterable)
+        return all([x in self for x in iterable])
 
     def intersection(self, iterable):
         return {x for x in iterable if x in self}
 
-    def union(self, iterable, overadd=True):
+    def union(self, iterable, overadd=True, user=False):
         assert not isinstance(iterable, str)
         iterable = [x for x in iterable if overadd or x not in self]
-        return self.child(iterable, PositiveFlagSet) if iterable else self
+        if iterable:
+            return self.child(iterable, PositiveFlagSet, user=user)
+        else:
+            return self
 
-    def difference(self, iterable):
+    def difference(self, iterable, user=False):
         assert not isinstance(iterable, str)
         iterable = list(iterable)
-        return self.child(iterable, NegativeFlagSet) if iterable else self
+        if iterable:
+            return self.child(iterable, NegativeFlagSet, user=user)
+        else:
+            return self
 
-    def bastard(self, iterable):
+    def bastard(self, iterable, user=False):
         iterable = list(iterable)
-        return self.child(iterable, ChildFlagSet) if iterable else self
+        if iterable:
+            return self.child(iterable, ChildFlagSet, user=user)
+        else:
+            return self
 
-    def child(self, iterable, child_class):
-        child = child_class(iterable, parent=self)
+    def child(self, iterable, ChildFlagSet, *, user):
+        child = ChildFlagSet(iterable, parent=self, user=user)
         self.children.append(child)
         return child
 
+#    @property
+#    def level(self):
+#        return 1
+
     def clean_copy(self):
-        return FlagSet(self.as_set())
+        return FlagSet(self.as_set(), user=True)
 
     @property
-    def _unutilized(self):
-        return self.flags - self.utilized
+    def unutilized_flags(self):
+        return self.flags - self.utilized_flags
 
-    def check_unutilized_flags(self, recursive=False, error=True):
-        unutilized = self._unutilized
-        if unutilized:
-            logger.error(
-                'Unutilised flags: {}\n'.format(unutilized) +
-                ''.join(traceback.format_list(self.tb)) )
-            if error:
-                raise UnutilizedError(self._unutilized)
+    def check_unutilized_flags(self, recursive=False):
+        unutilized_flags = self.unutilized_flags
+        if unutilized_flags:
+            raise UnutilizedFlagsError(unutilized_flags,
+                origin_tb=self.origin_tb )
         if recursive:
             for child in self.children:
-                child.check_unutilized_flags(recursive=recursive, error=error)
+                child.check_unutilized_flags(recursive=recursive)
 
     def as_set(self):
         return self.flags
@@ -100,10 +116,14 @@ class FlagSet:
 class ChildFlagSet(FlagSet):
     __slots__ = ['parent']
 
-    def __new__(cls, iterable, parent):
-        instance = super().__new__(cls, iterable)
+    def __new__(cls, iterable, parent, **kwargs):
+        instance = super().__new__(cls, iterable, **kwargs)
         instance.parent = parent
         return instance
+
+#    @property
+#    def level(self):
+#        return 1 + self.parent.level
 
 class PositiveFlagSet(ChildFlagSet):
     def __contains__(self, x):
@@ -117,8 +137,8 @@ class NegativeFlagSet(ChildFlagSet):
         return not super().__contains__(x) and self.parent.__contains__(x)
 
     @property
-    def _unutilized(self):
-        return {'-' + flag for flag in self.flags - self.utilized}
+    def unutilized_flags(self):
+        return {'-' + flag for flag in self.flags - self.utilized_flags}
 
     def as_set(self):
         return self.parent.as_set().difference(self.flags)

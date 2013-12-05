@@ -11,10 +11,11 @@ class RecordNotFoundError(KeyError):
     pass
 
 class Records:
-    dict_type = OrderedDict
+    @staticmethod
+    def empty_dict(): return OrderedDict()
 
     def __init__(self):
-        self.records = self.dict_type()
+        self.records = self.empty_dict()
         self.cache = dict()
 
     def invalidate_cache(self):
@@ -31,7 +32,7 @@ class Records:
             self._merge_item(key, value, overwrite=overwrite, record=record)
 
     def reorder(self, path, sample):
-        self.reorder_omap(self.get(path, original=True), sample)
+        self.reorder_omap(self.getitem(path, original=True), sample)
 
     @staticmethod
     def reorder_omap(omap, sample):
@@ -44,7 +45,8 @@ class Records:
     def _merge_item(self, key, value, *, overwrite, record):
         if isinstance(key, PurePath):
             return self.merge(value,
-                record=self.get(key, record=record, create_path=True),
+                record=self.getitem( key, record=record,
+                    create_path=True, original=True ),
                 overwrite=overwrite, )
         elif isinstance(key, str):
             pass
@@ -59,13 +61,12 @@ class Records:
         else:
             child_record = record.get(key)
             if child_record is None:
-                child_record = record[key] = self.dict_type()
+                child_record = record[key] = self.empty_dict()
                 self.invalidate_cache()
             self.merge(value, overwrite=overwrite, record=child_record)
 
-    def get(self, path, *, record=None,
-        create_path=False, original=False,
-        error_not_found=True
+    def getitem(self, path, *, record=None,
+        create_path=False, original=False
     ):
         use_cache = record is None and not create_path and not original
         if use_cache:
@@ -87,16 +88,14 @@ class Records:
         else:
             try:
                 # Recurse, making use of cache
-                parent_record = self.get(path.parent, record=record,
+                parent_record = self.getitem(path.parent, record=record,
                     create_path=create_path, original=original )
                 record = self._get_child(parent_record, name,
                     create_path=create_path, original=original )
             except RecordNotFoundError as error:
-                if error_not_found:
-                    error.args += (path,)
-                    raise
-                else:
-                    return None
+                if error.args == ():
+                    error.args = (path,)
+                raise
 
         if use_cache:
             self.cache[path] = record
@@ -114,7 +113,7 @@ class Records:
             child_record = record[name]
         except KeyError:
             if create_path:
-                child_record = record[name] = self.dict_type()
+                child_record = record[name] = self.empty_dict()
                 self.invalidate_cache()
             else:
                 raise RecordNotFoundError from None
@@ -129,7 +128,7 @@ class Records:
 
     def items(self, path=PurePath()):
         """Yield (path, record) pairs."""
-        record = self.get(path)
+        record = self.getitem(path)
         yield path, record
         for key in dict_ordered_keys(record):
             if key.startswith('$'):
@@ -141,16 +140,22 @@ class Records:
         for path, record in self.items():
             yield path
 
-    __getitem__ = get
-
     def __contains__(self, path):
         try:
-            self.get(path, create_path=False)
-        except KeyError:
+            self.getitem(path)
+        except RecordNotFoundError:
             return False
         else:
-            self.get(path, create_path=False, original=True)
             return True
+
+    def __getitem__(self, path):
+        return self.getitem(path)
+
+    def get(self, path, default=None):
+        try:
+            return self.getitem(path)
+        except RecordNotFoundError:
+            return default
 
 #    @classmethod
 #    def is_ordered_dict(cls, d):
@@ -173,32 +178,29 @@ class Records:
         Yield (path, record1, record2) triples.
         """
 
-        dict_type = records1.dict_type
-        assert dict_type is records2.dict_type
-
-        record1 = records1.get(path, error_not_found=False)
-        record2 = records2.get(path, error_not_found=False)
+        record1 = records1.get(path, {})
+        record2 = records2.get(path, {})
         if wipe_subrecords:
             record1 = cls._wipe_subrecords(record1)
             record2 = cls._wipe_subrecords(record2)
         yield path, record1, record2
 
         keys = unique(
-            dict_ordered_keys(record1 or {}),
-            dict_ordered_keys(record2 or {}))
+            dict_ordered_keys(record1),
+            dict_ordered_keys(record2) )
         for key in keys:
             if key.startswith('$'):
                 continue
             yield from cls.compare_items(records1, records2, path/key,
                 wipe_subrecords=wipe_subrecords )
 
-    @staticmethod
-    def _wipe_subrecords(record):
+    @classmethod
+    def _wipe_subrecords(cls, record):
         if record is None:
             return record
         record = record.copy()
         for key in record:
             if not key.startswith('$'):
-                record[key] = ['<subrecord>']
+                record[key] = cls.empty_dict()
         return record
 

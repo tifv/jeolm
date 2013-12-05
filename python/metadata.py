@@ -14,7 +14,8 @@ import logging
 logger = logging.getLogger(__name__)
 
 class MetadataManager(Records):
-    dict_type = dict
+    @staticmethod
+    def empty_dict(): return dict()
 
     source_types = {
         ''      : 'directory',
@@ -44,7 +45,6 @@ class MetadataManager(Records):
             metadata = record.get('$metadata')
             if metadata is not None:
                 metarecords.merge({metapath : metadata})
-                metarecords.reorder(metapath, metadata)
         return metarecords
 
     def review(self, inpath, recursive=True):
@@ -57,7 +57,7 @@ class MetadataManager(Records):
         if not exists:
             assert inpath.name # non-empty path
             if recorded:
-                self.get(inpath.parent, original=True).pop(inpath.name)
+                self.getitem(inpath.parent, original=True).pop(inpath.name)
                 self.invalidate_cache()
             else:
                 logger.warning(
@@ -70,9 +70,9 @@ class MetadataManager(Records):
             raise IsADirectoryError(inpath)
         if is_dir and recorded and recursive:
             if __debug__ and inpath == PurePath():
-                assert self.get(inpath, original=True) is self.records
+                assert self.getitem(inpath, original=True) is self.records
                 logger.debug('Metadata invalidated')
-            self.get(inpath, original=True).clear()
+            self.getitem(inpath, original=True).clear()
             self.invalidate_cache()
         if is_dir:
             metadata = {'$source' : True}
