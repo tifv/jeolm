@@ -171,7 +171,7 @@ class MetadataManager(Records):
         return metadata
 
     tex_metadata_pattern = re.compile('(?m)^'
-        r'% \$[\w\$\-\[\],]+:.*'
+        r'% \$[\w\$\-\[\],\{\}]+:.*'
         r'(?:\n% [ -].+)*')
 
     def query_asy_file(self, inpath):
