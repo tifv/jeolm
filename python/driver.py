@@ -178,28 +178,15 @@ class Driver(metaclass=Substitutioner):
         except KeyError:
             pass
 
-        flags = flags.clean_copy()
+        flags = flags.clean_copy(origin='target')
         outrecord = self.produce_protorecord(metapath, flags)
         try:
-            flags.check_unutilized_flags(recursive=__debug__)
+            flags.check_unutilized_flags()
         except UnutilizedFlagsError as error:
-            errorflags = ', '.join( "'{}'".format(flag)
-                for flag in sorted(error.args[0]) )
-            if error.origin_tb is not None:
-                import traceback
-                stack = ''.join(traceback.format_list(error.origin_tb))
-                raise RuntimeError(
-                    "Unutilised flags {flags} detected "
-                    "while processing target {target}, "
-                    "originated from:\n{stack}".format(
-                        target=self.format_target(metapath, flags),
-                        stack=stack, flags=errorflags )
-                ) from error
-            raise UnutilizedFlagsError(
-                "Unutilized flags {flags} in target {target}".format(
-                    target=self.format_target(metapath, flags),
-                    flags=errorflags )
-                ) from error
+            raise ValueError(
+                "Unutilized flags detected while processing target {target}"
+                .format(target=self.format_target(metapath, flags))
+            ) from error
 
         assert outrecord.keys() >= {
             'date', 'inpaths', 'fignames', 'metastyle', 'metabody'
@@ -337,7 +324,8 @@ class Driver(metaclass=Substitutioner):
                     'delegate' : subpath,
                     'add flags' : add_flags, 'remove flags' : remove_flags }
             if not isinstance(item, dict): raise TypeError(item)
-            item, subflags = self.derive_item_flags(item, flags)
+            item, subflags = self.derive_item_flags( item, flags,
+                origin='delegation' )
             if 'condition' in item:
                 item = item.copy()
                 if not self.check_condition(item.pop('condition'), flags):
@@ -454,7 +442,9 @@ class Driver(metaclass=Substitutioner):
             if 'manner' not in item:
                 matter.append(item)
                 continue
-            item, subflags = self.derive_item_flags(item, flags)
+            item, subflags = self.derive_item_flags( item, flags,
+                origin='manner {}'.format(self.format_target(metapath, flags))
+            )
             if item.keys() != {'manner'}:
                 raise ValueError(
                     "Unrecognized item {item} in manner {target}"
@@ -500,8 +490,8 @@ class Driver(metaclass=Substitutioner):
             yield from metabody
             date_set.update(date_subset)
             return # recurse
-        if 'every-header' in flags:
-            flags = flags.difference(('every-header',))
+        flags = flags.difference(('every-header',), underremove=False)
+        assert 'every-header' not in flags, flags.as_set()
 
         if matter is None:
             try:
@@ -534,7 +524,9 @@ class Driver(metaclass=Substitutioner):
             if 'matter' not in item:
                 yield item
                 continue
-            item, subflags = self.derive_item_flags(item, flags)
+            item, subflags = self.derive_item_flags( item, flags,
+                origin='matter {}'.format(self.format_target(metapath, flags))
+            )
             if item.keys() != {'matter'}:
                 raise ValueError(
                     "Unrecognized item {item} in matter {target}"
@@ -634,7 +626,9 @@ class Driver(metaclass=Substitutioner):
             if 'style' not in item:
                 yield item
                 continue
-            item, subflags = self.derive_item_flags(item, flags)
+            item, subflags = self.derive_item_flags( item, flags,
+                origin='style {}'.format(self.format_target(metapath, flags))
+            )
             if not item.keys() == {'style'}: raise ValueError(item)
             submetapath = item['style']
 
@@ -972,7 +966,7 @@ class Driver(metaclass=Substitutioner):
                 raise ValueError("Absolute path in target {}".format(target))
             if antiflags:
                 raise ValueError("Antiflag in target {}".format(target))
-            yield metapath, FlagSet(flags, user=True)
+            yield metapath, FlagSet(flags, origin='target')
 
     @classmethod
     def split_target(cls, target,
@@ -1166,26 +1160,25 @@ class Driver(metaclass=Substitutioner):
             del mapping[key]
 
     @classmethod
-    def derive_item_flags(cls, item, flags):
-        the_flags = flags
-        assert isinstance(the_flags, (frozenset, FlagSet)), type(the_flags)
+    def derive_item_flags(cls, item, flags, *, origin):
+        assert isinstance(flags, FlagSet), type(flags)
         item = item.copy()
         if 'flags' in item:
             if 'add flags' in item or 'remove flags' in item:
                 raise ValueError(item)
-            flags = item.pop('flags')
-            if not isinstance(flags, FlagSet):
-                flags = frozenset(flags)
-                if isinstance(the_flags, FlagSet):
-                    flags = the_flags.bastard(frozenset(flags), user=True)
+            new_flags = item.pop('flags')
+            if isinstance(new_flags, FlagSet):
+                flags = new_flags
+            else:
+                flags = flags.bastard(frozenset(new_flags), origin=origin)
             return item, flags
         add_flags = frozenset(item.pop('add flags', ()))
         remove_flags = frozenset(item.pop('remove flags', ()))
         if add_flags & remove_flags:
             raise ValueError(item)
-        flags = ( the_flags
-            .union(add_flags, user=True)
-            .difference(remove_flags, user=True) )
+        flags = ( flags
+            .union(add_flags, origin=origin)
+            .difference(remove_flags, origin=origin) )
         return item, flags
 
 class TestFilteringDriver(Driver):
