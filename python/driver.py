@@ -1161,6 +1161,7 @@ class Driver(metaclass=Substitutioner):
 
     @classmethod
     def derive_item_flags(cls, item, flags, *, origin):
+#        assert isinstance(flags, (frozenset, FlagSet)), type(flags)
         assert isinstance(flags, FlagSet), type(flags)
         item = item.copy()
         if 'flags' in item:
@@ -1198,19 +1199,17 @@ class TestFilteringDriver(Driver):
             yield from super_matter
 
     def generate_scorebox_matter(self, metapath, flags, metarecord):
-        if 'with-problem-scores' not in flags:
-            return
         problem_scores = metarecord.get('$test$problemscores')
-        mark_limits = metarecord.get('$test$marklimits')
-        if problem_scores is None:
+        if problem_scores is None or 'no-problem-scores' in flags:
             return
+        mark_limits = metarecord.get('$test$marklimits')
         try:
             scores_formula = self.constitute_problem_scores(problem_scores)
         except TypeError as error:
             error.args += (self.format_target(metapath, flags),)
             raise
 
-        if mark_limits is not None and 'with-mark-limits' in flags:
+        if mark_limits is not None and 'no-mark-limits' not in flags:
             scores_formula += r';\quad'
             scores_formula += self.constitute_mark_limits(mark_limits)
         yield {'verbatim' : self.substitute_scorebox(scores=scores_formula)}
