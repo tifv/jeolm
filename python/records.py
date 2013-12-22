@@ -178,16 +178,16 @@ class Records:
         Yield (path, record1, record2) triples.
         """
 
-        record1 = records1.get(path, {})
-        record2 = records2.get(path, {})
+        record1 = records1.get(path)
+        record2 = records2.get(path)
         if wipe_subrecords:
             record1 = cls._wipe_subrecords(record1)
             record2 = cls._wipe_subrecords(record2)
         yield path, record1, record2
 
         keys = unique(
-            dict_ordered_keys(record1),
-            dict_ordered_keys(record2) )
+            dict_ordered_keys(record1 if record1 is not None else {}),
+            dict_ordered_keys(record2 if record2 is not None else {}) )
         for key in keys:
             if key.startswith('$'):
                 continue
