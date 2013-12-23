@@ -1192,70 +1192,82 @@ class TestFilteringDriver(Driver):
             yield {'verbatim' : self.substitute_begingroup()}
             yield {'verbatim' : self.substitute_interrobang_section()}
             yield from super_matter
-            yield from self.generate_scorebox_matter(
+            yield from self.generate_test_postword(
                 metapath, flags, metarecord )
             yield {'verbatim' : self.substitute_endgroup()}
         else:
             yield from super_matter
 
-    def generate_scorebox_matter(self, metapath, flags, metarecord):
+    begingroup_template = r'\begingroup'
+    endgroup_template = r'\endgroup'
+    interrobang_section_template = (
+        r'\let\oldsection\section'
+        r'\def\section#1#2{\oldsection#1{\textinterrobang\ #2}}' )
+
+    def generate_test_postword(self, metapath, flags, metarecord):
         problem_scores = metarecord.get('$test$problemscores')
         if problem_scores is None or 'no-problem-scores' in flags:
             return
+        yield {'verbatim' : self.substitute_begin_postword()}
+        yield {'verbatim' : self.constitute_problem_scores(problem_scores)}
         mark_limits = metarecord.get('$test$marklimits')
-        try:
-            scores_formula = self.constitute_problem_scores(problem_scores)
-        except TypeError as error:
-            error.args += (self.format_target(metapath, flags),)
-            raise
-
         if mark_limits is not None and 'no-mark-limits' not in flags:
-            scores_formula += r';\quad'
-            scores_formula += self.constitute_mark_limits(mark_limits)
-        yield {'verbatim' : self.substitute_scorebox(scores=scores_formula)}
+            yield {'verbatim' : '\\\\'}
+            yield {'verbatim' : self.constitute_mark_limits(mark_limits)}
+        test_duration = metarecord.get('$test$duration')
+        if test_duration is not None and 'no-test-duration' not in flags:
+            yield {'verbatim' : '\\\\'}
+            yield {'verbatim' : self.constitute_test_duration(test_duration)}
+        yield {'verbatim' : self.substitute_end_postword()}
+
+    begin_postword_template = r'\begin{flushright}\scriptsize'
+    end_postword_template = r'\end{flushright}'
 
     @classmethod
     def constitute_problem_scores(cls, problem_scores):
-        flatten_scores = []
-        formula = ''.join(
-            cls._constitute_problem_scores(problem_scores, flatten_scores)
-        )
-        return r'\(' + formula + r' = {}'.format(sum(flatten_scores)) + r'\)'
+        score_items, score_sum = cls.flatten_score_items(problem_scores)
+        return r'\({} = {}\)%'.format(''.join(score_items), score_sum)
 
     @classmethod
-    def _constitute_problem_scores(cls, problem_scores, flatten_scores):
+    def flatten_score_items(cls, problem_scores):
         first = True
+        score_items = []
+        score_sum = 0
         if not isinstance(problem_scores, list):
             raise TypeError(
                 "Problem scores must be a list of integers, found {}"
                 .format(type(problem_scores)) )
-        for i in problem_scores:
+        for item in problem_scores:
             if not first:
-                yield '+'
+                score_items.append('+')
             first = False
-            if isinstance(i, int):
-                yield str(i)
-                flatten_scores.append(i)
+            if isinstance(item, int):
+                score_items.append(str(item))
+                score_sum += item
             else:
-                yield '('
-                yield from cls._constitute_problem_scores(i, flatten_scores)
-                yield ')'
+                score_items.append('(')
+                subitems, subsum = cls.flatten_score_items(item)
+                score_items.extend(subitems)
+                score_sum += subsum
+                score_items.append(')')
+        return score_items, score_sum
 
     @classmethod
     def constitute_mark_limits(cls, mark_limits):
-        return r'\(' + ',\ '.join(
+        return r'\({}\)%'.format(',\ '.join(
             r'{score} \mapsto \mathbf{{{mark}}}'.format(mark=mark, score=score)
             for mark, score in sorted(mark_limits.items())
-        ) + r'\)'
+        ))
 
-    interrobang_section_template = (
-            r'\let\oldsection\section'
-            r'\def\section#1#2{\oldsection#1{\textinterrobang\ #2}}' )
-    begingroup_template = r'\begingroup'
-    endgroup_template = r'\endgroup'
-
-    scorebox_template = (
-        r'\begin{flushright}\footnotesize\fbox{$scores}\end{flushright}' )
+    @classmethod
+    def constitute_test_duration(cls, test_duration):
+        if isinstance(test_duration, (int, float)):
+            return '{}m'.format(test_duration)
+        elif isinstance(test_duration, list):
+            duration, unit = test_duration
+            return '{} {}'.format(duration, unit)
+        else:
+            return str(test_duration)
 
 pgfpages_library = OrderedDict([
     ('$targetable', False),
