@@ -578,18 +578,15 @@ class Driver(metaclass=Substitutioner):
             metarecord, '$manner$style',
             flags=flags, default=['.'] )
         pseudorecord = metarecord.copy()
-        self.clear_flagged_keys(pseudorecord, '$style')
-        pseudorecord['$style'] = manner_style
-        pseudorecord['$pseudo'] = True
         yield from self.generate_matter_metastyle(
-            metapath, flags, pseudorecord )
+            metapath, flags, metarecord, style=manner_style )
 
     @fetch_metarecord
     def generate_matter_metastyle(self, metapath, flags, metarecord,
-        *, seen_targets=frozenset()
+        *, seen_targets=frozenset(), style=None
     ):
         assert isinstance(flags, FlagSet), type(flags)
-        if not metarecord.get('$pseudo', False):
+        if style is None:
             target = (metapath, flags.as_frozenset())
             if target in seen_targets:
                 raise ValueError(
@@ -597,19 +594,20 @@ class Driver(metaclass=Substitutioner):
                     .format(target=self.format_target(metapath, flags)) )
             seen_targets |= {target}
 
-        try:
-            style = self.get_flagged_value(metarecord, '$style', flags=flags)
-        except ValueError as error:
-            raise ValueError(
-                "Error detected while generating {target} style"
-                .format(target=self.format_target(metapath, flags))
-            ) from error
-        if style is not None:
-            pass
-        elif '$sty$source' in metarecord:
-            style = [{'inpath' : metapath.with_suffix('.sty')}]
-        else:
-            style = ['..']
+        if style is None:
+            try:
+                style = self.get_flagged_value(
+                    metarecord, '$style', flags=flags )
+            except ValueError as error:
+                raise ValueError(
+                    "Error detected while generating {target} style"
+                    .format(target=self.format_target(metapath, flags))
+                ) from error
+        if style is None:
+            if '$sty$source' in metarecord:
+                style = [{'inpath' : metapath.with_suffix('.sty')}]
+            else:
+                style = ['..']
 
         for item in style:
             if isinstance(item, str):
@@ -1145,23 +1143,7 @@ class Driver(metaclass=Substitutioner):
         return matched_value
 
     @classmethod
-    def clear_flagged_keys(cls, mapping, key):
-        the_key = key
-        flagged_keys = set()
-        for key in mapping:
-            if not key.startswith(the_key):
-                continue
-            flags = key[len(the_key):]
-            if flags:
-                if not flags.startswith('[') or not flags.endswith(']'):
-                    continue
-            flagged_keys.add(key)
-        for key in flagged_keys:
-            del mapping[key]
-
-    @classmethod
     def derive_item_flags(cls, item, flags, *, origin):
-#        assert isinstance(flags, (frozenset, FlagSet)), type(flags)
         assert isinstance(flags, FlagSet), type(flags)
         item = item.copy()
         if 'flags' in item:
