@@ -1,4 +1,5 @@
 import collections.abc
+from functools import partial
 import traceback
 
 import logging
@@ -12,14 +13,15 @@ class UnutilizedFlagsError(Exception):
             flags=unutilized_flags, origin=origin )
         super().__init__(message)
 
-class FlagSet:
+class FlagContainer(collections.abc.Container):
     __slots__ = [
         'flags', 'utilized_flags', 'children',
         'origin', 'origin_tb' ]
 
     def __new__(cls, iterable=(), *, origin=None):
         instance = super().__new__(cls)
-        instance.flags = frozenset(iterable)
+        instance.flags = flags = frozenset(iterable)
+        assert not any(flag.startswith('-') for flag in flags)
         instance.utilized_flags = set()
         instance.children = []
         instance.origin = origin
@@ -36,23 +38,42 @@ class FlagSet:
     def __hash__(self):
         raise NotImplementedError('you do not need this')
 
-    def __contains__(self, flag, utilize=True):
+    def __eq__(self):
+        raise NotImplementedError('you do not need this')
+
+    def __contains__(self, flag,
+        *, utilize_present=True, utilize_missing=True, utilize=None
+    ):
+        if utilize is not None:
+            utilize_present = utilize_missing = utilize
         if not flag.startswith('-'):
-            if flag in self.flags:
-                if utilize:
-                    self.utilized_flags.add(flag)
-                return True
-            return False
+            return self._contains(flag,
+                utilize_present=utilize_present,
+                utilize_missing=utilize_missing )
         else:
             if flag.startswith('--'):
                 raise ValueError(flag)
-            return not self.__contains__(flag[1:], utilize=utilize)
+            return not self._contains(flag[1:],
+                utilize_present=utilize_missing,
+                utilize_missing=utilize_present )
 
-    def issuperset(self, iterable):
-        return all([flag in self for flag in iterable])
+    def _contains(self, flag,
+        *, utilize_present=True, utilize_missing=True
+    ):
+        assert not flag.startswith('-'), flag
+        if flag in self.flags:
+            if utilize_present:
+                self.utilized_flags.add(flag)
+            return True
+        return False
 
-    def intersection(self, iterable):
-        return {flag for flag in iterable if flag in self}
+    def issuperset(self, iterable, **kwargs):
+        contains = partial(self.__contains__, **kwargs)
+        return all([contains(flag) for flag in iterable])
+
+    def intersection(self, iterable, **kwargs):
+        contains = partial(self.__contains__, **kwargs)
+        return {flag for flag in iterable if contains(flag)}
 
     def union(self, iterable, overadd=True, origin=None):
         assert not isinstance(iterable, str)
@@ -60,7 +81,7 @@ class FlagSet:
             flag for flag in iterable
             if overadd or not self.__contains__(flag, utilize=False) ]
         if iterable:
-            return self.child(iterable, PositiveFlagSet, origin=origin)
+            return self.child(iterable, PositiveFlagContainer, origin=origin)
         else:
             return self
 
@@ -70,27 +91,24 @@ class FlagSet:
             flag for flag in iterable
             if underremove or self.__contains__(flag, utilize=False) ]
         if iterable:
-            child = self.child(iterable, NegativeFlagSet, origin=origin)
+            return self.child(iterable, NegativeFlagContainer, origin=origin)
         else:
-            child = self
-        assert all( not child.__contains__(flag, utilize=False)
-            for flag in iterable ), child.as_set()
-        return child
+            return self
 
     def bastard(self, iterable, origin=None):
         iterable = list(iterable)
         if iterable:
-            return self.child(iterable, ChildFlagSet, origin=origin)
+            return self.child(iterable, ChildFlagContainer, origin=origin)
         else:
             return self
 
-    def child(self, iterable, ChildFlagSet, *, origin=None):
-        child = ChildFlagSet(iterable, parent=self, origin=origin)
+    def child(self, iterable, ChildFlagContainer, *, origin=None):
+        child = ChildFlagContainer(iterable, parent=self, origin=origin)
         self.children.append(child)
         return child
 
     def clean_copy(self, origin=None):
-        return FlagSet(self.as_set(), origin=origin)
+        return FlagContainer(self.as_set(), origin=origin)
 
     @property
     def unutilized_flags(self):
@@ -112,8 +130,8 @@ class FlagSet:
         return the_set
 
     def __repr__(self):
-        return '{instance.__class__.__qualname__}({flags})'.format(
-            instance=self,
+        return '{classname}([{flags}])'.format(
+            classname=self.__class__.__qualname__,
             flags=', '.join( repr(flag) for flag in sorted(self.as_set()) )
         )
 
@@ -123,7 +141,7 @@ class FlagSet:
             return ''
         return '[{}]'.format(','.join(sorted_flags))
 
-class ChildFlagSet(FlagSet):
+class ChildFlagContainer(FlagContainer):
     __slots__ = ['parent']
 
     def __new__(cls, iterable, parent, **kwargs):
@@ -131,23 +149,29 @@ class ChildFlagSet(FlagSet):
         instance.parent = parent
         return instance
 
-class PositiveFlagSet(ChildFlagSet):
-    def __contains__(self, flag, utilize=True):
-        if super().__contains__(flag, utilize=utilize):
+class PositiveFlagContainer(ChildFlagContainer):
+    def _contains(self, flag, **kwargs):
+        if super()._contains(flag, **kwargs):
             return True
-        elif self.parent.__contains__(flag, utilize=utilize):
+        elif self.parent._contains(flag, **kwargs):
             return True
         else:
             return False
 
     def as_set(self):
-        return self.parent.as_set().union(self.flags)
+        return self.parent.as_set().union(super().as_set())
 
-class NegativeFlagSet(ChildFlagSet):
-    def __contains__(self, flag, utilize=True):
-        if super().__contains__(flag, utilize=utilize):
+class NegativeFlagContainer(ChildFlagContainer):
+    def _contains(self, flag,
+        *, utilize_present=True, utilize_missing=True
+    ):
+        if super()._contains(flag,
+            utilize_present=utilize_missing, utilize_missing=utilize_present
+        ):
             return False
-        elif self.parent.__contains__(flag, utilize=utilize):
+        elif self.parent._contains(flag,
+            utilize_present=utilize_present, utilize_missing=utilize_missing
+        ):
             return True
         else:
             return False

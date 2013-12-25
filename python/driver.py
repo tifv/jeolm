@@ -72,7 +72,7 @@ from pathlib import PurePosixPath as PurePath
 
 from .utils import pure_join
 from .records import Records, RecordNotFoundError
-from .flags import FlagSet, UnutilizedFlagsError
+from .flags import FlagContainer, UnutilizedFlagsError
 
 import logging
 logger = logging.getLogger(__name__)
@@ -117,7 +117,7 @@ class Driver(metaclass=Substitutioner):
         self.figrecords = OrderedDict()
         self.outnames_by_target = dict()
 
-    def produce_outrecords(self, targets):
+    def produce_outrecords(self, raw_targets):
         """
         Target flags (some of):
             'no-delegate'
@@ -125,10 +125,12 @@ class Driver(metaclass=Substitutioner):
             'multidate'
                 place date after each file instead of in header
         """
-        targets = self.split_produced_targets(targets)
-        targets = list(chain.from_iterable(
-            self.trace_delegators(metapath, flags)
-            for metapath, flags in targets ))
+        undelegated_targets = [ self.split_raw_target(raw_target)
+            for raw_target in raw_targets ]
+        targets = [ target
+            for metapath, flags in undelegated_targets
+            for target in self.trace_delegators(metapath, flags)
+        ]
 
         # Generate outrecords and store them in self.outrecords
         outnames = [
@@ -171,7 +173,7 @@ class Driver(metaclass=Substitutioner):
 
         Update self.outrecords and self.figrecords.
         """
-        assert isinstance(flags, FlagSet), type(flags)
+        assert isinstance(flags, FlagContainer), type(flags)
         target = (metapath, flags.as_frozenset())
         try:
             return self.outnames_by_target[target]
@@ -283,7 +285,7 @@ class Driver(metaclass=Substitutioner):
         *, seen_targets=frozenset()
     ):
         """Generate (metapath, flags) pairs."""
-        assert isinstance(flags, FlagSet), type(flags)
+        assert isinstance(flags, FlagContainer), type(flags)
         assert not metapath.is_absolute(), metapath
         target = (metapath, flags.as_frozenset())
         if target in seen_targets:
@@ -306,14 +308,14 @@ class Driver(metaclass=Substitutioner):
 
     def find_delegators(self, metapath, flags, metarecord):
         """Yield (metapath, flags) pairs."""
-        delegators = self.get_flagged_value(metarecord, '$delegate',
-            flags=flags )
-        if delegators is None:
+        delegate_key, delegators = self.get_flagged_item(
+            metarecord, '$delegate', flags=flags )
+        if delegate_key is None:
             return
         if not isinstance(delegators, list):
             raise TypeError(
                 "{target} delegators must be a list, not "
-                "'{delegators.__class__}'"
+                "'{delegators.__class__.__qualname__}'"
                 .format(
                     target=self.format_target(metapath, flags),
                     delegators=delegators ) )
@@ -325,14 +327,16 @@ class Driver(metaclass=Substitutioner):
                     'add flags' : add_flags, 'remove flags' : remove_flags }
             if not isinstance(item, dict): raise TypeError(item)
             item, subflags = self.derive_item_flags( item, flags,
-                origin='delegation' )
+                origin='delegate {}'
+                .format(self.format_target(metapath, flags))
+            )
             if 'condition' in item:
                 item = item.copy()
                 if not self.check_condition(item.pop('condition'), flags):
                     continue
             if item.keys() != {'delegate'}: raise ValueError(item)
             submetapath = item['delegate']
-            assert isinstance(subflags, FlagSet), type(subflags)
+            assert isinstance(subflags, FlagContainer), type(subflags)
             yield pure_join(metapath, submetapath), subflags
 
     @fetch_metarecord
@@ -343,9 +347,9 @@ class Driver(metaclass=Substitutioner):
         date_set = set()
 
         protorecord = {}
-        protorecord.update(self.get_flagged_value(
-            metarecord, '$manner$options',
-            flags=flags, default={} ))
+        options_key, options_value = self.get_flagged_item(
+            metarecord, '$manner$options', flags=flags, default={} )
+        protorecord.update(options_value)
         protorecord['metabody'] = list(self.generate_metabody(
             metapath, flags, metarecord, date_set=date_set ))
         protorecord['metastyle'] = list(self.generate_metastyle(
@@ -395,7 +399,7 @@ class Driver(metaclass=Substitutioner):
         """
         Yield metabody items. Update date_set.
         """
-        assert isinstance(flags, FlagSet), type(flags)
+        assert isinstance(flags, FlagContainer), type(flags)
         target = (metapath, flags.as_frozenset())
         if target in seen_targets:
             raise ValueError(
@@ -404,10 +408,11 @@ class Driver(metaclass=Substitutioner):
         seen_targets |= {target}
 
         try:
-            manner = self.get_flagged_value(metarecord, '$manner', flags=flags)
+            manner_key, manner = self.get_flagged_item(
+                metarecord, '$manner', flags=flags )
         except ValueError as error:
             raise ValueError(
-                "Error detected while generating {target} matter"
+                "Error detected while generating {target} manner"
                 .format(target=self.format_target(metapath, flags))
             ) from error
         if manner is None:
@@ -443,7 +448,8 @@ class Driver(metaclass=Substitutioner):
                 matter.append(item)
                 continue
             item, subflags = self.derive_item_flags( item, flags,
-                origin='manner {}'.format(self.format_target(metapath, flags))
+                origin='manner {}'
+                .format(self.format_target(metapath, flags))
             )
             if item.keys() != {'manner'}:
                 raise ValueError(
@@ -465,7 +471,7 @@ class Driver(metaclass=Substitutioner):
 
         Update date_set.
         """
-        assert isinstance(flags, FlagSet), type(flags)
+        assert isinstance(flags, FlagContainer), type(flags)
         if matter is None:
             target = (metapath, flags.as_frozenset())
             if target in seen_targets:
@@ -495,7 +501,7 @@ class Driver(metaclass=Substitutioner):
 
         if matter is None:
             try:
-                matter = self.get_flagged_value(
+                matter_key, matter = self.get_flagged_item(
                     metarecord, '$matter', flags=flags )
             except ValueError as error:
                 raise ValueError(
@@ -525,7 +531,8 @@ class Driver(metaclass=Substitutioner):
                 yield item
                 continue
             item, subflags = self.derive_item_flags( item, flags,
-                origin='matter {}'.format(self.format_target(metapath, flags))
+                origin='matter {}'
+                .format(self.format_target(metapath, flags))
             )
             if item.keys() != {'matter'}:
                 raise ValueError(
@@ -574,7 +581,7 @@ class Driver(metaclass=Substitutioner):
 
     @fetch_metarecord
     def generate_metastyle(self, metapath, flags, metarecord):
-        manner_style = self.get_flagged_value(
+        manner_style_key, manner_style = self.get_flagged_item(
             metarecord, '$manner$style',
             flags=flags, default=['.'] )
         pseudorecord = metarecord.copy()
@@ -585,7 +592,7 @@ class Driver(metaclass=Substitutioner):
     def generate_matter_metastyle(self, metapath, flags, metarecord,
         *, seen_targets=frozenset(), style=None
     ):
-        assert isinstance(flags, FlagSet), type(flags)
+        assert isinstance(flags, FlagContainer), type(flags)
         if style is None:
             target = (metapath, flags.as_frozenset())
             if target in seen_targets:
@@ -596,13 +603,15 @@ class Driver(metaclass=Substitutioner):
 
         if style is None:
             try:
-                style = self.get_flagged_value(
+                style_key, style = self.get_flagged_item(
                     metarecord, '$style', flags=flags )
             except ValueError as error:
                 raise ValueError(
                     "Error detected while generating {target} style"
                     .format(target=self.format_target(metapath, flags))
                 ) from error
+        else:
+            style_key = None
         if style is None:
             if '$sty$source' in metarecord:
                 style = [{'inpath' : metapath.with_suffix('.sty')}]
@@ -625,14 +634,24 @@ class Driver(metaclass=Substitutioner):
                 yield item
                 continue
             item, subflags = self.derive_item_flags( item, flags,
-                origin='style {}'.format(self.format_target(metapath, flags))
+                origin='style {}'
+                .format(self.format_target(metapath, flags))
             )
-            if not item.keys() == {'style'}: raise ValueError(item)
+            if not item.keys() == {'style'}:
+                raise ValueError(item)
             submetapath = item['style']
 
-            yield from self.generate_matter_metastyle(
-                pure_join(metapath, submetapath), subflags,
-                seen_targets=seen_targets )
+            try:
+                yield from self.generate_matter_metastyle(
+                    pure_join(metapath, submetapath), subflags,
+                    seen_targets=seen_targets )
+            except (ValueError, TypeError) as error:
+                raise ValueError(
+                    "Error encountered while processing {target}, "
+                    "using key {key}"
+                    .format( key=style_key,
+                        target=self.format_target(metapath, flags))
+                ) from error
 
     def digest_metabody(self, metabody, *,
         inpaths, aliases, fignames, tex_packages
@@ -955,28 +974,31 @@ class Driver(metaclass=Substitutioner):
         return str(metapath) + flags.as_flags()
 
     @classmethod
-    def split_produced_targets(cls, targets, absolute=False):
-        """Yield (metapath, flags) pairs."""
-        for target in targets:
-            if '.' in target: raise ValueError(target)
-            metapath, flags, antiflags = cls.split_target(target)
-            if metapath.is_absolute():
-                raise ValueError("Absolute path in target {}".format(target))
-            if antiflags:
-                raise ValueError("Antiflag in target {}".format(target))
-            yield metapath, FlagSet(flags, origin='target')
+    def split_raw_target(cls, raw_target, absolute=False):
+        """Yield (metapath, flags) pair."""
+        if '.' in raw_target:
+            raise ValueError(raw_target)
+        metapath, flags, antiflags = cls.split_target(raw_target)
+        if metapath.is_absolute():
+            raise ValueError("Absolute path not expected in target {}"
+                .format(target) )
+        if antiflags:
+            raise ValueError("Antiflags not expected in target {}"
+                .format(target) )
+        return metapath, FlagContainer(flags, origin='raw target')
 
     @classmethod
-    def split_target(cls, target,
+    def split_target(cls, raw_target,
         target_pattern=re.compile(
             r'(?P<path>[^\[\] ]+)'
             r'(?:\[(?P<flags>[^\[\] ]+)\])?$' )
     ):
         """Return (metapath, flags, no_options)."""
-        assert isinstance(target, str), target
-        match = target_pattern.match(target)
+        assert isinstance(raw_target, str), raw_target
+        match = target_pattern.match(raw_target)
         if match is None:
-            raise ValueError("Failed to parse target '{}'".format(target))
+            raise ValueError("Failed to parse raw target '{}'"
+                .format(raw_target) )
         flags_string = match.group('flags')
         if flags_string is not None:
             raw_flags = frozenset(flags_string.split(','))
@@ -1079,7 +1101,7 @@ class Driver(metaclass=Substitutioner):
             error.args += (condition,)
 
     @classmethod
-    def get_flagged_value(cls, mapping, key, *, flags, default=None,
+    def get_flagged_item(cls, mapping, metakey, *, flags, default=None,
         flag_pattern=re.compile(
             r'(?:'
                 r'(?:(?P<braket>\[)|(?P<brace>\{))'
@@ -1087,70 +1109,78 @@ class Driver(metaclass=Substitutioner):
                 r'(?(braket)\])(?(brace)\})'
             r')?$' )
     ):
-        the_key = key
-        assert isinstance(the_key, str), type(the_key)
-        assert the_key.startswith('$')
-        the_flags = flags
-        assert isinstance(the_flags, (frozenset, FlagSet)), type(the_flags)
-        if isinstance(the_flags, FlagSet):
-            the_flags_set = None
-        else:
-            the_flags_set = the_flags
+        assert isinstance(metakey, str), type(metakey)
+        assert metakey.startswith('$')
+        assert isinstance(flags, FlagContainer), type(flags)
+        flags_as_set = None
 
-        matched_flagsets = set()
-        matched_values = {}
+        matched_items = dict()
         for key, value in mapping.items():
-            if not key.startswith(the_key):
+            if not key.startswith(metakey):
                 continue
-            flag_match = flag_pattern.match(key[len(the_key):])
-            if flag_match is None:
+            flagset_match = flag_pattern.match(key[len(metakey):])
+            if flagset_match is None:
                 continue
-            flags = flag_match.group('flags')
-            if flags is None:
-                flags = frozenset()
+            flagset_s = flagset_match.group('flags')
+            if flagset_s is None:
+                flagset = frozenset()
             else:
-                flags = frozenset(flags.split(','))
-                if not the_flags.issuperset(flags):
-                    continue
-                if flag_match.group('braket') is not None:
-                    if the_flags_set is None:
-                        the_flags_set = the_flags.as_set()
-                    if flags != the_flags_set:
+                flagset = frozenset(flagset_s.split(','))
+                if flagset_match.group('braket') is not None:
+                    if flags_as_set is None:
+                        flags_as_set = flags.as_set()
+                    if flagset != flags_as_set:
                         continue
-                    matched_value = value
+                    return key, value
+                if not flags.issuperset(flagset,
+                    utilize_present=False, utilize_missing=True
+                ):
+                    continue
+                assert flagset_match.group('brace') is not None, key
+            overmatched_flagsets = set()
+            flagset_is_overmatched = False
+            for a_flagset in matched_items:
+                if flagset < a_flagset:
+                    flagset_is_overmatched = True
                     break
-                assert flag_match.group('brace') is not None, match.group(0)
-            if any(flags < flagset for flagset in matched_flagsets):
-                # we are overmatched
+                elif flagset > a_flagset:
+                    overmatched_flagsets.add(a_flagset)
+                elif flagset == a_flagset:
+                    raise ValueError("Clashing keys '{}' and '{}'"
+                        .format(key, matched_items[a_flagset][0]) )
+            if flagset_is_overmatched:
                 continue
-            elif any(flags == flagset for flagset in matched_flagsets):
-                raise ValueError('Flag set {!r} duplicated'.format(flags))
-            else:
-                overmatched_flagsets = frozenset(filter(
-                    flags.__gt__, matched_flagsets ))
-                matched_flagsets.difference_update(overmatched_flagsets)
-                matched_flagsets.add(flags)
-                matched_values[flags] = value
-        else:
-            if not matched_flagsets:
-                return default
-            if len(matched_flagsets) > 1:
-                raise ValueError(
-                    'Multiple flag sets matched, ambiguity unresolved',
-                    *matched_flagsets )
-            matched_flagset, = matched_flagsets
-            matched_value = matched_values[matched_flagset]
-        return matched_value
+            for a_flagset in overmatched_flagsets:
+                del matched_items[a_flagset]
+            assert not any( af < flagset or af > flagset or af == flagset
+                for af in matched_items )
+            matched_items[flagset] = (key, value)
+        if not matched_items:
+            return None, default
+        if len(matched_items) > 1:
+            raise ValueError(
+                'Multiple keys matched, ambiguity unresolved: {}'
+                .format(', '.join(
+                    "'{}'".format(key)
+                    for key, value in matched_items.values() ))
+            )
+        (matched_flagset, matched_item), = matched_items.items()
+        if not flags.issuperset(matched_flagset):
+            raise RuntimeError
+        matched_key, matched_value = matched_item
+        assert '-shrink-formulas' not in flags or 'shrink-formulas' not in flags
+        assert '-shrink-formulas' not in matched_key or 'shrink-formulas' not in flags, (matched_key, flags)
+        return matched_item
 
     @classmethod
     def derive_item_flags(cls, item, flags, *, origin):
-        assert isinstance(flags, FlagSet), type(flags)
+        assert isinstance(flags, FlagContainer), type(flags)
         item = item.copy()
         if 'flags' in item:
             if 'add flags' in item or 'remove flags' in item:
                 raise ValueError(item)
             new_flags = item.pop('flags')
-            if isinstance(new_flags, FlagSet):
+            if isinstance(new_flags, FlagContainer):
                 flags = new_flags
             else:
                 flags = flags.bastard(frozenset(new_flags), origin=origin)
