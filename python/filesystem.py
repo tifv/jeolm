@@ -66,6 +66,8 @@ class FSManager:
 
     @classmethod
     def iter_broken_links(cls, root, *, recursive):
+        if not root.exists():
+            return
         for path in root.iterdir():
             if not path.exists():
                 yield path
