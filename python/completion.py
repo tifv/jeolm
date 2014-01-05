@@ -1,6 +1,6 @@
 from collections import OrderedDict as ODict
 
-from pathlib import Path, PurePosixPath as PurePath
+from pathlib import Path, PurePosixPath
 
 import logging
 logger = logging.getLogger(__name__)
@@ -114,16 +114,15 @@ class Completer:
 
     def complete_target(self, uncompleted_arg):
         """Return an iterator over completions."""
-        if '.' in uncompleted_arg or ' ' in uncompleted_arg:
+        if ' ' in uncompleted_arg:
             return;
 
-        uncompleted_path = PurePath(uncompleted_arg)
-        if uncompleted_path.is_absolute():
-            return;
+        uncompleted_path = PurePosixPath(uncompleted_arg)
+        if not uncompleted_path.is_absolute():
+            uncompleted_path = PurePosixPath('/', uncompleted_path)
 
-        if uncompleted_path == PurePath('.'):
-            assert uncompleted_arg == ''
-            uncompleted_parent = PurePath('.')
+        if uncompleted_path.name == '':
+            uncompleted_parent = PurePosixPath('/')
             uncompleted_name = ''
         elif uncompleted_arg.endswith('/'):
             uncompleted_parent = uncompleted_path

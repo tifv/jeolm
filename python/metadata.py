@@ -5,10 +5,10 @@ from collections import OrderedDict
 
 from pathlib import PurePosixPath as PurePath
 
-from .utils import unique, pure_join, dict_ordered_keys, dict_ordered_items
+from .utils import unique, dict_ordered_keys, dict_ordered_items
 
 from . import yaml
-from .records import Records, RecordNotFoundError
+from .records import Records, RecordPath, RecordNotFoundError
 
 import logging
 logger = logging.getLogger(__name__)
@@ -49,30 +49,31 @@ class MetadataManager(Records):
 
     def review(self, inpath, recursive=True):
         path = self.source_dir/inpath
+        metapath = RecordPath(inpath)
         exists = path.exists()
-        recorded = inpath in self
-        is_dir = (inpath.suffix == '')
+        recorded = metapath in self
+        is_dir = (metapath.suffix == '')
         if not is_dir and not inpath.suffix in self.source_types:
             raise ValueError(inpath)
         if not exists:
-            assert inpath.name # non-empty path
+            assert metapath.name # non-empty path
             if recorded:
-                self.getitem(inpath.parent, original=True).pop(inpath.name)
+                self.getitem(metapath.parent, original=True).pop(metapath.name)
                 self.invalidate_cache()
             else:
                 logger.warning(
                     '{} was not recorded and does not exist as file. No-op.'
-                    .format(inpath) )
+                    .format(metapath) )
             return
         if is_dir and not path.is_dir():
             raise NotADirectoryError(inpath)
         if not is_dir and path.is_dir():
             raise IsADirectoryError(inpath)
         if is_dir and recorded and recursive:
-            if __debug__ and inpath == PurePath():
-                assert self.getitem(inpath, original=True) is self.records
+            if __debug__ and metapath == RecordPath('/'):
+                assert self.getitem(metapath, original=True) is self.records
                 logger.debug('Metadata invalidated')
-            self.getitem(inpath, original=True).clear()
+            self.getitem(metapath, original=True).clear()
             self.invalidate_cache()
         if is_dir:
             metadata = {'$source' : True}
@@ -80,7 +81,7 @@ class MetadataManager(Records):
                 self.review_subpaths(inpath)
         else:
             metadata = self.query_file(inpath)
-        self.merge({inpath : {'$metadata' : metadata}}, overwrite=True)
+        self.merge({metapath : {'$metadata' : metadata}}, overwrite=True)
 
     def review_subpaths(self, inpath):
         for subname in os.listdir(str(self.source_dir/inpath)):
@@ -109,7 +110,7 @@ class MetadataManager(Records):
         elif inpath.suffix == '.eps':
             metadata = {'$eps$source' : True}
         else:
-            raise AssertionError(inpath)
+            raise RuntimeError(inpath)
         return metadata
 
     def query_yaml_file(self, inpath):
@@ -140,11 +141,12 @@ class MetadataManager(Records):
         figures = unique(
             match.group('figure')
             for match in self.tex_figure_pattern.finditer(s) )
-        figdir = inpath.with_suffix('')
+        metapath = RecordPath(inpath.with_suffix(''))
         if figures:
             return {'$tex$figures' : OrderedDict(
-                (figure, str(pure_join(figdir, figure)))
-                for figure in figures ) }
+                (figure, str((metapath / figure).as_inpath()))
+                for figure in figures
+            )}
         else:
             return {}
 
@@ -184,11 +186,14 @@ class MetadataManager(Records):
         return metadata or {}
 
     def query_asy_used(self, inpath, s):
-        asydir = inpath.with_suffix('')
-        used = OrderedDict(
-            ( match.group('used_name'),
-                str(pure_join(asydir, match.group('original_name'))) )
-            for match in self.asy_use_pattern.finditer(s) )
+        metapath = RecordPath(inpath.with_suffix(''))
+        used = OrderedDict()
+        for match in self.asy_use_pattern.finditer(s):
+            used_name = match.group('used_name')
+            used_path = str((
+                metapath / match.group('original_name')
+            ).as_inpath())
+            used[used_name] = used_path
         if used:
             return {'$asy$used' : used}
         else:

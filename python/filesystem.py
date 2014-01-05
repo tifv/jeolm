@@ -96,7 +96,7 @@ class FSManager:
         """
         Driver = self.get_local_driver_class()
         if Driver is None:
-            from .driver import Driver
+            from .driver.generic import Driver
         return Driver
 
     def get_local_driver_class(self):

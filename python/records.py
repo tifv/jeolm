@@ -1,14 +1,52 @@
 from collections import OrderedDict
 
-from pathlib import PurePosixPath as PurePath
+import pathlib
 
 from .utils import unique, dict_ordered_keys, dict_ordered_items
 
 import logging
 logger = logging.getLogger(__name__)
 
-class RecordNotFoundError(KeyError):
+class RecordError(ValueError):
     pass
+
+class RecordNotFoundError(RecordError):
+    pass
+
+class _RecordPathFlavour(pathlib._PosixFlavour):
+    def parse_parts(self, parts):
+        drv, root, parsed = super().parse_parts(parts)
+        if root != '/':
+            root = '/'
+            parsed[0:0] = '/',
+        assert parsed[0] == '/', parsed
+        while '..' in parsed:
+            i = parsed.index('..')
+            j = max(i-1, 1)
+            del parsed[j:i+1]
+        assert parsed[0] == '/' and '..' not in parsed, parsed
+        return drv, root, parsed
+
+class RecordPath(pathlib.PurePosixPath):
+    _flavour = _RecordPathFlavour()
+
+#    def _init(self):
+#        self._root = '/'
+#        while '..' in self._parts:
+#            i = self._parts.index('..')
+#            self._parts = self._parts[:i-1] + self._parts[i+1:]
+#        assert '..' not in self._parts, repr(self)
+#        super()._init()
+
+    def as_inpath(self, *, suffix=None):
+        assert self.is_absolute(), repr(self)
+        inpath = pathlib.PurePosixPath(*self.parts[1:])
+        if suffix is not None:
+            inpath = inpath.with_suffix(suffix)
+        return inpath
+
+    def __truediv__(self, other):
+        return RecordPath(self, other)
 
 class Records:
     @staticmethod
@@ -36,21 +74,23 @@ class Records:
 
     @staticmethod
     def reorder_omap(omap, sample):
-        assert isinstance(omap, OrderedDict), type(omap)
+        if not isinstance(omap, OrderedDict):
+            raise RuntimeError(type(omap))
         swap = omap.copy()
         for key in dict_ordered_keys(sample):
             omap[key] = swap.pop(key)
         omap.update(swap)
 
     def _merge_item(self, key, value, *, overwrite, record):
-        if isinstance(key, PurePath):
+        if isinstance(key, RecordPath):
             return self.merge(value,
                 record=self.getitem( key, record=record,
                     create_path=True, original=True ),
                 overwrite=overwrite, )
         elif isinstance(key, str):
             pass
-        else: raise TypeError(key)
+        else:
+            raise TypeError(key)
 
         if key.startswith('$'):
             if key not in record or overwrite:
@@ -68,15 +108,14 @@ class Records:
     def getitem(self, path, *, record=None,
         create_path=False, original=False
     ):
+        if not isinstance(path, RecordPath):
+            raise RuntimeError(type(path))
         use_cache = record is None and not create_path and not original
         if use_cache:
             try:
                 return self.cache[path]
             except KeyError:
                 pass
-
-        if path.is_absolute():
-            raise ValueError(path)
 
         name = path.name
         if name == '':
@@ -126,7 +165,7 @@ class Records:
     def derive_attributes(self, parent_record, child_record, name):
         pass
 
-    def items(self, path=PurePath()):
+    def items(self, path=RecordPath()):
         """Yield (path, record) pairs."""
         record = self.getitem(path)
         yield path, record
@@ -135,7 +174,7 @@ class Records:
                 continue
             yield from self.items(path=path/key)
 
-    def keys(self, path=PurePath()):
+    def keys(self, path=RecordPath()):
         """Yield paths."""
         for path, record in self.items():
             yield path
@@ -157,21 +196,8 @@ class Records:
         except RecordNotFoundError:
             return default
 
-#    @classmethod
-#    def is_ordered_dict(cls, d):
-#        if isinstance(d, (OrderedDict, NaturallyOrderedDict)):
-#            return True
-#        return False
-#
-#    @classmethod
-#    def ordered_items(cls, d):
-#        if cls.is_ordered_dict(d):
-#            return d.items()
-#        else:
-#            return NaturallyOrderedDict(d).items()
-
     @classmethod
-    def compare_items(cls, records1, records2, path=PurePath(),
+    def compare_items(cls, records1, records2, path=RecordPath(),
         *, wipe_subrecords=False
     ):
         """

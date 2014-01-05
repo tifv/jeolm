@@ -9,7 +9,7 @@ import hashlib
 import json
 import subprocess
 
-from pathlib import Path, PurePosixPath as PurePath
+from pathlib import Path, PurePosixPath
 
 from .nodes import *
 
@@ -240,7 +240,7 @@ class Builder:
 #                path=(self.root/outname).with_suffix('.dump.tex') )
 
     def get_source_node(self, inpath):
-        assert isinstance(inpath, PurePath), repr(inpath)
+        assert isinstance(inpath, PurePosixPath), repr(inpath)
         assert not inpath.is_absolute(), inpath
         if inpath in self.source_nodes:
             return self.source_nodes[inpath]
@@ -263,7 +263,7 @@ class Builder:
 #            r'% (?P<source>[-/\w]+\.(?:tex|sty))$' )
 #
 #    def _latex_resolver(self, match):
-#        inpath = PurePath(match.group('source'))
+#        inpath = PurePosixPath(match.group('source'))
 #        source_node = self.get_source_node(inpath)
 #        with source_node.open('r') as f:
 #            replacement = f.read()
@@ -297,7 +297,7 @@ class Builder:
 #            return {sterilize(i) : None for i in obj}
         elif obj is None or isinstance(obj, (str, int, float)):
             return obj
-        elif isinstance(obj, (PurePath, date)):
+        elif isinstance(obj, (PurePosixPath, date)):
             return str(obj)
         else:
             raise TypeError(type(obj))
