@@ -20,8 +20,7 @@ logger = logging.getLogger(__name__)
 
 class Builder:
     build_formats = ('pdf', )
-#    known_formats = ('pdf', 'ps', 'dump')
-    known_formats = ('pdf', 'ps')
+    known_formats = ('pdf', 'ps', 'dump')
 
     def __init__(self, targets, *, fsmanager, force):
         self.fsmanager = fsmanager
@@ -222,22 +221,20 @@ class Builder:
                 source=ps_node,
                 path=(self.root/outname).with_suffix('.ps') )
 
-#        if 'dump' in self.build_formats:
-#            dump_node = self.dump_nodes[outname] = TextNode(
-#                name='doc:{}:source:dump'.format(outname),
-#                path=build_dir/'dump.tex',
-#                textfunc=partial(
-#                    self.resolve_latex_inputs, outrecord['document'] ),
-#                needs=(outnode, build_dir_node) )
-#            dump_node.extend_needs(
-#                self.get_source_node(inpath)
-#                for inpath in outrecord['inpaths'] )
-#            if self.force_recompile:
-#                dump_node.needs_build = lambda: True
-#            self.exposed_nodes['dump'][outname] = LinkNode(
-#                name='doc:{}:exposed:dump'.format(outname),
-#                source=dump_node,
-#                path=(self.root/outname).with_suffix('.dump.tex') )
+        if 'dump' in self.build_formats:
+            dump_node = self.dump_nodes[outname] = TextNode(
+                name='doc:{}:source:dump'.format(outname),
+                path=build_dir/'dump.tex',
+                textfunc=partial(
+                    self.resolve_latex_inputs, outrecord['document'] ),
+                needs=(outnode, build_dir_node) )
+            dump_node.extend_needs(
+                self.get_source_node(inpath)
+                for inpath in outrecord['inpaths'] )
+            self.exposed_nodes['dump'][outname] = LinkNode(
+                name='doc:{}:exposed:dump'.format(outname),
+                source=dump_node,
+                path=(self.root/outname).with_suffix('.dump.tex') )
 
     def get_source_node(self, inpath):
         assert isinstance(inpath, PurePosixPath), repr(inpath)
@@ -249,33 +246,33 @@ class Builder:
                 path=self.fsmanager.source_dir/inpath )
         return node
 
-#    def resolve_latex_inputs(self, document):
-#        """
-#        Create a standalone document (dump).
-#
-#        Substitute all local LaTeX file inputs (including sources and
-#        styles).
-#        """
-#        return self.latex_input_pattern.sub(self._latex_resolver, document)
-#
-#    latex_input_pattern = re.compile(r'(?m)'
-#        r'\\(?:input|usepackage){[^{}]+}'
-#            r'% (?P<source>[-/\w]+\.(?:tex|sty))$' )
-#
-#    def _latex_resolver(self, match):
-#        inpath = PurePosixPath(match.group('source'))
-#        source_node = self.get_source_node(inpath)
-#        with source_node.open('r') as f:
-#            replacement = f.read()
-#        if inpath.suffix == '.sty':
-#            if '@' in replacement:
-#                replacement = '\\makeatletter\n{}\\makeatother'.format(
-#                    replacement )
-#        elif inpath.suffix == '.tex':
-#            pass
-#        else:
-#            raise AssertionError(inpath)
-#        return replacement
+    def resolve_latex_inputs(self, document):
+        """
+        Create a standalone document (dump).
+
+        Substitute all local LaTeX file inputs (including sources and
+        styles).
+        """
+        return self.latex_input_pattern.sub(self._latex_resolver, document)
+
+    latex_input_pattern = re.compile(r'(?m)'
+        r'\\(?:input|usepackage){[^{}]+}'
+            r'% (?P<source>[-/\w]+\.(?:tex|sty))$' )
+
+    def _latex_resolver(self, match):
+        inpath = PurePosixPath(match.group('source'))
+        source_node = self.get_source_node(inpath)
+        with source_node.open('r') as f:
+            replacement = f.read()
+        if inpath.suffix == '.sty':
+            if '@' in replacement:
+                replacement = '\\makeatletter\n{}\\makeatother'.format(
+                    replacement )
+        elif inpath.suffix == '.tex':
+            pass
+        else:
+            raise AssertionError(inpath)
+        return replacement
 
     @classmethod
     def outrecord_hash(cls, outrecord):
@@ -451,6 +448,6 @@ class LaTeXNode(ProductFileNode):
                 '[{}]'.format(current_page(match.start())),
                 match.group(0) )
 
-#class Dumper(Builder):
-#    build_formats = ('dump', )
+class Dumper(Builder):
+    build_formats = ('dump', )
 

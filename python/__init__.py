@@ -33,9 +33,9 @@ def get_parser(prog='jeolm'):
     build_parser.add_argument('-r', '--review',
         help='review included infiles prior to build',
         action='store_true', )
-#    build_parser.add_argument('--dump',
-#        help='instead of building create standalone version of document',
-#        action='store_true', )
+    build_parser.add_argument('--dump',
+        help='instead of building create standalone version of document',
+        action='store_true', )
     build_parser.set_defaults(main_func=main_build)
 
     list_parser = subparsers.add_parser('list',
@@ -98,8 +98,8 @@ def main():
 def main_build(args, *, fsmanager):
 
     from jeolm.builder import Builder
-#    if args.dump:
-#        from jeolm.builder import Dumper as Builder
+    if args.dump:
+        from jeolm.builder import Dumper as Builder
     if not args.targets:
         logger.warn('No-op: no targets for building')
 
