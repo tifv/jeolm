@@ -205,7 +205,11 @@ class FSManager:
 
     @property
     def metadata_mtime(self):
-        return self.metadata_path.stat().st_mtime_ns
+        try:
+            return self.metadata_path.stat().st_mtime_ns
+        except FileNotFoundError as error:
+            raise FileNotFoundError(
+                "No metadata (create it with 'jeolm review')" ) from error
 
     def ensure_build_dir(self):
         if self.build_dir.exists():

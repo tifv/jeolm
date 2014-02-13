@@ -7,10 +7,10 @@ from .utils import unique, dict_ordered_keys, dict_ordered_items
 import logging
 logger = logging.getLogger(__name__)
 
-class RecordError(ValueError):
+class RecordError(Exception):
     pass
 
-class RecordNotFoundError(RecordError):
+class RecordNotFoundError(RecordError, LookupError):
     pass
 
 class _RecordPathFlavour(pathlib._PosixFlavour):
@@ -47,6 +47,12 @@ class RecordPath(pathlib.PurePosixPath):
 
     def __truediv__(self, other):
         return RecordPath(self, other)
+
+    def __format__(self, fmt):
+        if fmt == 'join':
+            assert self.parts[0] == '/', self
+            return '-'.join(self.parts[1:])
+        return super().__format__(fmt)
 
 class Records:
     @staticmethod
@@ -133,7 +139,8 @@ class Records:
                     create_path=create_path, original=original )
             except RecordNotFoundError as error:
                 if error.args == ():
-                    error.args = (path,)
+                    raise RecordNotFoundError(
+                        "Record {} not found".format(path) ) from None
                 raise
 
         if use_cache:

@@ -11,12 +11,12 @@ from pathlib import PurePosixPath
 from .. import records
 from ..records import RecordPath, RecordError, RecordNotFoundError
 from . import target
-from .target import TargetError
+from .target import TargetError, FlagError
 
 import logging
 logger = logging.getLogger(__name__)
 
-class DriverError(ValueError):
+class DriverError(Exception):
     pass
 
 class Substitutioner(type):
@@ -56,6 +56,10 @@ class Decorationer(type):
             for key, value in base_inclass_objects.items():
                 if not getattr(value, 'is_inclass_decorator', False):
                     raise RuntimeError
+                if key in namespace:
+                    # ignore this version of decorator, since it is coming
+                    # from the 'later' base.
+                    continue
                 namespace[key] = value
         return namespace
 
@@ -80,6 +84,7 @@ class Driver(metaclass=DriverMetaclass):
     Driver for course-like projects.
     """
 
+    driver_errors = (DriverError, TargetError, RecordError, FlagError)
 
     ##########
     # Interface functions
@@ -100,30 +105,41 @@ class Driver(metaclass=DriverMetaclass):
             'multidate'
                 place date after each file instead of in header
         """
-        undelegated_targets = [
-            self.parse_target_string(target_s, origin='undelegated target')
-            for target_s in targets_s ]
-        targets = [ target
-            for undelegated_target in undelegated_targets
-            for target in self.trace_delegators(undelegated_target) ]
+        try:
+            undelegated_targets = [
+                self.parse_target_string(target_s, origin='undelegated target')
+                for target_s in targets_s ]
+            targets = [ target
+                for undelegated_target in undelegated_targets
+                for target in self.trace_delegators(undelegated_target) ]
 
-        # Generate outrecords and store them in self.outrecords
-        outnames = [
-            self.form_outrecord(target)
-            for target in targets ]
+            # Generate outrecords and store them in self.outrecords
+            outnames = [
+                self.form_outrecord(target)
+                for target in targets ]
 
-        # Extract requested outrecords
-        outrecords = OrderedDict(
-            (outname, self.outrecords[outname])
-            for outname in outnames )
+            # Extract requested outrecords
+            outrecords = OrderedDict(
+                (outname, self.outrecords[outname])
+                for outname in outnames )
 
-        # Extract requested figrecords
-        figrecords = OrderedDict(
-            (figname, self.figrecords[figname])
-            for outrecord in outrecords.values()
-            for figname in outrecord['fignames'] )
+            # Extract requested figrecords
+            figrecords = OrderedDict(
+                (figname, self.figrecords[figname])
+                for outrecord in outrecords.values()
+                for figname in outrecord['fignames'] )
 
-        return outrecords, figrecords
+            return outrecords, figrecords
+        except self.driver_errors as error:
+            driver_messages = []
+            while isinstance(error, self.driver_errors):
+                message, = error.args
+                driver_messages.append(str(message))
+                error = error.__cause__
+            raise DriverError(
+                'Driver error stack:\n' +
+                '\n'.join(driver_messages)
+            ) from error
 
     def list_targets(self):
         """
@@ -144,7 +160,7 @@ class Driver(metaclass=DriverMetaclass):
 
 
     ##########
-    # Target, in-Driver variant
+    # Target
 
     class Target(target.Target):
         @contextmanager
@@ -153,7 +169,8 @@ class Driver(metaclass=DriverMetaclass):
                 yield
             except (RecordError, TargetError, DriverError) as error:
                 raise DriverError(
-                    "Error encountered while processing {target} {aspect}"
+                    "Error encountered while processing "
+                    "{target:target} {aspect}"
                     .format(target=self, aspect=aspect)
                 ) from error
 
@@ -473,9 +490,8 @@ class Driver(metaclass=DriverMetaclass):
         if any(flag.startswith('-') for flag in negative):
             raise DriverError("Double-negative flag in delegator '{}'"
                 .format(delegator) )
-        subflags = ( target.flags
-            .union(positive, origin=origin)
-            .difference(negative, origin=origin) )
+        subflags = target.flags.delta(
+            union=positive, difference=negative, origin=origin )
         return cls.Target(subpath, subflags)
 
     @classmethod
@@ -526,7 +542,8 @@ class Driver(metaclass=DriverMetaclass):
         ):
             if target.key in seen_targets:
                 raise DriverError(
-                    "Cycle detected from {target}".format(target=target) )
+                    "Cycle detected from {target:target}"
+                    .format(target=target) )
             seen_targets |= {target.key}
             return method(self, target, *args,
                 seen_targets=seen_targets, **kwargs )
@@ -569,7 +586,7 @@ class Driver(metaclass=DriverMetaclass):
             if not isinstance(pre_delegators, list):
                 raise DriverError(type(delegators))
             derive_target = partial( self.derive_target,
-                origin='delegate {target}, key {key}'
+                origin='delegate {target:target}, key {key}'
                 .format(target=target, key=delegate_key) )
             for item in pre_delegators:
                 if isinstance(item, str):
@@ -733,7 +750,7 @@ class Driver(metaclass=DriverMetaclass):
             if not isinstance(pre_matter, list):
                 raise DriverError(type(pre_matter))
             derive_target = partial( self.derive_target,
-                origin='matter {target}, key {key}'
+                origin='matter {target:target}, key {key}'
                 .format(target=target, key=matter_key) )
             for item in pre_matter:
                 if isinstance(item, str):
@@ -823,7 +840,7 @@ class Driver(metaclass=DriverMetaclass):
             if not isinstance(pre_style, list):
                 raise DriverError(type(pre_style))
             derive_target = partial( self.derive_target,
-                origin='style {target}, key {key}'
+                origin='style {target:target}, key {key}'
                 .format(target=target, key=style_key) )
             for item in pre_style:
                 if isinstance(item, str):
@@ -1180,8 +1197,7 @@ class Driver(metaclass=DriverMetaclass):
 
     @staticmethod
     def select_outname(target, date=None):
-        assert target.path.parts[0] == '/', repr(target)
-        outname = '-'.join(target.path.parts[1:]) + str(target.flags)
+        outname = '{target:outname}'.format(target=target)
         if isinstance(date, datetime.date):
             date_prefix = '{0.year:04}-{0.month:02}-{0.day:02}'.format(date)
             outname = date_prefix + '-' + outname

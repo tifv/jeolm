@@ -2,11 +2,11 @@ from functools import partial
 from collections.abc import Container, Sequence, Mapping
 import traceback
 
-class FlagError(ValueError):
+class FlagError(Exception):
     pass
 
 class UnutilizedFlagError(FlagError):
-    def __init__(self, unutilized_flags, origin=None):
+    def __init__(self, unutilized_flags, *, origin=None):
         joined_flags = ', '.join(
             "'{}'".format(flag) for flag in sorted(unutilized_flags) )
         message = "Unutilizd flags {flags}".format(flags=joined_flags)
@@ -17,7 +17,7 @@ class UnutilizedFlagError(FlagError):
 class FlagContainer(Container):
     __slots__ = [
         'flags', 'utilized_flags', 'children',
-        'origin', '_as_set' ]
+        'origin', '_as_frozenset' ]
 
     def __new__(cls, iterable=(), *, origin=None):
         self = super().__new__(cls)
@@ -82,14 +82,20 @@ class FlagContainer(Container):
             raise RuntimeError(self, iterable)
 
     @property
-    def as_set(self):
+    def as_frozenset(self):
         try:
-            return self._as_set
+            return self._as_frozenset
         except AttributeError:
-            as_set = self._as_set = self.reconstruct_as_set()
-            return as_set
+            as_frozenset = self._as_frozenset = self.reconstruct_as_frozenset()
+            return as_frozenset
 
-    def reconstruct_as_set(self):
+    @property
+    def as_set(self):
+        raise NotImplementedError("you probably do not need this")
+        #return set(self.as_frozenset)
+
+    def reconstruct_as_frozenset(self):
+        # Useful for overriding
         return self.flags
 
     def check_condition(self, condition):
@@ -107,6 +113,8 @@ class FlagContainer(Container):
                 if not isinstance(value, list):
                     raise FlagError("'or' conditioin value must be a list")
                 return any(self.check_condition(item) for item in value)
+            else:
+                raise FlagError("Condition, if a dict, must have key 'not' or 'or'")
 
     def select_matching_value(self, flagset_mapping, default=None):
         issuperset = partial( self.issuperset,
@@ -141,75 +149,7 @@ class FlagContainer(Container):
         self.utilize(matched_flagset)
         return matched_value
 
-#    def get_flagged_item(self, mapping, metakey, *, default=None):
-#        assert isinstance(metakey, str), type(metakey)
-#        assert metakey.startswith('$'), metakey
-#
-#        matched_items = dict()
-#        exact_matched_item = None
-#        for key, value in mapping.items():
-#            if not key.startswith(metakey):
-#                continue
-#            flagset_match = self.flag_pattern.match(key[len(metakey):])
-#            if flagset_match is None:
-#                continue
-#            flagset_s = flagset_match.group('flags')
-#            if flagset_s is None:
-#                flagset = frozenset()
-#            else:
-#                flagset = frozenset(flagset_s.split(','))
-#                if flagset_match.group('braket') is not None:
-#                    if flagset == self.as_set:
-#                        exact_matched_item = key, value
-#                    continue
-#                if not self.issuperset(flagset,
-#                    utilize_present=False, utilize_missing=True
-#                ):
-#                    continue
-#                assert flagset_match.group('brace') is not None, key
-#            overmatched_flagsets = set()
-#            flagset_is_overmatched = False
-#            for a_flagset in matched_items:
-#                if flagset < a_flagset:
-#                    flagset_is_overmatched = True
-#                    break
-#                elif flagset > a_flagset:
-#                    overmatched_flagsets.add(a_flagset)
-#                elif flagset == a_flagset:
-#                    raise DriverError("Clashing keys '{}' and '{}'"
-#                        .format(key, matched_items[a_flagset][0]) )
-#            if flagset_is_overmatched:
-#                continue
-#            for a_flagset in overmatched_flagsets:
-#                del matched_items[a_flagset]
-#            assert not any( af < flagset or af > flagset or af == flagset
-#                for af in matched_items )
-#            matched_items[flagset] = (key, value)
-#        if not matched_items and exact_matched_item is None:
-#            return None, default
-#        if len(matched_items) > 1:
-#            raise DriverError(
-#                'Multiple keys matched, ambiguity unresolved: {}'
-#                .format(', '.join(
-#                    "'{}'".format(key)
-#                    for key, value in matched_items.values() ))
-#            )
-#        if exact_matched_item is not None:
-#            self.utilize(self.as_set)
-#            return exact_matched_item
-#        (matched_flagset, matched_item), = matched_items.items()
-#        self.utilize(matched_flagset)
-#        #matched_key, matched_value = matched_item
-#        return matched_item
-#
-#    flag_pattern=re.compile(
-#        r'(?:'
-#            r'(?:(?P<braket>\[)|(?P<brace>\{))'
-#            r'(?P<flags>.+)'
-#            r'(?(braket)\])(?(brace)\})'
-#        r')?$' )
-
-    def union(self, iterable, overadd=True, origin=None):
+    def union(self, iterable, *, overadd=True, origin=None):
         assert not isinstance(iterable, str)
         iterable = [
             flag for flag in iterable
@@ -219,7 +159,7 @@ class FlagContainer(Container):
         else:
             return self
 
-    def difference(self, iterable, underremove=True, origin=None):
+    def difference(self, iterable, *, underremove=True, origin=None):
         assert not isinstance(iterable, str)
         iterable = [
             flag for flag in iterable
@@ -229,7 +169,16 @@ class FlagContainer(Container):
         else:
             return self
 
-    def bastard(self, iterable, origin=None):
+    def delta(self, *, difference, union, origin=None):
+        difference = frozenset(difference)
+        union = frozenset(union)
+        if difference & union:
+            raise FlagError("Adding and removing the same flag at once.")
+        return ( self
+            .difference(difference, origin=origin)
+            .union(union, origin=origin) )
+
+    def bastard(self, iterable, *, origin=None):
         iterable = list(iterable)
         if iterable:
             return self.child(iterable, ChildFlagContainer, origin=origin)
@@ -241,8 +190,8 @@ class FlagContainer(Container):
         self.children.append(child)
         return child
 
-    def clean_copy(self, origin=None):
-        return FlagContainer(self.as_set, origin=origin)
+    def clean_copy(self, *, origin=None):
+        return FlagContainer(self.as_frozenset, origin=origin)
 
     def check_unutilized_flags(self):
         unutilized_flags = self.flags - self.utilized_flags
@@ -251,25 +200,40 @@ class FlagContainer(Container):
         for child in self.children:
             child.check_unutilized_flags()
 
-    def __str__(self):
-        sorted_flags = sorted(self.as_set)
-        if not sorted_flags:
-            return ''
-        return '[{}]'.format(','.join(sorted_flags))
+    def __format__(self, fmt):
+        if fmt == 'flags':
+            sorted_flags = sorted(self.as_frozenset)
+            if not sorted_flags:
+                return ''
+            return '[{}]'.format(','.join(sorted_flags))
+        return super().__format__(fmt)
+
+    @property
+    def _flags_repr(self):
+        return '{{{}}}'.format(', '.join(
+            "'{}'".format(flag) for flag in self.flags
+        ))
 
     def __repr__(self):
-        return ( '{self.__class__.__qualname__}({self.as_set})'
+        return ( '{self.__class__.__qualname__}({self._flags_repr})'
             .format(self=self) )
 
 class ChildFlagContainer(FlagContainer):
     __slots__ = ['parent']
+    constructor_name = 'bastard'
 
     def __new__(cls, iterable, parent, **kwargs):
         instance = super().__new__(cls, iterable, **kwargs)
         instance.parent = parent
         return instance
 
+    def __repr__(self):
+        return ( '{self.parent!r}.{self.constructor_name}({self._flags_repr})'
+            .format(self=self) )
+
 class PositiveFlagContainer(ChildFlagContainer):
+    constructor_name = 'union'
+
     def _contains(self, flag, **kwargs):
         if super()._contains(flag, **kwargs):
             return True
@@ -278,10 +242,12 @@ class PositiveFlagContainer(ChildFlagContainer):
         else:
             return False
 
-    def reconstruct_as_set(self):
-        return self.parent.as_set.union(self.flags)
+    def reconstruct_as_frozenset(self):
+        return self.parent.as_frozenset.union(self.flags)
 
 class NegativeFlagContainer(ChildFlagContainer):
+    constructor_name = 'difference'
+
     def _contains(self, flag,
         *, utilize_present=True, utilize_missing=True
     ):
@@ -300,6 +266,6 @@ class NegativeFlagContainer(ChildFlagContainer):
     def unutilized_flags(self):
         return {'-' + flag for flag in self.flags - self.utilized_flags}
 
-    def reconstruct_as_set(self):
-        return self.parent.as_set.difference(self.flags)
+    def reconstruct_as_frozenset(self):
+        return self.parent.as_frozenset.difference(self.flags)
 

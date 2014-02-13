@@ -87,7 +87,7 @@ class TestPaperDriver(Driver):
                 if not first:
                     score_items.append('+')
                 first = False
-                subitems, subsum = cls.flatten_score_items(item)
+                subitems, subsum = cls.flatten_score_items(item, recursed=True)
                 score_items.extend(subitems)
                 score_sum += subsum
             if recursed:
