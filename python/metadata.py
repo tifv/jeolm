@@ -14,8 +14,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 class MetadataManager(Records):
-    @staticmethod
-    def empty_dict(): return dict()
+    Dict = dict
 
     source_types = {
         ''      : 'directory',

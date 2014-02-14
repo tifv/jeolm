@@ -55,11 +55,10 @@ class RecordPath(pathlib.PurePosixPath):
         return super().__format__(fmt)
 
 class Records:
-    @staticmethod
-    def empty_dict(): return OrderedDict()
+    Dict = OrderedDict
 
     def __init__(self):
-        self.records = self.empty_dict()
+        self.records = self.Dict()
         self.cache = dict()
 
     def invalidate_cache(self):
@@ -107,7 +106,7 @@ class Records:
         else:
             child_record = record.get(key)
             if child_record is None:
-                child_record = record[key] = self.empty_dict()
+                child_record = record[key] = self.Dict()
                 self.invalidate_cache()
             self.merge(value, overwrite=overwrite, record=child_record)
 
@@ -159,7 +158,7 @@ class Records:
             child_record = record[name]
         except KeyError:
             if create_path:
-                child_record = record[name] = self.empty_dict()
+                child_record = record[name] = self.Dict()
                 self.invalidate_cache()
             else:
                 raise RecordNotFoundError from None
@@ -234,6 +233,6 @@ class Records:
         record = record.copy()
         for key in record:
             if not key.startswith('$'):
-                record[key] = cls.empty_dict()
+                record[key] = cls.Dict()
         return record
 
