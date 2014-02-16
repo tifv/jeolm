@@ -1,241 +1,125 @@
-import re
 import datetime
 from functools import wraps, partial
 from collections import OrderedDict
-from contextlib import contextmanager
 import abc
-from string import Template
 
 from pathlib import PurePosixPath
 
-from .. import records
-from ..records import RecordPath, RecordError, RecordNotFoundError
-from . import target
-from .target import TargetError, FlagError
+from ..records import RecordPath, RecordNotFoundError
+from ..target import Target
+from .base import BaseDriver, DriverError
 
 import logging
 logger = logging.getLogger(__name__)
 
-class DriverError(Exception):
-    pass
+class GeneratingDriver(BaseDriver):
 
-class Substitutioner(type):
-    """
-    Metaclass for a driver.
+    def __init__(self):
+        super().__init__()
+        self.outrecords_cache = dict()
+        self.figrecords_cache = dict()
 
-    For any '*_template' attribute create 'substitute_*' attribute, like
-    cls.substitute_* = Template(cls.*_template).substitute
-    """
-    def __new__(metacls, name, bases, namespace, **kwargs):
-        substitute_items = list()
-        for key, value in namespace.items():
-            if key.endswith('_template'):
-                substitute_key = 'substitute_' + key[:-len('_template')]
-                substitute_items.append(
-                    (substitute_key, Template(value).substitute) )
-        namespace.update(substitute_items)
-        return super().__new__(metacls, name, bases, namespace, **kwargs)
-
-class Decorationer(type):
-    """
-    Metaclass for a driver.
-
-    For any object in namespace with 'is_inclass_decorator' attribute set
-    to True, hide this object in a '_inclass_decorators' dictionary in
-    namespace. If a subclass is also driven by this metaclass, than reveal
-    these objects for the definition of subclass.
-    """
-
-    @classmethod
-    def __prepare__(metacls, name, bases, **kwargs):
-        namespace = super().__prepare__(name, bases, **kwargs)
-        for base in bases:
-            base_inclass_objects = getattr(base, '_inclass_decorators', None)
-            if not base_inclass_objects:
-                continue
-            for key, value in base_inclass_objects.items():
-                if not getattr(value, 'is_inclass_decorator', False):
-                    raise RuntimeError
-                if key in namespace:
-                    # ignore this version of decorator, since it is coming
-                    # from the 'later' base.
-                    continue
-                namespace[key] = value
-        return namespace
-
-    def __new__(metacls, name, bases, namespace, **kwargs):
-        if '_inclass_decorators' in namespace:
-            raise RuntimeError
-        inclass_objects = namespace.__class__()
-        for key, value in namespace.items():
-            if not getattr(value, 'is_inclass_decorator', False):
-                continue
-            inclass_objects[key] = value
-        for key in inclass_objects:
-            del namespace[key]
-        namespace['_inclass_decorators'] = inclass_objects
-        return super().__new__(metacls, name, bases, namespace, **kwargs)
-
-class DriverMetaclass(Substitutioner, Decorationer):
-    pass
-
-class Driver(metaclass=DriverMetaclass):
-    """
-    Driver for course-like projects.
-    """
-
-    driver_errors = (DriverError, TargetError, RecordError, FlagError)
+    def clear_cache(self):
+        super().clear_cache()
+        self.outrecords_cache.clear()
+        self.figrecords_cache.clear()
 
     ##########
-    # Interface functions
+    # Interface methods
 
-    def __init__(self, metarecords):
-        self.metarecords = metarecords
-        assert isinstance(metarecords, self.Metarecords)
-
-        self.outrecords = OrderedDict()
-        self.figrecords = OrderedDict()
-        self.outnames_by_target = dict()
-
-    def produce_outrecords(self, targets_s):
+    @folding_driver_errors
+    def produce_outrecord(self, target):
         """
-        Target flags (some of):
-            'no-delegate'
-                ignore delegation mechanics
-            'multidate'
-                place date after each file instead of in header
+        Return outrecord.
+
+        Each outrecord must contain the following fields:
+        'outname'
+            string equal to the corresponding outname
+        'sources'
+            {alias_name : inpath for each inpath}
+            where alias_name is a filename with '.tex' extension,
+            and inpath also has '.tex' extension.
+        'fignames'
+            an iterable of strings; all of them must be contained
+            in figrecords.keys()
+        'document'
+            LaTeX document as a string
         """
         try:
-            undelegated_targets = [
-                self.parse_target_string(target_s, origin='undelegated target')
-                for target_s in targets_s ]
-            targets = [ target
-                for undelegated_target in undelegated_targets
-                for target in self.trace_delegators(undelegated_target) ]
+            return self.outrecords_cache[target]
+        except KeyError:
+            pass
+        outrecord = self.outrecords_cache[target] = \
+            self.generate_outrecord(target)
+        return outrecord
 
-            # Generate outrecords and store them in self.outrecords
-            outnames = [
-                self.form_outrecord(target)
-                for target in targets ]
-
-            # Extract requested outrecords
-            outrecords = OrderedDict(
-                (outname, self.outrecords[outname])
-                for outname in outnames )
-
-            # Extract requested figrecords
-            figrecords = OrderedDict(
-                (figname, self.figrecords[figname])
-                for outrecord in outrecords.values()
-                for figname in outrecord['fignames'] )
-
-            return outrecords, figrecords
-        except self.driver_errors as error:
-            driver_messages = []
-            while isinstance(error, self.driver_errors):
-                message, = error.args
-                driver_messages.append(str(message))
-                error = error.__cause__
-            raise DriverError(
-                'Driver error stack:\n' +
-                '\n'.join(driver_messages)
-            ) from error
-
-    def list_targets(self):
+    @folding_driver_errors
+    def produce_figrecord(self, figpath):
         """
-        List some (usually most of) metapaths sufficient as targets.
-        """
-        yield from self.metarecords.list_targets()
+        Return figrecord.
 
-    def list_inpaths(self, targets_s, *, source_type='tex'):
-        outrecords, figrecords = self.produce_outrecords(targets_s)
-        if 'tex' == source_type:
-            for outrecord in outrecords.values():
-                for inpath in outrecord['inpaths']:
+        Each figrecord must contain the following fields:
+        'figname'
+            string equal to the corresponding figname
+        'source'
+            inpath with '.asy' or '.eps' extension
+        'type'
+            string, either 'asy' or 'eps'
+
+        In case of Asymptote file ('asy' type), figrecord must also
+        contain:
+        'used'
+            {used_name : inpath for each used inpath}
+            where used_name is a filename with '.asy' extension,
+            and inpath has '.asy' extension
+        """
+        try:
+            return self.figrecords_cache[figpath]
+        except KeyError:
+            pass
+        figrecord = self.figrecords_cache[figpath] = \
+            self.generate_figrecord(figpath)
+        return figrecord
+
+    def list_inpaths(self, *targets, inpath_type='tex'):
+        for target in targets:
+            outrecord = self.produce_outrecord(target)
+            if inpath_type == 'tex':
+                for inpath in outrecord['inpaths'].values():
                     if inpath.suffix == '.tex':
                         yield inpath
-        elif 'asy' == source_type:
-            for figrecord in figrecords.values():
-                yield figrecord['source']
-
-
-    ##########
-    # Target
-
-    class Target(target.Target):
-        @contextmanager
-        def processing(self, aspect):
-            try:
-                yield
-            except (RecordError, TargetError, DriverError) as error:
-                raise DriverError(
-                    "Error encountered while processing "
-                    "{target:target} {aspect}"
-                    .format(target=self, aspect=aspect)
-                ) from error
-
-        @contextmanager
-        def processing_key(self, key):
-            if key is None: # no-op
-                yield; return
-            with self.processing(aspect='key {}'.format(key)):
-                yield
-
-    def processing_target(*, aspect, wrap_generator=False):
-        """Decorator factory."""
-        def decorator(method):
-            if not wrap_generator:
-                @wraps(method)
-                def wrapper(self, target, *args, **kwargs):
-                    with target.processing(aspect=aspect):
-                        return method(self, target, *args, **kwargs)
-            else:
-                @wraps(method)
-                def wrapper(self, target, *args, **kwargs):
-                    with target.processing(aspect=aspect):
-                        yield from method(self, target, *args, **kwargs)
-            return wrapper
-        return decorator
-    processing_target.is_inclass_decorator = True
+            elif inpath_type == 'asy':
+                for figpath in outrecord['figpaths'].values():
+                    figrecord = self.produce_figrecord(figpath)
+                    if figrecord['type'] == 'asy':
+                        yield figrecord['source']
 
 
     ##########
     # High-level functions
     # (not dealing with metarecords and LaTeX strings directly)
 
-    @processing_target(aspect='outrecord')
-    def form_outrecord(self, target):
-        """
-        Return outname; outrecord is self.outrecords[outname].
-
-        Update self.outrecords and self.figrecords.
-        """
-        try:
-            return self.outnames_by_target[target.key]
-        except KeyError:
-            pass
-
-        outrecord = self.produce_protorecord(target)
+    @processing_target_aspect(aspect='outrecord')
+    def generate_outrecord(self, target):
+        if target.path == RecordPath():
+            raise DriverError("Direct building of '/' is prohibited." )
+        outrecord = self.generate_protorecord(target)
         target.check_unutilized_flags()
         assert outrecord.keys() >= {
-            'date', 'inpaths', 'fignames', 'metapreamble', 'metabody'
+            'date', 'inpaths', 'figpaths', 'metapreamble', 'metabody'
         }, outrecord.keys()
 
-        outname = self.select_outname(target, date=outrecord['date'])
-        outrecord['outname'] = outname
-        if outname in self.outrecords:
-            raise DriverError("Outname '{}' duplicated.".format(outname))
-        self.outrecords[outname] = outrecord
+        outrecord['outname'] = self.select_outname(
+            target, date=outrecord['date'] )
+        outrecord['buildname'] = self.select_outname(
+            target, date=None )
 
-        self.revert_aliases(outrecord)
-
-        with target.processing('document'):
+        with self.process_target_aspect(target, 'document'):
             outrecord['document'] = self.constitute_document(
                 outrecord,
                 metapreamble=outrecord.pop('metapreamble'),
                 metabody=outrecord.pop('metabody'), )
-        self.outnames_by_target[target.key] = outname
-        return outname
+        return outrecord
 
     def revert_aliases(self, outrecord):
         """
@@ -263,41 +147,14 @@ class Driver(metaclass=DriverMetaclass):
                     for inpath in sorted(clashed_inpaths)
                 )) )
 
-    def produce_figname_map(self, figures):
-        """
-        Return { figalias : figname
-            for figalias, figpath in figures.items() }
-
-        Update self.figrecords.
-        """
-        if not figures:
-            return {}
-        assert isinstance(figures, OrderedDict), type(figures)
-        return OrderedDict(
-            (figalias, self.form_figrecord(figpath))
-            for figalias, figpath in figures.items() )
-
-    def form_figrecord(self, figpath):
-        """
-        Return figname.
-
-        Update self.figrecords.
-        """
+    def generate_figrecord(self, figpath):
         assert isinstance(figpath, RecordPath), type(figpath)
         figtype, inpath = self.find_figure_type(figpath)
         assert isinstance(inpath, PurePosixPath), type(inpath)
         assert not inpath.is_absolute(), inpath
 
-        figname = '-'.join(figpath.parts[1:])
-        if figname in self.figrecords:
-            alt_inpath = self.figrecords[figname]['source']
-            if alt_inpath != inpath:
-                raise DriverError(figname, inpath, alt_inpath)
-            return figname
-
-        figrecord = self.figrecords[figname] = dict()
-        figrecord['figname'] = figname
-        assert '/' not in figname, figname
+        figrecord = dict()
+        figrecord['buildname'] = figpath.__format__('join')
         figrecord['source'] = inpath
         figrecord['type'] = figtype
 
@@ -307,11 +164,11 @@ class Driver(metaclass=DriverMetaclass):
             if len(used) != len(used_items):
                 raise DriverError(inpath, used_items)
 
-        return figname
+        return figrecord
 
 
     ##########
-    # Metabody and metastyle items
+    # Metabody and metapreamble items
 
     class MetabodyItem(metaclass=abc.ABCMeta):
         __slots__ = []
@@ -328,12 +185,19 @@ class Driver(metaclass=DriverMetaclass):
             super().__init__()
 
     class InpathBodyItem(MetabodyItem):
-        __slots__ = ['inpath', 'alias', 'figname_map']
+        __slots__ = ['inpath', 'alias', 'figalias_map']
 
         def __init__(self, inpath):
             self.inpath = PurePosixPath(inpath)
             if self.inpath.is_absolute():
                 raise RuntimeError(inpath)
+            super().__init__()
+
+    class LaTeXPackageBodyItem(MetabodyItem):
+        __slots__ = ['latex_package']
+
+        def __init__(self, latex_package):
+            self.latex_package = str(latex_package)
             super().__init__()
 
     class MetapreambleItem(metaclass=abc.ABCMeta):
@@ -391,12 +255,16 @@ class Driver(metaclass=DriverMetaclass):
             if not item.keys() == {'inpath'}:
                 raise DriverError(item)
             return cls.InpathBodyItem(**item)
+        elif 'latex_package' in item:
+            if not item.keys() == {'latex_package'}:
+                raise DriverError(item)
+            return cls.LaTeXPackageBodyItem(**item)
         else:
             raise DriverError(item)
 
     @classmethod
     def classify_matter_item(cls, item, *, default):
-        if isinstance(item, cls.Target):
+        if isinstance(item, Target):
             return item
         return cls.classify_metabody_item(item, default=default)
 
@@ -429,11 +297,12 @@ class Driver(metaclass=DriverMetaclass):
 
     @classmethod
     def classify_style_item(cls, item, *, default):
-        if isinstance(item, cls.Target):
+        if isinstance(item, Target):
             return item
         return cls.classify_metapreamble_item(item, default=default)
 
-    def classify_items(*, aspect, default):
+    @inclass_decorator
+    def classifying_items(*, aspect, default):
         """Decorator factory."""
         classify_name = 'classify_{}_item'.format(aspect)
         def decorator(method):
@@ -444,168 +313,14 @@ class Driver(metaclass=DriverMetaclass):
                     yield classify_item(item, default=default)
             return wrapper
         return decorator
-    classify_items.is_inclass_decorator = True
-
-    ##########
-    # Advanced target manipulation
-
-    flagged_pattern = re.compile(
-        r'^(?P<key>[^\[\]]+)'
-        r'(?:\['
-            r'(?P<flags>.+)'
-        r'\])?$' )
-
-    @classmethod
-    def parse_target_string(cls, string, *, origin):
-        """Return target."""
-        flagged_match = cls.flagged_pattern.match(string)
-        if flagged_match is None:
-            raise DriverError(
-                "Failed to parse target '{}'.".format(string) )
-        path = RecordPath(flagged_match.group('key'))
-        flags_s = flagged_match.group('flags')
-        if flags_s is not None:
-            flags = frozenset(flags_s.split(','))
-        else:
-            flags = frozenset()
-        if any(flag.startswith('-') for flag in flags):
-            raise DriverError(
-                "Target '{}' contains negative flags.".format(string) )
-        return cls.Target(path, flags, origin=origin)
-
-    @classmethod
-    def derive_target(cls, target, delegator, *, origin):
-        """Return target."""
-        if not isinstance(delegator, str):
-            raise DriverError(type(delegator))
-        flagged_match = cls.flagged_pattern.match(delegator)
-        subpath = target.path / flagged_match.group('key')
-        flags_s = flagged_match.group('flags')
-        if flags_s is not None:
-            flags = frozenset(flags_s.split(','))
-        else:
-            flags = frozenset()
-        positive = {flag for flag in flags if not flag.startswith('-')}
-        negative = {flag[1:] for flag in flags if flag.startswith('-')}
-        if any(flag.startswith('-') for flag in negative):
-            raise DriverError("Double-negative flag in delegator '{}'"
-                .format(delegator) )
-        subflags = target.flags.delta(
-            union=positive, difference=negative, origin=origin )
-        return cls.Target(subpath, subflags)
-
-    @classmethod
-    def select_flagged_item(cls, mapping, stemkey, flags):
-        assert isinstance(stemkey, str), type(stemkey)
-        assert stemkey.startswith('$'), stemkey
-
-        flagset_mapping = dict()
-        for key, value in mapping.items():
-            flagged_match = cls.flagged_pattern.match(key)
-            if flagged_match is None:
-                continue
-            if flagged_match.group('key') != stemkey:
-                continue
-            flagset_s = flagged_match.group('flags')
-            if flagset_s is None:
-                flagset = frozenset()
-            else:
-                flagset = frozenset(flagset_s.split(','))
-            if flagset in flagset_mapping:
-                raise DriverError("Clashing keys '{}' and '{}'"
-                    .format(key, flagset_mapping[flagset][0]) )
-            flagset_mapping[flagset] = (key, value)
-        return flags.select_matching_value( flagset_mapping,
-            default=(None, None) )
 
 
     ##########
     # Record-level functions
 
-    def fetch_metarecord(method):
-        """Decorator."""
-        @wraps(method)
-        def wrapper(self, target, metarecord=None, **kwargs):
-            assert target is not None
-            if metarecord is None:
-                assert '..' not in target.path.parts, repr(target.path)
-                metarecord = self.metarecords[target.path]
-            return method(self, target, metarecord=metarecord, **kwargs)
-        return wrapper
-    fetch_metarecord.is_inclass_decorator = True
-
-    def check_target_recursion(method):
-        """Decorator."""
-        @wraps(method)
-        def wrapper(self, target, *args,
-            seen_targets=frozenset(), **kwargs
-        ):
-            if target.key in seen_targets:
-                raise DriverError(
-                    "Cycle detected from {target:target}"
-                    .format(target=target) )
-            seen_targets |= {target.key}
-            return method(self, target, *args,
-                seen_targets=seen_targets, **kwargs )
-        return wrapper
-    check_target_recursion.is_inclass_decorator = True
-
-    class NoDelegators(Exception):
-        pass
-
-    @fetch_metarecord
-    @check_target_recursion
-    @processing_target(aspect='delegation', wrap_generator=True)
-    def trace_delegators(self, target, metarecord,
-        *, seen_targets
-    ):
-        """Yield targets."""
-        if 'no-delegate' in target.flags:
-            yield ( target
-                .flags_difference({'no-delegate'})
-                .flags_clean_copy(origin='target') )
-            return
-
-        try:
-            for item in self.generate_delegators(target, metarecord):
-                if isinstance(item, self.Target):
-                    yield from self.trace_delegators(item,
-                        seen_targets=seen_targets )
-                else:
-                    raise RuntimeError(item)
-        except self.NoDelegators:
-            yield target.flags_clean_copy(origin='target')
-
-    def generate_delegators(self, target, metarecord):
-        """Yield targets."""
-        delegate_key, pre_delegators = self.select_flagged_item(
-            metarecord, '$delegate', target.flags )
-        if delegate_key is None:
-            raise self.NoDelegators
-        with target.processing_key(delegate_key):
-            if not isinstance(pre_delegators, list):
-                raise DriverError(type(delegators))
-            derive_target = partial( self.derive_target,
-                origin='delegate {target:target}, key {key}'
-                .format(target=target, key=delegate_key) )
-            for item in pre_delegators:
-                if isinstance(item, str):
-                    yield derive_target(target, item)
-                    continue
-                if not isinstance(item, dict):
-                    raise DriverError(type(item))
-                item = item.copy()
-                condition = item.pop('condition', [])
-                if not target.flags.check_condition(condition):
-                    continue
-                if item.keys() == {'delegate'}:
-                    yield derive_target(target, item['delegate'])
-                else:
-                    raise DriverError(item)
-
-    @fetch_metarecord
-    @processing_target(aspect='protorecord')
-    def produce_protorecord(self, target, metarecord):
+    @fetching_metarecord
+    @processing_target_aspect(aspect='protorecord')
+    def generate_protorecord(self, target, metarecord):
         """
         Return protorecord.
         """
@@ -615,7 +330,7 @@ class Driver(metaclass=DriverMetaclass):
         options_key, options = self.select_flagged_item(
             metarecord, '$manner$options', target.flags )
         if options is not None:
-            with target.processing_key(options_key):
+            with self.process_target_key(target, options_key):
                 if not isinstance(options, dict):
                     raise DriverError(type(options))
                 protorecord.update(options)
@@ -625,18 +340,17 @@ class Driver(metaclass=DriverMetaclass):
         metapreamble = list(self.generate_metapreamble(
             target, metarecord ))
 
-        inpaths = protorecord['inpaths'] = list()
-        aliases = protorecord['aliases'] = dict()
-        fignames = protorecord['fignames'] = list()
-        tex_packages = protorecord['tex packages'] = list()
+        inpaths = protorecord['inpaths'] = OrderedDict()
+        figpaths = protorecord['figpaths'] = OrderedDict()
+        latex_packages = protorecord['latex_packages'] = list()
         protorecord.setdefault('date', self.min_date(date_set))
 
         protorecord['metabody'] = list(self.digest_metabody(
-            metabody, inpaths=inpaths, aliases=aliases,
-            fignames=fignames, tex_packages=tex_packages ))
+            metabody, inpaths=inpaths, figpaths=figpaths,
+            latex_packages=latex_packages ))
 
         protorecord['metapreamble'] = list(self.digest_metapreamble(
-            metapreamble, inpaths=inpaths, aliases=aliases ))
+            metapreamble, inpaths=inpaths ))
 
         # dropped keys
         assert 'preamble' not in protorecord, '$manner$style'
@@ -653,9 +367,9 @@ class Driver(metaclass=DriverMetaclass):
 
         return protorecord
 
-    @fetch_metarecord
-    @processing_target(aspect='metabody', wrap_generator=True)
-    @classify_items(aspect='metabody', default=None)
+    @fetching_metarecord
+    @processing_target_aspect(aspect='metabody', wrap_generator=True)
+    @classifying_items(aspect='metabody', default=None)
     def generate_metabody(self, target, metarecord,
         *, date_set
     ):
@@ -664,14 +378,14 @@ class Driver(metaclass=DriverMetaclass):
         """
         manner_key, manner = self.select_flagged_item(
             metarecord, '$manner', target.flags )
-        with target.processing_key(manner_key):
+        with self.process_target_key(target, manner_key):
             yield from self.generate_matter_metabody(target, metarecord,
                 date_set=date_set, pre_matter=manner )
 
-    @fetch_metarecord
-    @check_target_recursion
-    @processing_target(aspect='matter metabody', wrap_generator=True)
-    @classify_items(aspect='metabody', default=None)
+    @fetching_metarecord
+    @checking_target_recursion
+    @processing_target_aspect(aspect='matter metabody', wrap_generator=True)
+    @classifying_items(aspect='metabody', default=None)
     def generate_matter_metabody(self, target, metarecord,
         *, date_set, seen_targets, pre_matter=None
     ):
@@ -681,7 +395,7 @@ class Driver(metaclass=DriverMetaclass):
         Update date_set.
         """
         if pre_matter is not None:
-            seen_targets -= {target.key}
+            seen_targets -= {target}
         if '$date' in metarecord:
             date_set.add(metarecord['$date']); date_set = set()
 
@@ -707,14 +421,14 @@ class Driver(metaclass=DriverMetaclass):
         for item in matter_generator:
             if isinstance(item, self.MetabodyItem):
                 yield item
-            elif isinstance(item, self.Target):
+            elif isinstance(item, Target):
                 yield from self.generate_matter_metabody(
                     item, date_set=date_set, seen_targets=seen_targets )
             else:
                 raise RuntimeError(type(item))
 
-    @processing_target(aspect='header metabody', wrap_generator=True)
-    @classify_items(aspect='metabody', default='verbatim')
+    @processing_target_aspect(aspect='header metabody', wrap_generator=True)
+    @classifying_items(aspect='metabody', default='verbatim')
     def generate_header_metabody(self, target, metarecord, *, date):
         if 'multidate' not in target.flags:
             yield self.constitute_datedef(date=date)
@@ -723,8 +437,8 @@ class Driver(metaclass=DriverMetaclass):
         yield self.substitute_jeolmheader()
         yield self.substitute_resetproblem()
 
-    @processing_target(aspect='matter', wrap_generator=True)
-    @classify_items(aspect='matter', default='verbatim')
+    @processing_target_aspect(aspect='matter', wrap_generator=True)
+    @classifying_items(aspect='matter', default='verbatim')
     def generate_matter(self, target, metarecord,
         pre_matter=None, recursed=False
     ):
@@ -737,7 +451,7 @@ class Driver(metaclass=DriverMetaclass):
         if pre_matter is None:
             if not metarecord.get('$source', False):
                 return
-            if '$tex$source' in metarecord:
+            if '$latex$source' in metarecord:
                 yield from self.generate_tex_matter(
                     target, metarecord )
             for name in metarecord:
@@ -746,15 +460,15 @@ class Driver(metaclass=DriverMetaclass):
                 if metarecord[name].get('$source', False):
                     yield target.path_derive(name)
             return
-        with target.processing_key(matter_key):
+        with self.process_target_key(target, matter_key):
             if not isinstance(pre_matter, list):
                 raise DriverError(type(pre_matter))
-            derive_target = partial( self.derive_target,
+            derive_target = partial( target.derive_from_string,
                 origin='matter {target:target}, key {key}'
                 .format(target=target, key=matter_key) )
             for item in pre_matter:
                 if isinstance(item, str):
-                    yield derive_target(target, item)
+                    yield derive_target(item)
                     continue
                 if isinstance(item, list):
                     if recursed:
@@ -775,55 +489,57 @@ class Driver(metaclass=DriverMetaclass):
                 if not target.flags.check_condition(condition):
                     continue
                 if item.keys() == {'delegate'}:
-                    yield derive_target(target, item['delegate'])
+                    yield derive_target(item['delegate'])
                 else:
                     yield item
 
-    @processing_target(aspect='tex matter', wrap_generator=True)
-    @classify_items(aspect='matter', default='verbatim')
+    @processing_target_aspect(aspect='tex matter', wrap_generator=True)
+    @classifying_items(aspect='matter', default='verbatim')
     def generate_tex_matter(self, target, metarecord):
-        assert metarecord.get('$tex$source', False)
+        assert metarecord.get('$latex$source', False)
         if not target.flags.intersection(('header', 'no-header')):
             yield target.flags_union({'header'})
             return # recurse
+        for tex_package in metarecord.get('$latex$packages', ()):
+            yield {'latex_package' : tex_package}
         yield {'inpath' : target.path.as_inpath(suffix='.tex')}
         if '$date' in metarecord and 'multidate' in target.flags:
             date = metarecord['$date']
             yield self.constitute_datedef(date=date)
             yield self.substitute_datestamp()
 
-    @fetch_metarecord
-    @processing_target(aspect='metapreamble', wrap_generator=True)
-    @classify_items(aspect='metapreamble', default=None)
+    @fetching_metarecord
+    @processing_target_aspect(aspect='metapreamble', wrap_generator=True)
+    @classifying_items(aspect='metapreamble', default=None)
     def generate_metapreamble(self, target, metarecord):
         manner_style_key, manner_style = self.select_flagged_item(
             metarecord, '$manner$style', target.flags )
-        with target.processing_key(manner_style_key):
+        with self.process_target_key(target, manner_style_key):
             yield from self.generate_style_metapreamble(
                 target, metarecord, pre_style=manner_style )
 
-    @fetch_metarecord
-    @check_target_recursion
-    @processing_target(aspect='style', wrap_generator=True)
-    @classify_items(aspect='metapreamble', default=None)
+    @fetching_metarecord
+    @checking_target_recursion
+    @processing_target_aspect(aspect='style', wrap_generator=True)
+    @classifying_items(aspect='metapreamble', default=None)
     def generate_style_metapreamble(self, target, metarecord,
         *, seen_targets, pre_style=None
     ):
         if pre_style is not None:
-            seen_targets -= {target.key}
+            seen_targets -= {target}
 
         style_generator = self.generate_style(
             target, metarecord, pre_style=pre_style )
         for item in style_generator:
             if isinstance(item, self.MetapreambleItem):
                 yield item
-            elif isinstance(item, self.Target):
+            elif isinstance(item, Target):
                 yield from self.generate_style_metapreamble(
                     item, seen_targets=seen_targets )
             else:
                 raise RuntimeError(type(item))
 
-    @classify_items(aspect='style', default=None)
+    @classifying_items(aspect='style', default=None)
     def generate_style(self, target, metarecord, pre_style):
         if pre_style is None:
             style_key, pre_style = self.select_flagged_item(
@@ -836,15 +552,15 @@ class Driver(metaclass=DriverMetaclass):
             else:
                 yield target.path_derive('..')
             return
-        with target.processing_key(style_key):
+        with self.process_target_key(target, style_key):
             if not isinstance(pre_style, list):
                 raise DriverError(type(pre_style))
-            derive_target = partial( self.derive_target,
+            derive_target = partial( target.derive_from_string,
                 origin='style {target:target}, key {key}'
                 .format(target=target, key=style_key) )
             for item in pre_style:
                 if isinstance(item, str):
-                    yield derive_target(target, item)
+                    yield derive_target(item)
                     continue
                 if not isinstance(item, dict):
                     raise DriverError(type(item))
@@ -853,46 +569,51 @@ class Driver(metaclass=DriverMetaclass):
                 if not target.flags.check_condition(condition):
                     continue
                 if item.keys() == {'delegate'}:
-                    yield derive_target(target, item['delegate'])
+                    yield derive_target(item['delegate'])
                 else:
                     yield item
 
     def digest_metabody(self, metabody, *,
-        inpaths, aliases, fignames, tex_packages
+        inpaths, figpaths, latex_packages
     ):
+
         """
         Yield metabody items.
 
         Extend inpaths, aliases, fignames.
         """
+
+        latex_package_set = set()
         for item in metabody:
             assert isinstance(item, self.MetabodyItem), type(item)
-            if isinstance(item, self.InpathBodyItem):
+            if isinstance(item, self.VerbatimBodyItem):
+                pass
+            elif isinstance(item, self.InpathBodyItem):
                 inpath = item.inpath
-                metarecord = self.metarecords[
-                    RecordPath(inpath.with_suffix('')) ]
-                if not metarecord.get('$tex$source', False):
+                metarecord = self.getitem(RecordPath(inpath.with_suffix('')))
+                if not metarecord.get('$latex$source', False):
                     raise RecordNotFoundError(inpath)
-                inpaths.append(inpath)
-                aliases[inpath] = item.alias = self.select_alias(
+                alias  = item.alias = self.select_alias(
                     inpath, suffix='.in.tex' )
-                figures = OrderedDict(
-                    (figalias, RecordPath(figpath))
-                    for figalias, figpath
-                    in metarecord.get('$tex$figures', {}).items() )
-                figname_map = item.figname_map = \
-                    self.produce_figname_map(figures)
-                for figname in figname_map.values():
-                    if figname not in fignames:
-                        fignames.append(figname)
-                for tex_package in metarecord.get('$tex$packages', ()):
-                    if tex_package not in tex_packages:
-                        tex_packages.append(tex_package)
+                self.check_and_set(inpaths, alias, inpath)
+                figalias_map = item.figalias_map = {}
+                recorded_figures = metarecord.get('$latex$figures', {})
+                for figref, figpath_s in recorded_figures.items():
+                    figpath = RecordPath(figpath_s)
+                    figalias = self.select_alias(
+                        figpath.as_inpath(suffix='.eps'), suffix='.eps')
+                    figalias_map[figref] = figalias
+                    self.check_and_set(figpaths, figalias, figpath)
+            elif isinstance(item, self.LaTeXPackageBodyItem):
+                if item.latex_package not in latex_package_set:
+                    latex_packages.append(item.latex_package)
+                    latex_package_set.add(item.latex_package)
+                continue # skip yield
+            else:
+                raise RuntimeError(type(item))
             yield item
 
-    def digest_metapreamble(self, metapreamble, *,
-        inpaths, aliases
-    ):
+    def digest_metapreamble(self, metapreamble, *, inpaths):
         """
         Yield metapreamble items.
 
@@ -900,15 +621,21 @@ class Driver(metaclass=DriverMetaclass):
         """
         for item in metapreamble:
             assert isinstance(item, self.MetapreambleItem), type(item)
-            if isinstance(item, self.InpathPreambleItem):
+            if isinstance(item, self.VerbatimPreambleItem):
+                pass
+            elif isinstance(item, self.PackagePreambleItem):
+                pass
+            elif isinstance(item, self.InpathPreambleItem):
                 inpath = item.inpath
-                metarecord = self.metarecords[
-                    RecordPath(inpath.with_suffix('')) ]
+                metarecord = self.getitem(RecordPath(inpath.with_suffix('')))
                 if not metarecord.get('$sty$source', False):
                     raise RecordNotFoundError(inpath)
-                inpaths.append(inpath)
-                aliases[inpath] = item.alias = self.select_alias(
+                alias = item.alias = self.select_alias(
                     'local', inpath, suffix='.sty' )
+                assert alias.endswith('.sty'), alias
+                self.check_and_set(inpaths, alias, inpath)
+            else:
+                raise RuntimeError(type(item))
             yield item
 
     # List of (figtype, figkey, figsuffix)
@@ -924,7 +651,7 @@ class Driver(metaclass=DriverMetaclass):
         figtype is one of 'asy', 'eps'.
         """
         try:
-            metarecord = self.metarecords[figpath]
+            metarecord = self.getitem(figpath)
         except RecordNotFoundError as error:
             raise DriverError('Figure not found') from error
         for figtype, figkey, figsuffix in self.figtypes:
@@ -937,7 +664,7 @@ class Driver(metaclass=DriverMetaclass):
         if figpath in seen_paths:
             raise DriverError(figpath)
         seen_paths |= {figpath}
-        metarecord = self.metarecords[figpath]
+        metarecord = self.getitem(figpath)
         for used_name, used_path in metarecord.get('$asy$used', {}).items():
             inpath = PurePosixPath(used_path)
             yield used_name, inpath
@@ -947,79 +674,37 @@ class Driver(metaclass=DriverMetaclass):
 
 
     ##########
-    # Record accessor
+    # Record extension
 
-    class Metarecords(records.Records):
+    @classmethod
+    def load_library(cls, library_name):
+        if library_name == 'pgfpages':
+            logger.debug('pgfpages metadata library loaded')
+            return cls.pgfpages_library
+        else:
+            super().load_library(library_name)
 
-        def list_targets(self, path=None):
-            if path is None:
-                path = RecordPath()
-                root = True
-            else:
-                root = False
-            record = self.getitem(path)
-            if not record.get('$targetable', True):
-                return
-            if not root:
-                yield str(path)
-            for key in record:
-                if key.startswith('$'):
-                    continue
-                yield from self.list_targets(path=path/key)
-
-        def derive_attributes(self, parent_record, child_record, name):
-            parent_path = parent_record.get('$path')
-            if parent_path is None:
-                path = RecordPath()
-            else:
-                path = parent_path/name
-            child_record['$path'] = path
-            super().derive_attributes(parent_record, child_record, name)
-
-        def _get_child(self, record, name, *, original, **kwargs):
-            child_record = super()._get_child(
-                record, name, original=original, **kwargs )
-            if original:
-                return child_record
-            if '$import' in child_record:
-                for name in child_record.pop('$import'):
-                    child_record.update(self.load_library(name))
-            if '$include' in child_record:
-                path = child_record['$path']
-                for name in child_record.pop('$include'):
-                    included = self.getitem(path/name, original=True)
-                    child_record.update(included)
-            return child_record
-
-        @classmethod
-        def load_library(cls, library_name):
-            if library_name == 'pgfpages':
-                logger.debug('pgfpages metadata library loaded')
-                return cls.pgfpages_library
-            else:
-                raise DriverError("Unknown library '{}'".format(library_name))
-
-        pgfpages_library = OrderedDict([
-            ('$targetable', False),
-            ('$style', [
-                {'package' : 'pgfpages'},
-                {'delegate' : 'uselayout'},
-            ]),
-            ('uselayout', OrderedDict([
-                ('$style', [{'verbatim' :
-                    '\\pgfpagesuselayout{resize to}[a4paper]'
-                }]),
-                ('$style[2on1]', [{'verbatim' :
-                    '\\pgfpagesuselayout{2 on 1}[a4paper,landscape]'
-                }]),
-                ('$style[2on1-portrait]', [{'verbatim' :
-                    '\\pgfpagesuselayout{2 on 1}[a4paper]'
-                }]),
-                ('$style[4on1]', [{'verbatim' :
-                    '\\pgfpagesuselayout{4 on 1}[a4paper,landscape]'
-                }]),
-            ]))
-        ])
+    pgfpages_library = OrderedDict([
+        ('$targetable', False),
+        ('$style', [
+            {'package' : 'pgfpages'},
+            {'delegate' : 'uselayout'},
+        ]),
+        ('uselayout', OrderedDict([
+            ('$style', [{'verbatim' :
+                '\\pgfpagesuselayout{resize to}[a4paper]'
+            }]),
+            ('$style[2on1]', [{'verbatim' :
+                '\\pgfpagesuselayout{2 on 1}[a4paper,landscape]'
+            }]),
+            ('$style[2on1-portrait]', [{'verbatim' :
+                '\\pgfpagesuselayout{2 on 1}[a4paper]'
+            }]),
+            ('$style[4on1]', [{'verbatim' :
+                '\\pgfpagesuselayout{4 on 1}[a4paper,landscape]'
+            }]),
+        ]))
+    ])
 
 
     ##########
@@ -1079,7 +764,7 @@ class Driver(metaclass=DriverMetaclass):
         preamble_items = []
         for item in metapreamble:
             preamble_items.append(cls.constitute_preamble_item(item))
-        for tex_package in outrecord['tex packages']:
+        for tex_package in outrecord['latex_packages']:
             preamble_items.append(cls.constitute_preamble_item(
                 cls.PackagePreambleItem(tex_package) ))
         if 'scale font' in outrecord:
@@ -1102,7 +787,7 @@ class Driver(metaclass=DriverMetaclass):
                 options=cls.constitute_options(item.options) )
         elif isinstance(item, cls.InpathPreambleItem):
             alias = item.alias
-            assert alias.endswith('.sty')
+            assert alias.endswith('.sty'), alias
             return cls.substitute_uselocalpackage(
                 package=alias[:-len('.sty')], inpath=item.inpath )
         else:
@@ -1134,28 +819,28 @@ class Driver(metaclass=DriverMetaclass):
         elif isinstance(item, cls.InpathBodyItem):
             return cls.constitute_body_input(
                 inpath=item.inpath, alias=item.alias,
-                figname_map=item.figname_map )
+                figalias_map=item.figalias_map )
         else:
             raise RuntimeError(type(item))
 
     @classmethod
     def constitute_body_input(cls, inpath,
-        *, alias, figname_map
+        *, alias, figalias_map
     ):
         body = cls.substitute_input(filename=alias, inpath=inpath )
-        if figname_map:
-            body = cls.constitute_figname_map(figname_map) + '\n' + body
+        if figalias_map:
+            body = cls.constitute_figalias_map(figalias_map) + '\n' + body
         return body
 
     input_template = r'\input{$filename}% $inpath'
 
     @classmethod
-    def constitute_figname_map(cls, figname_map):
+    def constitute_figalias_map(cls, fignalias_map):
         return '\n'.join(
-            cls.substitute_jeolmfiguremap(alias=figalias, name=figname)
-            for figalias, figname in figname_map.items() )
+            cls.substitute_jeolmfiguremap(ref=figref, alias=figalias)
+            for figref, figalias in figalias_map.items() )
 
-    jeolmfiguremap_template = r'\jeolmfiguremap{$alias}{$name}'
+    jeolmfiguremap_template = r'\jeolmfiguremap{$ref}{$alias}'
 
     @classmethod
     def constitute_datedef(cls, date):
@@ -1224,4 +909,14 @@ class Driver(metaclass=DriverMetaclass):
             return date
         else:
             return None
+
+    @staticmethod
+    def check_and_set(mapping, key, value):
+        other = mapping.get(key)
+        if other is None:
+            mapping[key] = value
+        elif other == value:
+            pass
+        else:
+            raise DriverError("{} clashed with {}".format(value, other))
 

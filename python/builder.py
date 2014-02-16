@@ -1,4 +1,4 @@
-from collections import OrderedDict as ODict
+from collections import OrderedDict
 from itertools import chain
 from functools import partial
 from datetime import date
@@ -12,8 +12,7 @@ import subprocess
 from pathlib import Path, PurePosixPath
 
 from .nodes import *
-
-from . import filesystem, driver
+from .target import Target
 
 import logging
 logger = logging.getLogger(__name__)
@@ -22,28 +21,43 @@ class Builder:
     build_formats = ('pdf', )
     known_formats = ('pdf', 'ps', 'dump')
 
-    def __init__(self, targets, *, fsmanager, force):
+    def __init__(self, targets, *, fsmanager, force, delegate):
         self.fsmanager = fsmanager
         self.root = self.fsmanager.root
         assert force in {'latex', 'generate', None}
         self.force = force
 
-        self.driver = self.fsmanager.get_driver()
+        self.driver = self.fsmanager.load_driver()
         self.outrecords_cache = self.fsmanager.load_outrecords_cache()
         self.metadata_mtime = self.fsmanager.metadata_mtime
 
-        self.outrecords, self.figrecords = \
-            self.driver.produce_outrecords(targets)
+        if delegate:
+            targets = [
+                delegated_target.flags_clean_copy(origin='target')
+                for delegated_target in
+                    self.driver.list_delegators(*targets, recursively=True)
+            ]
+        self.outrecords = outrecords = OrderedDict(
+            (target, self.driver.produce_outrecord(target))
+            for target in targets )
+        figpaths = [ figpath
+            for outrecord in outrecords.values()
+            for figpath in outrecord['figpaths'].values() ]
+        self.figrecords = figrecords = OrderedDict(
+            (figpath, self.driver.produce_figrecord(figpath))
+            for figpath in figpaths )
+#        self.outrecords, self.figrecords = \
+#            self.driver.produce_outrecords(targets)
         self.cache_updated = False
-        self.outnodes = ODict(
-            (outname, self.create_outnode(outname, outrecord))
-            for outname, outrecord, in self.outrecords.items() )
+        self.outnodes = OrderedDict(
+            (target, self.create_outnode(target, outrecord))
+            for target, outrecord in outrecords.items() )
         if self.cache_updated:
             self.dump_outrecords_cache()
 
-        self.source_nodes = ODict()
+        self.source_nodes = OrderedDict()
         assert set(self.known_formats) >= set(self.build_formats)
-        self.exposed_nodes = {fmt : ODict() for fmt in self.build_formats}
+        self.exposed_nodes = {fmt : OrderedDict() for fmt in self.build_formats}
 
         self.prebuild_figures(self.fsmanager.build_dir/'figures')
         self.prebuild_documents(self.fsmanager.build_dir/'documents')
@@ -61,67 +75,65 @@ class Builder:
     def dump_outrecords_cache(self):
         self.fsmanager.dump_outrecords_cache(self.outrecords_cache)
 
-    def create_outnode(self, outname, outrecord):
-        outnode = DatedNode(name='doc:{}:record'.format(outname))
+    def create_outnode(self, target, outrecord):
+        target_s = target.__format__('target')
+        outnode = DatedNode(name='doc:{:target}:record'.format(target))
         outnode.record = outrecord
         cache = self.outrecords_cache
         outrecord_hash = self.outrecord_hash(outrecord)
 
-        if outname not in cache:
+        if target_s not in cache:
             logger.debug("Metanode {} was not found in cache"
-                .format(outname) )
+                .format(target_s) )
             modified = True
-        elif cache[outname]['hash'] != outrecord_hash:
+        elif cache[target_s]['hash'] != outrecord_hash:
             logger.debug("Metanode {} was found obsolete in cache"
-                .format(outname) )
+                .format(target_s) )
             modified = True
         else:
             logger.debug("Metanode {} was found in cache"
-                .format(outname) )
+                .format(target_s) )
             modified = False
 
         if modified:
-            cache[outname] = {
+            cache[target_s] = {
                 'hash' : outrecord_hash, 'mtime' : self.metadata_mtime }
             outnode.mtime = self.metadata_mtime
             outnode.modified = True
             self.cache_updated = True
         else:
-            outnode.mtime = cache[outname]['mtime']
+            outnode.mtime = cache[target_s]['mtime']
         return outnode
 
     def prebuild_figures(self, build_dir):
-        self.eps_nodes = ODict()
-        for figname, figrecord in self.figrecords.items():
-            self.prebuild_figure(figname, figrecord, build_dir/figname)
+        self.eps_nodes = OrderedDict()
+        for figpath, figrecord in self.figrecords.items():
+            figtype = figrecord['type']
+            if figtype == 'asy':
+                prebuild_figure = self.prebuild_asy_figure
+            elif figtype == 'eps':
+                prebuild_figure = self.prebuild_eps_figure
+            else:
+                raise RuntimeError(figtype, figpath)
+            prebuild_figure( figpath, figrecord,
+                build_dir/figrecord['buildname'] )
 
-    def prebuild_figure(self, figname, figrecord, build_dir):
-        figtype = figrecord['type']
-        if figtype == 'asy':
-            self.prebuild_asy_figure(
-                figname, figrecord, build_dir=build_dir )
-        elif figtype == 'eps':
-            self.prebuild_eps_figure(
-                figname, figrecord, build_dir=build_dir )
-        else:
-            raise AssertionError(figtype, figname)
-
-    def prebuild_asy_figure(self, figname, figrecord, build_dir):
+    def prebuild_asy_figure(self, figpath, figrecord, build_dir):
         build_dir_node = DirectoryNode(
-            name='fig:{}:dir'.format(figname),
+            name='fig:{}:dir'.format(figpath),
             path=build_dir, parents=True, )
         source_node = LinkNode(
-            name='fig:{}:source:main'.format(figname),
+            name='fig:{}:source:main'.format(figpath),
             source=self.get_source_node(figrecord['source']),
             path=build_dir/'main.asy',
             needs=(build_dir_node,) )
         eps_node = self.eps_nodes[figname] = FileNode(
-            name='fig:{}:eps'.format(figname),
+            name='fig:{}:eps'.format(figpath),
             path=build_dir/'main.eps',
             needs=(source_node, build_dir_node) )
         eps_node.extend_needs(
             LinkNode(
-                name='fig:{}:source:{}'.format(figname, used_name),
+                name='fig:{}:source:{}'.format(figpath, used_name),
                 source=self.get_source_node(original_path),
                 path=build_dir/used_name,
                 needs=(build_dir_node,) )
@@ -134,33 +146,35 @@ class Builder:
         self.eps_nodes[figname] = self.get_source_node(figrecord['source'])
 
     def prebuild_documents(self, build_dir):
-        self.autosource_nodes = ODict()
-        self.dvi_nodes = ODict()
-        self.ps_nodes = ODict()
-        self.pdf_nodes = ODict()
-        self.dump_nodes = ODict()
-        for outname, outrecord in self.outrecords.items():
+        self.autosource_nodes = OrderedDict()
+        self.dvi_nodes = OrderedDict()
+        self.ps_nodes = OrderedDict()
+        self.pdf_nodes = OrderedDict()
+        self.dump_nodes = OrderedDict()
+        for target, outrecord in self.outrecords.items():
             self.prebuild_document(
-                outname, outrecord, build_dir/outname )
+                target, outrecord, build_dir/outrecord['buildname'] )
 
-    def prebuild_document(self, outname, outrecord, build_dir):
+    def prebuild_document(self, target, outrecord, build_dir):
         """
         Return nothing. Update self.*_nodes.
 
         Update self.autosource_nodes, self.pdf_nodes, self.ps_nodes.
         """
         build_dir_node = DirectoryNode(
-            name='doc:{}:dir'.format(outname),
+            name='doc:{:target}:dir'.format(target),
             path=build_dir, parents=True, )
-        outnode = self.outnodes[outname]
+        outnode = self.outnodes[target]
+        buildname = outrecord['buildname']
+        outname = outrecord['outname']
 
         def local_name(node):
             return str(node.path.relative_to(build_dir))
 
-        latex_log_name = outname + '.log'
+        latex_log_name = buildname + '.log'
 
-        autosource_node = self.autosource_nodes[outname] = TextNode(
-            name='doc:{}:autosource'.format(outname),
+        autosource_node = self.autosource_nodes[target] = TextNode(
+            name='doc:{:target}:autosource'.format(target),
             path=build_dir/'main.tex',
             text=outrecord['document'],
             needs=(outnode, build_dir_node) )
@@ -169,24 +183,25 @@ class Builder:
 
         linked_sources = [
             LinkNode(
-                name='doc:{}:source:{}'.format(outname, alias_name),
+                name='doc:{:target}:source:{}'.format(target, alias),
                 source=self.get_source_node(inpath),
-                path=build_dir/alias_name,
+                path=build_dir/alias,
                 needs=(build_dir_node,) )
-            for alias_name, inpath in outrecord['sources'].items() ]
+            for alias, inpath in outrecord['inpaths'].items() ]
         linked_figures = [
             LinkNode(
-                name='doc:{}:fig:{}'.format(outname, figname),
-                source=self.eps_nodes[figname],
-                path=(build_dir/figname).with_suffix('.eps'),
+                name='doc:{:target}:fig:{}'.format(target, figalias),
+                source=self.eps_nodes[figpath],
+                path=build_dir/figalias,
                 needs=(build_dir_node,) )
-            for figname in outrecord['fignames'] ]
-        assert len(set(node.name for node in linked_figures)) == len(linked_figures)
+            for figalias, figpath in outrecord['figpaths'] ]
+        assert len(set(node.name for node in linked_figures)) == \
+            len(linked_figures)
 
-        dvi_node = self.dvi_nodes[outname] = LaTeXNode(
-            name='doc:{}:dvi'.format(outname),
+        dvi_node = self.dvi_nodes[target] = LaTeXNode(
+            name='doc:{:target}:dvi'.format(target),
             source=autosource_node,
-            path=(build_dir/outname).with_suffix('.dvi'),
+            path=(build_dir/buildname).with_suffix('.dvi'),
             cwd=build_dir, )
         dvi_node.extend_needs(linked_sources)
         dvi_node.extend_needs(linked_figures)
@@ -194,47 +209,47 @@ class Builder:
             dvi_node.force()
 
         if 'pdf' in self.build_formats:
-            pdf_node = self.pdf_nodes[outname] = FileNode(
-                name='doc:{}:pdf'.format(outname),
-                path=(build_dir/outname).with_suffix('.pdf'),
+            pdf_node = self.pdf_nodes[target] = FileNode(
+                name='doc:{:target}:pdf'.format(target),
+                path=(build_dir/buildname).with_suffix('.pdf'),
                 needs=(dvi_node,) )
             pdf_node.extend_needs(linked_figures)
             pdf_node.add_subprocess_rule(
                 ('dvipdf', local_name(dvi_node), local_name(pdf_node)),
                 cwd=build_dir )
-            self.exposed_nodes['pdf'][outname] = LinkNode(
-                name='doc:{}:exposed:pdf'.format(outname),
+            self.exposed_nodes['pdf'][target] = LinkNode(
+                name='doc:{:target}:exposed:pdf'.format(target),
                 source=pdf_node,
                 path=(self.root/outname).with_suffix('.pdf') )
 
         if 'ps' in self.build_formats:
-            ps_node = self.ps_nodes[outname] = FileNode(
-                name='doc:{}:ps'.format(outname),
-                path=(build_dir/outname).with_suffix('.ps'),
+            ps_node = self.ps_nodes[target] = FileNode(
+                name='doc:{:target}:ps'.format(target),
+                path=(build_dir/buildname).with_suffix('.ps'),
                 needs=(dvi_node,) )
             ps_node.extend_needs(linked_figures)
             ps_node.add_subprocess_rule(
                 ('dvips', local_name(dvi_node), '-o', local_name(ps_node)),
                 cwd=build_dir )
-            self.exposed_nodes['ps'][outname] = LinkNode(
-                name='doc:{}:exposed:ps'.format(outname),
+            self.exposed_nodes['ps'][target] = LinkNode(
+                name='doc:{:target}:exposed:ps'.format(target),
                 source=ps_node,
                 path=(self.root/outname).with_suffix('.ps') )
 
         if 'dump' in self.build_formats:
-            dump_node = self.dump_nodes[outname] = TextNode(
-                name='doc:{}:source:dump'.format(outname),
+            dump_node = self.dump_nodes[target] = TextNode(
+                name='doc:{:target}:source:dump'.format(target),
                 path=build_dir/'dump.tex',
                 textfunc=partial(
                     self.resolve_latex_inputs, outrecord['document'] ),
                 needs=(outnode, build_dir_node) )
             dump_node.extend_needs(
                 self.get_source_node(inpath)
-                for inpath in outrecord['inpaths'] )
-            self.exposed_nodes['dump'][outname] = LinkNode(
-                name='doc:{}:exposed:dump'.format(outname),
+                for inpath in outrecord['inpaths'].values() )
+            self.exposed_nodes['dump'][target] = LinkNode(
+                name='doc:{:target}:exposed:dump'.format(target),
                 source=dump_node,
-                path=(self.root/outname).with_suffix('.dump.tex') )
+                path=(self.root/outname).with_suffix('.tex') )
 
     def get_source_node(self, inpath):
         assert isinstance(inpath, PurePosixPath), repr(inpath)
@@ -284,8 +299,9 @@ class Builder:
     def sterilize(cls, obj):
         """Sterilize object for JSON dumping."""
         sterilize = cls.sterilize
-        if isinstance(obj, ODict):
-            return ODict((sterilize(k), sterilize(v)) for k, v in obj.items())
+        if isinstance(obj, OrderedDict):
+            return OrderedDict(
+                (sterilize(k), sterilize(v)) for k, v in obj.items() )
         elif isinstance(obj, dict):
             return {sterilize(k) : sterilize(v) for k, v in obj.items()}
         elif isinstance(obj, list):

@@ -1,8 +1,14 @@
 from functools import partial
+import re
 from collections.abc import Container, Sequence, Mapping
 import traceback
 
-class FlagError(Exception):
+from .records import RecordPath
+
+class TargetError(Exception):
+    pass
+
+class FlagError(TargetError):
     pass
 
 class UnutilizedFlagError(FlagError):
@@ -11,6 +17,11 @@ class UnutilizedFlagError(FlagError):
             "'{}'".format(flag) for flag in sorted(unutilized_flags) )
         message = "Unutilizd flags {flags}".format(flags=joined_flags)
         if origin is not None:
+            if not isinstance(origin, str):
+                try:
+                    origin = origin()
+                except TypeError:
+                    origin = str(origin)
             message += " originating from {origin}".format(origin=origin)
         super().__init__(message)
 
@@ -31,17 +42,13 @@ class FlagContainer(Container):
             self.origin = '\n' + ''.join(traceback.format_stack())
         return self
 
-    def __iter__(self):
-        raise NotImplementedError('you do not need this')
-
-    def __len__(self):
-        raise NotImplementedError('you do not need this')
-
     def __hash__(self):
-        raise NotImplementedError('you do not need this')
+        return hash(self.as_frozenset)
 
     def __eq__(self, other):
-        raise NotImplementedError('you do not need this')
+        if not isinstance(other, FlagContainer):
+            return NotImplemented
+        return self.as_frozenset == other.as_frozenset
 
     def __contains__(self, flag,
         *, utilize_present=True, utilize_missing=True, utilize=None
@@ -268,4 +275,107 @@ class NegativeFlagContainer(ChildFlagContainer):
 
     def reconstruct_as_frozenset(self):
         return self.parent.as_frozenset.difference(self.flags)
+
+class Target:
+    __slots__ = ['path', 'flags']
+
+    def __new__(cls, path, flags, *, origin=None):
+        instance = super().__new__(cls)
+        instance.path = RecordPath(path)
+        if not isinstance(flags, FlagContainer):
+            flags = FlagContainer(flags, origin=origin)
+        elif origin is not None:
+            raise RuntimeError(origin)
+        instance.flags = flags
+        return instance
+
+    flagged_pattern = re.compile(
+        r'^(?P<key>[^\[\]]+)'
+        r'(?:\['
+            r'(?P<flags>.+)'
+        r'\])?$' )
+
+    @classmethod
+    def from_string(cls, s, *, origin):
+        flagged_match = cls.flagged_pattern.match(s)
+        if flagged_match is None:
+            raise TargetError(
+                "Failed to parse target '{}'.".format(s) )
+        path = RecordPath(flagged_match.group('key'))
+        flags_s = flagged_match.group('flags')
+        if flags_s is not None:
+            flags = frozenset(flags_s.split(','))
+        else:
+            flags = frozenset()
+        if any(flag.startswith('-') for flag in flags):
+            raise TargetError(
+                "Target '{}' contains negative flags.".format(s) )
+        return cls(path, flags, origin=origin)
+
+    def derive_from_string(self, s, *, origin):
+        if not isinstance(s, str):
+            raise TargetError(type(s))
+        flagged_match = self.flagged_pattern.match(s)
+        subpath = self.path / flagged_match.group('key')
+        flags_s = flagged_match.group('flags')
+        if flags_s is not None:
+            flags = frozenset(flags_s.split(','))
+        else:
+            flags = frozenset()
+        positive = {flag for flag in flags if not flag.startswith('-')}
+        negative = {flag[1:] for flag in flags if flag.startswith('-')}
+        if any(flag.startswith('-') for flag in negative):
+            raise TargetError("Double-negative flag in string '{}'"
+                .format(s) )
+        subflags = self.flags.delta(
+            union=positive, difference=negative, origin=origin )
+        return self.__class__(subpath, subflags)
+
+    def __hash__(self):
+        return hash((self.path, self.flags))
+
+    def __eq__(self, other):
+        if not isinstance(other, Target):
+            return NotImplemented
+        return self.path == other.path and self.flags == other.flags
+
+    def flags_union(self, iterable, *, origin=None, **kwargs):
+        return self.__class__( self.path,
+            self.flags.union(iterable, origin=origin, **kwargs) )
+
+    def flags_difference(self, iterable, *, origin=None, **kwargs):
+        return self.__class__( self.path,
+            self.flags.difference(iterable, origin=origin, **kwargs) )
+
+    def flags_delta(self, *, difference, union, origin=None):
+        return self.__class__( self.path,
+            self.flags.delta( difference=difference, union=union,
+                origin=origin )
+        )
+
+    def flags_clean_copy(self, *, origin):
+        return self.__class__(self.path, self.flags.clean_copy(origin=origin))
+
+    def path_derive(self, *pathparts):
+        return self.__class__(RecordPath(self.path, *pathparts), self.flags)
+
+    def check_unutilized_flags(self):
+        try:
+            self.flags.check_unutilized_flags()
+        except UnutilizedFlagError as error:
+            raise TargetError( "Unutilized flags in target {target:target}"
+                .format(target=self)
+            ) from error
+
+    def __format__(self, fmt):
+        if fmt == 'target':
+            return '{self.path!s}{self.flags:flags}'.format(self=self)
+        elif fmt == 'outname':
+            return '{self.path:join}{self.flags:flags}'.format(self=self)
+        return super().__format__(fmt)
+
+    def __repr__(self):
+        return ( '{self.__class__.__qualname__}'
+            '({self.path!r}, {self.flags!r})'
+            .format(self=self) )
 

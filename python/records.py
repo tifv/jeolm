@@ -61,7 +61,7 @@ class Records:
         self.records = self.Dict()
         self.cache = dict()
 
-    def invalidate_cache(self):
+    def clear_cache(self):
         self.cache.clear()
 
     def merge(self, piece, *, overwrite=True, record=None):
@@ -100,14 +100,14 @@ class Records:
         if key.startswith('$'):
             if key not in record or overwrite:
                 record[key] = value
-                self.invalidate_cache()
+                self.clear_cache()
             else:
                 pass # discard value
         else:
             child_record = record.get(key)
             if child_record is None:
                 child_record = record[key] = self.Dict()
-                self.invalidate_cache()
+                self.clear_cache()
             self.merge(value, overwrite=overwrite, record=child_record)
 
     def getitem(self, path, *, record=None,
@@ -159,7 +159,7 @@ class Records:
         except KeyError:
             if create_path:
                 child_record = record[name] = self.Dict()
-                self.invalidate_cache()
+                self.clear_cache()
             else:
                 raise RecordNotFoundError from None
         assert isinstance(child_record, dict), child_record

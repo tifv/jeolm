@@ -87,7 +87,7 @@ def review(paths, *, fsmanager, viewpoint, recursive):
 
     inpaths = resolve_inpaths(paths,
         source_dir=fsmanager.source_dir, viewpoint=viewpoint )
-    metadata_manager = fsmanager.get_metadata_manager()
+    metadata_manager = fsmanager.load_metadata_manager()
 
     old_metarecords = metadata_manager.construct_metarecords()
     for inpath in inpaths:
@@ -124,11 +124,12 @@ def review(paths, *, fsmanager, viewpoint, recursive):
     fsmanager.dump_metadata(metadata_manager.records)
 
 def list_sources(targets, *, fsmanager, source_type):
-    driver = fsmanager.get_driver()
+    driver = fsmanager.load_driver()
     source_dir = fsmanager.source_dir
-    inpath_generator = driver.list_inpaths(targets, source_type=source_type)
-    for inpath in inpath_generator:
-        yield source_dir/inpath
+    for target in driver.list_delegators(*targets, recursively=True):
+        inpath_generator = driver.list_inpaths(target, inpath_type=source_type)
+        for inpath in inpath_generator:
+            yield source_dir/inpath
 
 def resolve_inpaths(inpaths, *, source_dir, viewpoint):
     assert isinstance(viewpoint, Path), viewpoint

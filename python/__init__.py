@@ -26,17 +26,19 @@ def get_parser(prog='jeolm'):
     force_build_group = build_parser.add_mutually_exclusive_group()
     force_build_group.add_argument('-f', '--force-latex',
         help='force recompilation on LaTeX stage',
-        action='store_true', )
+        action='store_const', dest='force', const='latex')
     force_build_group.add_argument('-F', '--force-generate',
         help='force overwriting of generated LaTeX file',
-        action='store_true', )
+        action='store_const', dest='force', const='generate')
+    build_parser.add_argument('-D', '--no-delegate',
+        action='store_false', dest='delegate' )
     build_parser.add_argument('-r', '--review',
         help='review included infiles prior to build',
         action='store_true', )
     build_parser.add_argument('--dump',
         help='instead of building create standalone version of document',
         action='store_true', )
-    build_parser.set_defaults(main_func=main_build)
+    build_parser.set_defaults(main_func=main_build, force=None)
 
     list_parser = subparsers.add_parser('list',
         help='list all infiles for given targets' )
@@ -89,35 +91,37 @@ def main():
     nodes.PathNode.root = fsmanager.root
     fsmanager.report_broken_links()
 
-    fsmanager.load_local_module()
-
     if 'main_func' not in vars(args):
         return parser.print_help()
-    return args.main_func(args, fsmanager=fsmanager)
 
-def main_build(args, *, fsmanager):
+    fsmanager.load_local_module()
+    kwargs = {}
+    if 'targets' in args:
+        from jeolm.target import Target
+        kwargs['targets'] = [ Target.from_string(s, origin='target')
+            for s in args.targets ]
+
+    return args.main_func(args, fsmanager=fsmanager, **kwargs)
+
+def main_build(args, *, fsmanager, targets):
 
     from jeolm.builder import Builder
+    from jeolm.target import Target
     if args.dump:
         from jeolm.builder import Dumper as Builder
-    if not args.targets:
+    if not targets:
         logger.warn('No-op: no targets for building')
 
     if args.review:
         from jeolm.commands import list_sources, review
         review(
-            list_sources( args.targets,
+            list_sources( targets,
                 fsmanager=fsmanager, source_type='tex' ),
             viewpoint=Path.cwd(),
             fsmanager=fsmanager, recursive=False )
 
-    if args.force_latex:
-        force = 'latex'
-    elif args.force_generate:
-        force = 'generate'
-    else:
-        force = None
-    builder = Builder(args.targets, fsmanager=fsmanager, force=force)
+    builder = Builder(targets, fsmanager=fsmanager,
+        force=args.force, delegate=args.delegate )
     builder.update()
 
 def main_review(args, *, fsmanager):
@@ -127,28 +131,28 @@ def main_review(args, *, fsmanager):
     review(args.inpaths, viewpoint=Path.cwd(),
             fsmanager=fsmanager, recursive=args.recursive )
 
-def main_list(args, *, fsmanager):
+def main_list(args, *, fsmanager, targets):
     from jeolm.commands import print_source_list
-    if not args.targets:
+    if not targets:
         logger.warn('No-op: no targets for source list')
-    print_source_list(args.targets,
+    print_source_list(targets,
         fsmanager=fsmanager, viewpoint=Path.cwd(),
         source_type=args.source_type, )
 
-def main_expose(args, *, fsmanager):
+def main_expose(args, *, fsmanager, targets):
     from jeolm.builder import Builder
-    if not args.targets:
+    if not targets:
         logger.warn('No-op: no targets for exposing source')
-    builder = Builder(args.targets, fsmanager=fsmanager, force=None)
+    builder = Builder(targets, fsmanager=fsmanager, force=None)
     for node in builder.autosource_nodes.values():
         node.update()
         print(node.path)
 
-def main_spell(args, *, fsmanager):
+def main_spell(args, *, fsmanager, targets):
     from jeolm.commands import check_spelling
-    if not args.targets:
+    if not targets:
         logger.warn('No-op: no targets for spell check')
-    check_spelling(args.targets, fsmanager=fsmanager,)
+    check_spelling(targets, fsmanager=fsmanager,)
 
 def main_clean(args, *, fsmanager):
     from jeolm.commands import clean

@@ -109,7 +109,7 @@ class Completer:
         if self.target_list is not None:
             return
 
-        self.target_list = self.fsmanager.get_driver().list_targets()
+        self.target_list = self.fsmanager.load_driver().list_metapaths()
         self.fsmanager.dump_completion_cache(self.target_list)
 
     def complete_target(self, uncompleted_arg):

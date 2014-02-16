@@ -82,24 +82,29 @@ class FSManager:
                 .format(path.relative_to(root)) )
             path.unlink()
 
-    def get_driver(self):
-        """
-        Return driver.
-        """
-        Driver = self.get_driver_class()
-        metarecords = self.load_metarecords()
-        return Driver(metarecords)
+#    def get_driver(self):
+#        """
+#        Return driver.
+#        """
+#        Driver = self.get_driver_class()
+#        metarecords = self.load_metarecords()
+#        return Driver(metarecords)
 
-    def get_driver_class(self):
+    def load_driver(self):
+        metadata_manager = self.load_metadata_manager()
+        Driver = self.find_driver_class()
+        return metadata_manager.construct_metarecords(Metarecords=Driver)
+
+    def find_driver_class(self):
         """
         Return appropriate Driver class.
         """
-        Driver = self.get_local_driver_class()
+        Driver = self.find_local_driver_class()
         if Driver is None:
-            from .driver.generic import Driver
+            from .driver.regular import Driver
         return Driver
 
-    def get_local_driver_class(self):
+    def find_local_driver_class(self):
         """
         Return Driver class from local_module, or None.
 
@@ -132,12 +137,7 @@ class FSManager:
             .format(module_name) )
         return local_module
 
-    def load_metarecords(self):
-        metadata_manager = self.get_metadata_manager()
-        Driver = self.get_driver_class()
-        return metadata_manager.construct_metarecords(Driver.Metarecords)
-
-    def get_metadata_manager(self):
+    def load_metadata_manager(self):
         metadata = self.load_metadata()
         from .metadata import MetadataManager
         metadata_manager = MetadataManager(fsmanager=self)

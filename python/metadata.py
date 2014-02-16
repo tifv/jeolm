@@ -30,8 +30,8 @@ class MetadataManager(Records):
         self.fsmanager = fsmanager
         self.source_dir = self.fsmanager.source_dir
 
-    def construct_metarecords(self, Records=Records):
-        metarecords = Records()
+    def construct_metarecords(self, Metarecords=Records):
+        metarecords = Metarecords()
         for inpath, record in self.items():
             if inpath.suffix == '':
                 metapath = inpath
@@ -58,7 +58,7 @@ class MetadataManager(Records):
             assert metapath.name # non-empty path
             if recorded:
                 self.getitem(metapath.parent, original=True).pop(metapath.name)
-                self.invalidate_cache()
+                self.clear_cache()
             else:
                 logger.warning(
                     '{} was not recorded and does not exist as file. No-op.'
@@ -73,7 +73,7 @@ class MetadataManager(Records):
                 assert self.getitem(metapath, original=True) is self.records
                 logger.debug('Metadata invalidated')
             self.getitem(metapath, original=True).clear()
-            self.invalidate_cache()
+            self.clear_cache()
         if is_dir:
             metadata = {'$source' : True}
             if recursive:
@@ -100,7 +100,7 @@ class MetadataManager(Records):
         elif inpath.suffix == '.tex':
             metadata = self.query_tex_file(inpath)
             metadata.setdefault('$source', True)
-            metadata.setdefault('$tex$source', True)
+            metadata.setdefault('$latex$source', True)
         elif inpath.suffix == '.asy':
             metadata = self.query_asy_file(inpath)
             metadata.setdefault('$asy$source', True)
@@ -142,7 +142,7 @@ class MetadataManager(Records):
             for match in self.tex_figure_pattern.finditer(s) )
         metapath = RecordPath(inpath.with_suffix(''))
         if figures:
-            return {'$tex$figures' : OrderedDict(
+            return {'$latex$figures' : OrderedDict(
                 (figure, str((metapath / figure).as_inpath()))
                 for figure in figures
             )}
