@@ -13,8 +13,9 @@ def report_called_process_error(exception):
         .format(exc=exception) )
 
 if __name__ == '__main__':
+    import jeolm.commands
     try:
-        jeolm.main()
+        jeolm.commands.main()
     except subprocess.CalledProcessError as exception:
         report_called_process_error(exception)
 

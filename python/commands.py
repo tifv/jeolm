@@ -9,6 +9,76 @@ from pathlib import Path, PurePosixPath as PurePath
 import logging
 logger = logging.getLogger(__name__)
 
+def main():
+    from . import filesystem, nodes
+    from .argparser import parser
+    from . import setup_logging
+
+    args = parser.parse_args()
+    setup_logging(args.verbose)
+    try:
+        fs = filesystem.FilesystemManager(
+            root=Path(args.root) if args.root is not None else None )
+    except filesystem.RootNotFoundError:
+        raise SystemExit
+    nodes.PathNode.root = fs.root
+    fs.report_broken_links()
+    if 'command' not in args:
+        return parser.print_help()
+    fs.load_local_module()
+    main_function = globals()['main_' + args.command]
+    return main_function(args, fs=fs)
+
+def main_build(args, *, fs):
+
+    from jeolm.builder import Builder
+    if args.dump:
+        from jeolm.builder import Dumper as Builder
+    if not args.targets:
+        logger.warn('No-op: no targets for building')
+
+    if args.review:
+        review(
+            list_sources( args.targets,
+                fs=fs, source_type='tex' ),
+            viewpoint=Path.cwd(),
+            fs=fs, recursive=False )
+
+    builder = Builder(args.targets, fsmanager=fs,
+        force=args.force, delegate=args.delegate )
+    builder.update()
+
+def main_review(args, *, fs):
+    if not args.inpaths:
+        logger.warn('No-op: no inpaths for review')
+    review(args.inpaths, viewpoint=Path.cwd(),
+            fs=fs, recursive=args.recursive )
+
+def main_list(args, *, fs):
+    if not args.targets:
+        logger.warn('No-op: no targets for source list')
+    print_source_list(args.targets,
+        fs=fs, viewpoint=Path.cwd(),
+        source_type=args.source_type, )
+
+def main_expose(args, *, fs):
+    from jeolm.builder import Builder
+    if not args.targets:
+        logger.warn('No-op: no targets for exposing source')
+    builder = Builder(args.targets, fsmanager=fs, force=None)
+    for node in builder.autosource_nodes.values():
+        node.update()
+        print(node.path)
+
+def main_spell(args, *, fs):
+    if not args.targets:
+        logger.warn('No-op: no targets for spell check')
+    check_spelling(args.targets, fs=fs,)
+
+def main_clean(args, *, fs):
+    clean(root=fs.root)
+    fs.clean_broken_links(fs.build_dir, recursive=True)
+
 def clean(root):
     """
     Remove all symbolic links to 'build/*whatever*' from the toplevel.
@@ -21,15 +91,16 @@ def clean(root):
         if target.startswith('build/'):
             x.unlink()
 
-def print_source_list(targets, *, fsmanager, viewpoint, source_type):
+def print_source_list(targets, *, fs, viewpoint, source_type):
     path_generator = list_sources(targets,
-        fsmanager=fsmanager, source_type=source_type )
+        fs=fs, source_type=source_type )
     for path in path_generator:
         print(path.relative_to(viewpoint))
 
-def check_spelling(targets, *, fsmanager, context=0):
-    from . import cleanlogger, spell
+def check_spelling(targets, *, fs, context=0):
+    from . import spell
     from .spell import IncorrectWord
+    from . import cleanlogger
 
     indicator_length = 0
     def indicator_clean():
@@ -43,7 +114,7 @@ def check_spelling(targets, *, fsmanager, context=0):
         indicator_length = len(str(s))
 
     path_generator = list_sources(targets,
-        fsmanager=fsmanager, source_type='tex' )
+        fs=fs, source_type='tex' )
     for path in path_generator:
         indicator_clean()
         indicator_show(str(path))
@@ -65,14 +136,14 @@ def check_spelling(targets, *, fsmanager, context=0):
         except ValueError as error:
             raise ValueError(
                 "Error while spell-checking {}"
-                .format(path.relative_to(fsmanager.root))
+                .format(path.relative_to(fs.root))
             ) from error
         if not printed_line_numbers:
             continue
         indicator_clean()
         cleanlogger.info(
             '<BOLD><YELLOW>{}<NOCOLOUR> possible misspellings<RESET>'
-            .format(path.relative_to(fsmanager.source_dir)) )
+            .format(path.relative_to(fs.source_dir)) )
         line_range = range(len(lines))
         for lineno in sorted(printed_line_numbers):
             if lineno not in line_range:
@@ -81,13 +152,14 @@ def check_spelling(targets, *, fsmanager, context=0):
                 '<MAGENTA>{}<NOCOLOUR>:{}'.format(lineno+1, lines[lineno]) )
     indicator_clean()
 
-def review(paths, *, fsmanager, viewpoint, recursive):
+def review(paths, *, fs, viewpoint, recursive):
     import difflib
-    from . import yaml, diffprint, cleanlogger
+    from . import yaml, diffprint
+    from . import cleanlogger
 
     inpaths = resolve_inpaths(paths,
-        source_dir=fsmanager.source_dir, viewpoint=viewpoint )
-    metadata_manager = fsmanager.load_metadata_manager()
+        source_dir=fs.source_dir, viewpoint=viewpoint )
+    metadata_manager = fs.load_metadata_manager()
 
     old_metarecords = metadata_manager.construct_metarecords()
     for inpath in inpaths:
@@ -121,11 +193,11 @@ def review(paths, *, fsmanager, viewpoint, recursive):
         delta = difflib.ndiff(a=old_dump, b=new_dump)
         diffprint.print_ndiff_delta(delta, fix_newlines=True)
 
-    fsmanager.dump_metadata(metadata_manager.records)
+    fs.dump_metadata(metadata_manager.records)
 
-def list_sources(targets, *, fsmanager, source_type):
-    driver = fsmanager.load_driver()
-    source_dir = fsmanager.source_dir
+def list_sources(targets, *, fs, source_type):
+    driver = fs.load_driver()
+    source_dir = fs.source_dir
     for target in driver.list_delegators(*targets, recursively=True):
         inpath_generator = driver.list_inpaths(target, inpath_type=source_type)
         for inpath in inpath_generator:
