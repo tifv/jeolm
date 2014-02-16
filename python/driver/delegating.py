@@ -19,9 +19,7 @@ class DelegatingDriver(BaseDriver):
 
     @folding_driver_errors
     def list_delegators(self, *targets, recursively=True):
-        if len(targets) < 1:
-            raise RuntimeError
-        if len(targets) > 1 and not recursively:
+        if len(targets) != 1 and not recursively:
             raise RuntimeError
         for target in targets:
             try:

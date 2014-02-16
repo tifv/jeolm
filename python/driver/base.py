@@ -103,12 +103,15 @@ class BaseDriver(Records, metaclass=DriverMetaclass):
         raise DriverError(figpath)
 
     @abc.abstractmethod
-    def list_inpaths(self, target, inpath_type='tex'):
-        raise DriverError(target)
+    def list_inpaths(self, *targets, inpath_type='tex'):
+        raise DriverError(*targets)
 
     @abc.abstractmethod
-    def list_delegators(self, target, *, recursively=True):
-        raise self.NoDelegators
+    def list_delegators(self, *targets, recursively=True):
+        if recursively:
+            yield from targets
+        else:
+            raise self.NoDelegators
 
     def list_metapaths(self, path=None):
         """Yield metapaths as strings."""

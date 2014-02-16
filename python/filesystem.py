@@ -8,7 +8,7 @@ logger = logging.getLogger(__name__)
 class RootNotFoundError(Exception):
     pass
 
-class FSManager:
+class FilesystemManager:
     def __init__(self, root=None):
         if root is not None:
             try:

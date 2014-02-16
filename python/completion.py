@@ -57,7 +57,7 @@ def main():
         else:
             return
     try:
-        fsmanager = filesystem.FSManager(root=root)
+        fs = filesystem.FilesystemManager(root=root)
     except filesystem.RootNotFoundError:
         raise SystemExit
 
@@ -94,23 +94,23 @@ def main():
         # Request for filename completion
         sys.exit(100)
     elif subcommand in subcommands_accepting_targets:
-        completer = Completer(fsmanager)
+        completer = Completer(fs)
         completions = list(completer.complete_target(current))
         print('\n'.join(completions))
 
 class Completer:
-    def __init__(self, fsmanager):
-        self.fsmanager = fsmanager
+    def __init__(self, fs):
+        self.fs = fs
         self.load_target_list()
 
     def load_target_list(self):
 
-        self.target_list = self.fsmanager.load_updated_completion_cache()
+        self.target_list = self.fs.load_updated_completion_cache()
         if self.target_list is not None:
             return
 
-        self.target_list = self.fsmanager.load_driver().list_metapaths()
-        self.fsmanager.dump_completion_cache(self.target_list)
+        self.target_list = self.fs.load_driver().list_metapaths()
+        self.fs.dump_completion_cache(self.target_list)
 
     def complete_target(self, uncompleted_arg):
         """Return an iterator over completions."""

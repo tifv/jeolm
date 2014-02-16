@@ -8,156 +8,83 @@ cleanlogger = logging.getLogger(__name__ + '.clean')
 cleanlogger.setLevel(logging.INFO)
 cleanlogger.addHandler(logging.NullHandler())
 
-def get_parser(prog='jeolm'):
-    from argparse import ArgumentParser
-    parser = ArgumentParser(prog=prog,
-        description='Automated build system for course-like projects' )
-    parser.add_argument('-R', '--root',
-        help='explicit root path of a jeolm project', )
-    parser.add_argument('-v', '--verbose',
-        help='make debug messages to stdout',
-        action='store_true', )
-    subparsers = parser.add_subparsers()
-
-    build_parser = subparsers.add_parser('build',
-        help='build specified targets', )
-    build_parser.add_argument('targets',
-        nargs='*', metavar='TARGET', )
-    force_build_group = build_parser.add_mutually_exclusive_group()
-    force_build_group.add_argument('-f', '--force-latex',
-        help='force recompilation on LaTeX stage',
-        action='store_const', dest='force', const='latex')
-    force_build_group.add_argument('-F', '--force-generate',
-        help='force overwriting of generated LaTeX file',
-        action='store_const', dest='force', const='generate')
-    build_parser.add_argument('-D', '--no-delegate',
-        action='store_false', dest='delegate' )
-    build_parser.add_argument('-r', '--review',
-        help='review included infiles prior to build',
-        action='store_true', )
-    build_parser.add_argument('--dump',
-        help='instead of building create standalone version of document',
-        action='store_true', )
-    build_parser.set_defaults(main_func=main_build, force=None)
-
-    list_parser = subparsers.add_parser('list',
-        help='list all infiles for given targets' )
-    list_parser.add_argument('targets',
-        nargs='*', metavar='TARGET', )
-    list_parser.add_argument('--type',
-        help='searched-for infiles type',
-        choices=['tex', 'asy'], default='tex',
-        dest='source_type', metavar='SOURCE_TYPE', )
-    list_parser.set_defaults(main_func=main_list)
-
-    expose_parser = subparsers.add_parser('expose',
-        help='list generated main.tex files for given targets' )
-    expose_parser.add_argument('targets',
-        nargs='*', metavar='TARGET', )
-    expose_parser.set_defaults(main_func=main_expose)
-
-    spell_parser = subparsers.add_parser('spell',
-        help='spell-check all infiles for given targets' )
-    spell_parser.add_argument('targets',
-        nargs='*', metavar='TARGET', )
-    spell_parser.set_defaults(main_func=main_spell)
-
-    review_parser = subparsers.add_parser('review', aliases=['r'],
-        help='review given infiles' )
-    review_parser.add_argument('inpaths',
-        nargs='*', metavar='INPATH', )
-    review_parser.add_argument('-r', '--recursive',
-        action='store_true', )
-    review_parser.set_defaults(main_func=main_review)
-
-    clean_parser = subparsers.add_parser('clean',
-        help='clean toplevel links to build/**.pdf', )
-    clean_parser.set_defaults(main_func=main_clean)
-
-    return parser
-
 def main():
+    from jeolm.argparser import parser
     from jeolm import filesystem, nodes
 
-    parser = get_parser()
     args = parser.parse_args()
 
     setup_logging(args.verbose)
     try:
-        fsmanager = filesystem.FSManager(
+        fs = filesystem.FilesystemManager(
             root=Path(args.root) if args.root is not None else None )
     except filesystem.RootNotFoundError:
         raise SystemExit
-    nodes.PathNode.root = fsmanager.root
-    fsmanager.report_broken_links()
+    nodes.PathNode.root = fs.root
+    fs.report_broken_links()
 
-    if 'main_func' not in vars(args):
+    if 'command' not in args:
         return parser.print_help()
 
-    fsmanager.load_local_module()
-    kwargs = {}
-    if 'targets' in args:
-        from jeolm.target import Target
-        kwargs['targets'] = [ Target.from_string(s, origin='target')
-            for s in args.targets ]
+    fs.load_local_module()
 
-    return args.main_func(args, fsmanager=fsmanager, **kwargs)
+    main_function = globals()['main_' + args.command]
+    return main_function(args, fs=fs)
 
-def main_build(args, *, fsmanager, targets):
+def main_build(args, *, fs):
 
     from jeolm.builder import Builder
-    from jeolm.target import Target
     if args.dump:
         from jeolm.builder import Dumper as Builder
-    if not targets:
+    if not args.targets:
         logger.warn('No-op: no targets for building')
 
     if args.review:
         from jeolm.commands import list_sources, review
         review(
-            list_sources( targets,
-                fsmanager=fsmanager, source_type='tex' ),
+            list_sources( args.targets,
+                fsmanager=fs, source_type='tex' ),
             viewpoint=Path.cwd(),
-            fsmanager=fsmanager, recursive=False )
+            fsmanager=fs, recursive=False )
 
-    builder = Builder(targets, fsmanager=fsmanager,
+    builder = Builder(args.targets, fsmanager=fs,
         force=args.force, delegate=args.delegate )
     builder.update()
 
-def main_review(args, *, fsmanager):
+def main_review(args, *, fs):
     from jeolm.commands import review
     if not args.inpaths:
         logger.warn('No-op: no inpaths for review')
     review(args.inpaths, viewpoint=Path.cwd(),
-            fsmanager=fsmanager, recursive=args.recursive )
+            fsmanager=fs, recursive=args.recursive )
 
-def main_list(args, *, fsmanager, targets):
+def main_list(args, *, fs):
     from jeolm.commands import print_source_list
-    if not targets:
+    if not args.targets:
         logger.warn('No-op: no targets for source list')
-    print_source_list(targets,
-        fsmanager=fsmanager, viewpoint=Path.cwd(),
+    print_source_list(args.targets,
+        fsmanager=fs, viewpoint=Path.cwd(),
         source_type=args.source_type, )
 
-def main_expose(args, *, fsmanager, targets):
+def main_expose(args, *, fs):
     from jeolm.builder import Builder
-    if not targets:
+    if not args.targets:
         logger.warn('No-op: no targets for exposing source')
-    builder = Builder(targets, fsmanager=fsmanager, force=None)
+    builder = Builder(args.targets, fsmanager=fs, force=None)
     for node in builder.autosource_nodes.values():
         node.update()
         print(node.path)
 
-def main_spell(args, *, fsmanager, targets):
+def main_spell(args, *, fs):
     from jeolm.commands import check_spelling
-    if not targets:
+    if not args.targets:
         logger.warn('No-op: no targets for spell check')
-    check_spelling(targets, fsmanager=fsmanager,)
+    check_spelling(args.targets, fsmanager=fs,)
 
-def main_clean(args, *, fsmanager):
+def main_clean(args, *, fs):
     from jeolm.commands import clean
-    clean(root=fsmanager.root)
-    fsmanager.clean_broken_links(fsmanager.build_dir, recursive=True)
+    clean(root=fs.root)
+    fs.clean_broken_links(fs.build_dir, recursive=True)
 
 def setup_logging(verbose):
     import sys

@@ -296,7 +296,7 @@ class Target:
         r'\])?$' )
 
     @classmethod
-    def from_string(cls, s, *, origin):
+    def from_string(cls, s, *, origin=None):
         flagged_match = cls.flagged_pattern.match(s)
         if flagged_match is None:
             raise TargetError(
@@ -312,7 +312,7 @@ class Target:
                 "Target '{}' contains negative flags.".format(s) )
         return cls(path, flags, origin=origin)
 
-    def derive_from_string(self, s, *, origin):
+    def derive_from_string(self, s, *, origin=None):
         if not isinstance(s, str):
             raise TargetError(type(s))
         flagged_match = self.flagged_pattern.match(s)
