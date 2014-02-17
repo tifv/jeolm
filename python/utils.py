@@ -15,26 +15,6 @@ def unique(*iterables):
                 seen.add(i)
     return unique
 
-def pure_join(*paths):
-    """
-    Join PurePaths, resolving '..' parts.
-
-    Resolve any appearence of 'whatever/..' to ''.
-    The resulting path must not contain '..' parts.
-    The leading '/', if any, will be stripped from the result.
-    """
-    path = PurePath(*paths)
-    parts = path.parts
-    if path.is_absolute():
-        parts = parts[1:]
-    path = PurePath()
-    for part in parts:
-        if part != '..':
-            path /= part
-        else:
-            path = path.parent
-    return path
-
 def natural_keyfunc(s, pattern=re.compile(r'(\d+)')):
     assert isinstance(s, str), type(s)
     return [

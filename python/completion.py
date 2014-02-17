@@ -109,7 +109,15 @@ class Completer:
         if self.target_list is not None:
             return
 
-        self.target_list = self.fs.load_driver().list_metapaths()
+        from jeolm.metadata import MetadataManager
+        Driver = self.fs.find_driver_class()
+
+        md = MetadataManager(fs=self.fs)
+        md.load_metadata()
+        driver = md.feed_metadata(Driver())
+        self.target_list = driver.list_metapaths()
+        if not self.target_list:
+            logger.warning("Target list seems empty.")
         self.fs.dump_completion_cache(self.target_list)
 
     def complete_target(self, uncompleted_arg):

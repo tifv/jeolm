@@ -19,7 +19,6 @@ class _RecordPathFlavour(pathlib._PosixFlavour):
         if root != '/':
             root = '/'
             parsed[0:0] = '/',
-        assert parsed[0] == '/', parsed
         while '..' in parsed:
             i = parsed.index('..')
             j = max(i-1, 1)
@@ -29,14 +28,6 @@ class _RecordPathFlavour(pathlib._PosixFlavour):
 
 class RecordPath(pathlib.PurePosixPath):
     _flavour = _RecordPathFlavour()
-
-#    def _init(self):
-#        self._root = '/'
-#        while '..' in self._parts:
-#            i = self._parts.index('..')
-#            self._parts = self._parts[:i-1] + self._parts[i+1:]
-#        assert '..' not in self._parts, repr(self)
-#        super()._init()
 
     def as_inpath(self, *, suffix=None):
         assert self.is_absolute(), repr(self)
@@ -54,7 +45,7 @@ class RecordPath(pathlib.PurePosixPath):
             return '-'.join(self.parts[1:])
         return super().__format__(fmt)
 
-class Records:
+class RecordsManager:
     Dict = OrderedDict
 
     def __init__(self):
@@ -125,7 +116,7 @@ class Records:
         name = path.name
         if name == '':
             if record is None:
-                record = self.get_root(
+                record = self._get_root(
                     create_path=create_path, original=original )
         elif name.startswith('$'):
             raise ValueError(path)
@@ -146,7 +137,7 @@ class Records:
             self.cache[path] = record
         return record
 
-    def get_root(self, create_path=False, original=False):
+    def _get_root(self, create_path=False, original=False):
         record = self.records
         if not create_path and not original:
             record = record.copy()

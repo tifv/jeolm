@@ -14,7 +14,7 @@ class FilesystemManager:
             try:
                 root = Path(root).resolve()
             except FileNotFoundError:
-                raise
+                raise RootNotFoundError(root)
             else:
                 if not self.check_root(root):
                     self.report_failed_check()
@@ -82,18 +82,14 @@ class FilesystemManager:
                 .format(path.relative_to(root)) )
             path.unlink()
 
-#    def get_driver(self):
-#        """
-#        Return driver.
-#        """
-#        Driver = self.get_driver_class()
-#        metarecords = self.load_metarecords()
-#        return Driver(metarecords)
 
-    def load_driver(self):
-        metadata_manager = self.load_metadata_manager()
-        Driver = self.find_driver_class()
-        return metadata_manager.construct_metarecords(Metarecords=Driver)
+    ##########
+    # Complicated matters
+
+#    def load_driver(self):
+#        metadata_manager = self.load_metadata_manager()
+#        Driver = self.find_driver_class()
+#        return metadata_manager.construct_metarecords(Metarecords=Driver)
 
     def find_driver_class(self):
         """
@@ -101,7 +97,7 @@ class FilesystemManager:
         """
         Driver = self.find_local_driver_class()
         if Driver is None:
-            from .driver.regular import Driver
+            from jeolm.driver.regular import Driver
         return Driver
 
     def find_local_driver_class(self):
@@ -110,39 +106,43 @@ class FilesystemManager:
 
         Requires load_local_module() called beforehand.
         """
-        local_module = self.load_local_module()
-        if local_module is None:
+        if self.local_module is None:
             return None
         try:
-            return local_module.Driver
+            return self.local_module.Driver
         except AttributeError:
             return None
 
-    def load_local_module(self, *, module_name='jeolm.local'):
+    @property
+    def local_module(self):
         try:
-            return self.local_module
+            return self._local_module
         except AttributeError:
-            pass
+            return self.load_local_module()
+
+    def load_local_module(self, *, module_name='jeolm.local'):
+        if hasattr(self, '_local_module'):
+            raise RuntimeError("Local module should not be loaded twice.")
 
         module_path = self.root/'.jeolm/local.py'
         if not module_path.exists():
-            self.local_module = None
+            self._local_module = None
             return None
 
         import importlib.machinery
         loader = importlib.machinery.SourceFileLoader(
             module_name, str(module_path) )
-        self.local_module = local_module = loader.load_module()
-        logger.debug("Loaded '.jeolm/local.py' as {} module"
-            .format(module_name) )
+        local_module = self._local_module = loader.load_module()
+        logger.debug("Loaded '{}' as {} module"
+            .format(module_path, module_name) )
         return local_module
 
-    def load_metadata_manager(self):
-        metadata = self.load_metadata()
-        from .metadata import MetadataManager
-        metadata_manager = MetadataManager(fsmanager=self)
-        metadata_manager.merge(metadata)
-        return metadata_manager
+#    def load_metadata_manager(self):
+#        metadata = self.load_metadata()
+#        from .metadata import MetadataManager
+#        metadata_manager = MetadataManager(fsmanager=self)
+#        metadata_manager.merge(metadata)
+#        return metadata_manager
 
     def load_metadata(self):
         try:
@@ -191,13 +191,14 @@ class FilesystemManager:
             return None
         from pathlib import PurePosixPath as PurePath
         with cache_path.open() as f:
-            return [
-                PurePath(x)
+            return [ PurePath(x)
                 for x in f.read().split('\n') if x != '' ]
 
     def dump_completion_cache(self, target_list):
         self.ensure_build_dir()
         s = '\n'.join(str(target) for target in target_list)
+        if not s or not target_list:
+            logger.warning("Completion cache seems empty")
         new_path = Path('.completion.cache.list.new')
         with new_path.open('w') as f:
             f.write(s)
@@ -209,7 +210,7 @@ class FilesystemManager:
             return self.metadata_path.stat().st_mtime_ns
         except FileNotFoundError as error:
             raise FileNotFoundError(
-                "No metadata (create it with 'jeolm review')" ) from error
+                "No metadata found" ) from error
 
     def ensure_build_dir(self):
         if self.build_dir.exists():

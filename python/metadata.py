@@ -5,15 +5,15 @@ from collections import OrderedDict
 
 from pathlib import PurePosixPath as PurePath
 
-from .utils import unique, dict_ordered_keys, dict_ordered_items
+from .utils import unique
 
 from . import yaml
-from .records import Records, RecordPath, RecordNotFoundError
+from .records import RecordsManager, RecordPath, RecordNotFoundError
 
 import logging
 logger = logging.getLogger(__name__)
 
-class MetadataManager(Records):
+class MetadataManager(RecordsManager):
     Dict = dict
 
     source_types = {
@@ -25,13 +25,18 @@ class MetadataManager(Records):
         '.yaml' : 'metadata',
     }
 
-    def __init__(self, *, fsmanager):
+    def __init__(self, *, fs):
         super().__init__()
-        self.fsmanager = fsmanager
-        self.source_dir = self.fsmanager.source_dir
+        self.fs = fs
+        self.source_dir = self.fs.source_dir
 
-    def construct_metarecords(self, Metarecords=Records):
-        metarecords = Metarecords()
+    def load_metadata(self):
+        self.merge(self.fs.load_metadata())
+
+    def dump_metadata(self):
+        self.fs.dump_metadata(self.records)
+
+    def feed_metadata(self, metarecords):
         for inpath, record in self.items():
             if inpath.suffix == '':
                 metapath = inpath
@@ -46,7 +51,7 @@ class MetadataManager(Records):
                 metarecords.merge({metapath : metadata})
         return metarecords
 
-    def review(self, inpath, recursive=True):
+    def review(self, inpath, *, recursive=False):
         path = self.source_dir/inpath
         metapath = RecordPath(inpath)
         exists = path.exists()
@@ -92,7 +97,7 @@ class MetadataManager(Records):
                     '<YELLOW>{}<NOCOLOUR> unrecognized<RESET>'
                     .format(inpath, subname) )
                 continue
-            self.review(subpath)
+            self.review(subpath, recursive=True)
 
     def query_file(self, inpath):
         if inpath.suffix == '.yaml':

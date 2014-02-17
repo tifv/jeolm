@@ -21,21 +21,25 @@ class Builder:
     build_formats = ('pdf', )
     known_formats = ('pdf', 'ps', 'dump')
 
-    def __init__(self, targets, *, fsmanager, force, delegate):
-        self.fsmanager = fsmanager
-        self.root = self.fsmanager.root
+    def __init__(self, targets, *, fs, driver, force=None, delegate=True):
+        self.fs = fs
+        self.driver = driver
+
+        self.targets = targets
         assert force in {'latex', 'generate', None}
         self.force = force
+        self.delegate = delegate
 
-        self.driver = self.fsmanager.load_driver()
-        self.outrecords_cache = self.fsmanager.load_outrecords_cache()
-        self.metadata_mtime = self.fsmanager.metadata_mtime
+    def prebuild(self):
+        self.outrecords_cache = self.fs.load_outrecords_cache()
+        self.metadata_mtime = self.fs.metadata_mtime
 
-        if delegate:
+        targets = self.targets
+        if self.delegate:
             targets = [
                 delegated_target.flags_clean_copy(origin='target')
-                for delegated_target in
-                    self.driver.list_delegators(*targets, recursively=True)
+                for delegated_target
+                in self.driver.list_delegators(*targets, recursively=True)
             ]
         self.outrecords = outrecords = OrderedDict(
             (target, self.driver.produce_outrecord(target))
@@ -46,8 +50,6 @@ class Builder:
         self.figrecords = figrecords = OrderedDict(
             (figpath, self.driver.produce_figrecord(figpath))
             for figpath in figpaths )
-#        self.outrecords, self.figrecords = \
-#            self.driver.produce_outrecords(targets)
         self.cache_updated = False
         self.outnodes = OrderedDict(
             (target, self.create_outnode(target, outrecord))
@@ -59,8 +61,8 @@ class Builder:
         assert set(self.known_formats) >= set(self.build_formats)
         self.exposed_nodes = {fmt : OrderedDict() for fmt in self.build_formats}
 
-        self.prebuild_figures(self.fsmanager.build_dir/'figures')
-        self.prebuild_documents(self.fsmanager.build_dir/'documents')
+        self.prebuild_figures(self.fs.build_dir/'figures')
+        self.prebuild_documents(self.fs.build_dir/'documents')
 
         self.ultimate_node = Node(
             name='ultimate',
@@ -69,11 +71,13 @@ class Builder:
                 for node in self.exposed_nodes[fmt].values()
             ) )
 
-    def update(self):
+    def build(self):
+        if not hasattr(self, 'ultimate_node'):
+            self.prebuild()
         self.ultimate_node.update()
 
     def dump_outrecords_cache(self):
-        self.fsmanager.dump_outrecords_cache(self.outrecords_cache)
+        self.fs.dump_outrecords_cache(self.outrecords_cache)
 
     def create_outnode(self, target, outrecord):
         target_s = target.__format__('target')
@@ -220,7 +224,7 @@ class Builder:
             self.exposed_nodes['pdf'][target] = LinkNode(
                 name='doc:{:target}:exposed:pdf'.format(target),
                 source=pdf_node,
-                path=(self.root/outname).with_suffix('.pdf') )
+                path=(self.fs.root/outname).with_suffix('.pdf') )
 
         if 'ps' in self.build_formats:
             ps_node = self.ps_nodes[target] = FileNode(
@@ -234,7 +238,7 @@ class Builder:
             self.exposed_nodes['ps'][target] = LinkNode(
                 name='doc:{:target}:exposed:ps'.format(target),
                 source=ps_node,
-                path=(self.root/outname).with_suffix('.ps') )
+                path=(self.fs.root/outname).with_suffix('.ps') )
 
         if 'dump' in self.build_formats:
             dump_node = self.dump_nodes[target] = TextNode(
@@ -249,7 +253,7 @@ class Builder:
             self.exposed_nodes['dump'][target] = LinkNode(
                 name='doc:{:target}:exposed:dump'.format(target),
                 source=dump_node,
-                path=(self.root/outname).with_suffix('.tex') )
+                path=(self.fs.root/outname).with_suffix('.tex') )
 
     def get_source_node(self, inpath):
         assert isinstance(inpath, PurePosixPath), repr(inpath)
@@ -258,7 +262,7 @@ class Builder:
             return self.source_nodes[inpath]
         node = self.source_nodes[inpath] = \
             FileNode(name='source:{}'.format(inpath),
-                path=self.fsmanager.source_dir/inpath )
+                path=self.fs.source_dir/inpath )
         return node
 
     def resolve_latex_inputs(self, document):
@@ -338,7 +342,7 @@ class LaTeXNode(ProductFileNode):
         # Ensure that both latex source and target are in the same directory
         # and this directory is cwd.
         assert path.parent == cwd == source.path.parent
-        assert path.suffix == '.dvi'
+        assert path.suffix == self.target_suffix
         assert source.path.suffix == '.tex'
         jobname = path.stem
 
@@ -347,7 +351,7 @@ class LaTeXNode(ProductFileNode):
             '<GREEN>{node.latex_command} -jobname={jobname} '
                 '{node.source.path.name}<NOCOLOUR>'
             .format(
-                cwd=self.pure_relative(cwd, self.root), jobname=jobname,
+                cwd=self.root_relative(cwd), jobname=jobname,
                 node=self )
         )
         callargs = (self.latex_command,

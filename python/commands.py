@@ -9,6 +9,9 @@ from pathlib import Path, PurePosixPath as PurePath
 import logging
 logger = logging.getLogger(__name__)
 
+##########
+# Main scripts
+
 def main():
     from . import filesystem, nodes
     from .argparser import parser
@@ -30,74 +33,124 @@ def main():
     return main_function(args, fs=fs)
 
 def main_build(args, *, fs):
-
     from jeolm.builder import Builder
     if args.dump:
         from jeolm.builder import Dumper as Builder
+    from jeolm.metadata import MetadataManager
+
     if not args.targets:
         logger.warn('No-op: no targets for building')
+    md = MetadataManager(fs=fs)
+    md.load_metadata()
+    Driver = fs.find_driver_class()
+    driver = md.feed_metadata(Driver())
 
     if args.review:
-        review(
-            list_sources( args.targets,
-                fs=fs, source_type='tex' ),
-            viewpoint=Path.cwd(),
-            fs=fs, recursive=False )
+        sources = list_sources( args.targets,
+            fs=fs, driver=driver, source_type='tex' )
+        review( sources, viewpoint=Path.cwd(),
+            fs=fs, md=md, recursive=False )
+        md.dump_metadata()
+        driver = md.feed_metadata(Driver())
 
-    builder = Builder(args.targets, fsmanager=fs,
+    builder = Builder(args.targets, fs=fs, driver=driver,
         force=args.force, delegate=args.delegate )
-    builder.update()
+    builder.build()
 
 def main_review(args, *, fs):
+    from jeolm.metadata import MetadataManager
     if not args.inpaths:
         logger.warn('No-op: no inpaths for review')
+    md = MetadataManager(fs=fs)
+    md.load_metadata()
     review(args.inpaths, viewpoint=Path.cwd(),
-            fs=fs, recursive=args.recursive )
+            fs=fs, md=md, recursive=args.recursive )
+    md.dump_metadata()
 
 def main_list(args, *, fs):
     if not args.targets:
         logger.warn('No-op: no targets for source list')
     print_source_list(args.targets,
-        fs=fs, viewpoint=Path.cwd(),
-        source_type=args.source_type, )
+        fs=fs, driver=load_driver(fs),
+        viewpoint=Path.cwd(), source_type=args.source_type, )
 
-def main_expose(args, *, fs):
-    from jeolm.builder import Builder
-    if not args.targets:
-        logger.warn('No-op: no targets for exposing source')
-    builder = Builder(args.targets, fsmanager=fs, force=None)
-    for node in builder.autosource_nodes.values():
-        node.update()
-        print(node.path)
+#def main_expose(args, *, fs):
+#    from jeolm.builder import Builder
+#    if not args.targets:
+#        logger.warn('No-op: no targets for exposing source')
+#    builder = Builder(args.targets, fs=fs, force=None)
+#    for node in builder.autosource_nodes.values():
+#        node.update()
+#        print(node.path)
 
 def main_spell(args, *, fs):
     if not args.targets:
         logger.warn('No-op: no targets for spell check')
-    check_spelling(args.targets, fs=fs,)
+    check_spelling(args.targets, fs=fs, driver=load_driver(fs))
 
 def main_clean(args, *, fs):
     clean(root=fs.root)
     fs.clean_broken_links(fs.build_dir, recursive=True)
 
-def clean(root):
-    """
-    Remove all symbolic links to 'build/*whatever*' from the toplevel.
-    """
-    assert isinstance(root, Path), root
-    for x in root.iterdir():
-        if not x.is_symlink():
+
+##########
+# High-level subprograms
+
+def review(paths, *, fs, md, viewpoint=None, recursive=False):
+    import difflib
+    from . import yaml, diffprint
+    from . import cleanlogger
+    from .records import RecordsManager
+
+    inpaths = resolve_inpaths(paths,
+        source_dir=fs.source_dir, viewpoint=viewpoint )
+
+    old_metarecords = RecordsManager()
+    md.feed_metadata(old_metarecords)
+    for inpath in inpaths:
+        md.review(inpath, recursive=recursive)
+    new_metarecords = RecordsManager()
+    md.feed_metadata(new_metarecords)
+
+    comparing_iterator = RecordsManager.compare_items(
+        old_metarecords, new_metarecords, wipe_subrecords=True )
+    for inpath, old_record, new_record in comparing_iterator:
+        assert old_record is not None or new_record is not None, inpath
+        if old_record == new_record:
             continue
-        target = os.readlink(str(x))
-        if target.startswith('build/'):
-            x.unlink()
+        old_dump = yaml.dump(old_record).splitlines()
+        new_dump = yaml.dump(new_record).splitlines()
+        if old_record is None:
+            cleanlogger.info(
+                '<BOLD><GREEN>{}<NOCOLOUR> metarecord added<RESET>'
+                .format(inpath) )
+            old_dump = []
+        elif new_record is None:
+            cleanlogger.info(
+                '<BOLD><RED>{}<NOCOLOUR> metarecord removed<RESET>'
+                .format(inpath) )
+            new_dump = []
+        else:
+            cleanlogger.info(
+                '<BOLD><YELLOW>{}<NOCOLOUR> metarecord changed<RESET>'
+                .format(inpath) )
+        delta = difflib.ndiff(a=old_dump, b=new_dump)
+        diffprint.print_ndiff_delta(delta, fix_newlines=True)
 
-def print_source_list(targets, *, fs, viewpoint, source_type):
-    path_generator = list_sources(targets,
-        fs=fs, source_type=source_type )
-    for path in path_generator:
-        print(path.relative_to(viewpoint))
+#    fs.dump_metadata(metadata_manager.records) XXX
 
-def check_spelling(targets, *, fs, context=0):
+def print_source_list(targets, *, fs, driver, viewpoint=None,
+    source_type='tex'
+):
+    paths = list(list_sources(targets,
+        fs=fs, driver=driver, source_type=source_type ))
+    if viewpoint is not None:
+        paths = [ path.relative_to(viewpoint)
+            for path in paths ]
+    for path in paths:
+        print(path)
+
+def check_spelling(targets, *, fs, driver, context=0):
     from . import spell
     from .spell import IncorrectWord
     from . import cleanlogger
@@ -114,7 +167,7 @@ def check_spelling(targets, *, fs, context=0):
         indicator_length = len(str(s))
 
     path_generator = list_sources(targets,
-        fs=fs, source_type='tex' )
+        fs=fs, driver=driver, source_type='tex' )
     for path in path_generator:
         indicator_clean()
         indicator_show(str(path))
@@ -152,65 +205,50 @@ def check_spelling(targets, *, fs, context=0):
                 '<MAGENTA>{}<NOCOLOUR>:{}'.format(lineno+1, lines[lineno]) )
     indicator_clean()
 
-def review(paths, *, fs, viewpoint, recursive):
-    import difflib
-    from . import yaml, diffprint
-    from . import cleanlogger
-
-    inpaths = resolve_inpaths(paths,
-        source_dir=fs.source_dir, viewpoint=viewpoint )
-    metadata_manager = fs.load_metadata_manager()
-
-    old_metarecords = metadata_manager.construct_metarecords()
-    for inpath in inpaths:
-        metadata_manager.review(inpath, recursive=recursive)
-    new_metarecords = metadata_manager.construct_metarecords()
-    Metarecords = type(old_metarecords)
-    assert isinstance(new_metarecords, Metarecords)
-
-    comparing_iterator = Metarecords.compare_items(
-        old_metarecords, new_metarecords, wipe_subrecords=True )
-    for inpath, old_record, new_record in comparing_iterator:
-        assert old_record is not None or new_record is not None, inpath
-        if old_record == new_record:
+def clean(root):
+    """
+    Remove all symbolic links to 'build/*whatever*' from the toplevel.
+    """
+    assert isinstance(root, Path), root
+    for x in root.iterdir():
+        if not x.is_symlink():
             continue
-        old_dump = yaml.dump(old_record).splitlines()
-        new_dump = yaml.dump(new_record).splitlines()
-        if old_record is None:
-            cleanlogger.info(
-                '<BOLD><GREEN>{}<NOCOLOUR> metarecord added<RESET>'
-                .format(inpath) )
-            old_dump = []
-        elif new_record is None:
-            cleanlogger.info(
-                '<BOLD><RED>{}<NOCOLOUR> metarecord removed<RESET>'
-                .format(inpath) )
-            new_dump = []
-        else:
-            cleanlogger.info(
-                '<BOLD><YELLOW>{}<NOCOLOUR> metarecord changed<RESET>'
-                .format(inpath) )
-        delta = difflib.ndiff(a=old_dump, b=new_dump)
-        diffprint.print_ndiff_delta(delta, fix_newlines=True)
+        target = os.readlink(str(x))
+        if target.startswith('build/'):
+            x.unlink()
 
-    fs.dump_metadata(metadata_manager.records)
+##########
+# Supplementary subprograms
 
-def list_sources(targets, *, fs, source_type):
-    driver = fs.load_driver()
+def load_driver(fs):
+    from jeolm.metadata import MetadataManager
+    md = MetadataManager(fs=fs)
+    md.load_metadata()
+    return md.feed_metadata(fs.find_driver_class()())
+
+def list_sources(targets, *, fs, driver, source_type='tex'):
     source_dir = fs.source_dir
     for target in driver.list_delegators(*targets, recursively=True):
-        inpath_generator = driver.list_inpaths(target, inpath_type=source_type)
+        inpath_generator = driver.list_inpaths( target,
+            inpath_type=source_type )
         for inpath in inpath_generator:
             yield source_dir/inpath
 
-def resolve_inpaths(inpaths, *, source_dir, viewpoint):
-    assert isinstance(viewpoint, Path), viewpoint
-    assert viewpoint.is_absolute(), viewpoint
-    for inpath in inpaths:
-        path = Path(viewpoint, inpath)
+def resolve_inpaths(paths, *, source_dir, viewpoint):
+    if viewpoint is not None:
+        if not isinstance(viewpoint, Path) or not viewpoint.is_absolute():
+            raise RuntimeError(viewpoint)
+        paths = [Path(viewpoint, path) for path in paths]
+    else:
+        paths = [Path(paths) for path in paths]
+        for path in paths:
+            if not path.is_absolute():
+                raise RuntimeError(path)
+    for path in paths:
         try:
             path = path.resolve()
         except FileNotFoundError:
             pass
+            # TODO new version of resolve() (in 3.5) should solve this issue
         yield PurePath(path).relative_to(source_dir)
 

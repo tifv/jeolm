@@ -9,6 +9,7 @@ parser.add_argument('-R', '--root',
 parser.add_argument('-v', '--verbose',
     help='make debug messages to stdout',
     action='store_true', )
+
 subparsers = parser.add_subparsers()
 
 build_parser = subparsers.add_parser('build',
@@ -43,11 +44,11 @@ list_parser.add_argument('--type',
     dest='source_type', metavar='SOURCE_TYPE', )
 list_parser.set_defaults(command='list')
 
-expose_parser = subparsers.add_parser('expose',
-    help='list generated main.tex files for given targets' )
-expose_parser.add_argument('targets',
-    nargs='*', metavar='TARGET', type=Target.from_string, )
-expose_parser.set_defaults(command='expose')
+#expose_parser = subparsers.add_parser('expose',
+#    help='list generated main.tex files for given targets' )
+#expose_parser.add_argument('targets',
+#    nargs='*', metavar='TARGET', type=Target.from_string, )
+#expose_parser.set_defaults(command='expose')
 
 spell_parser = subparsers.add_parser('spell',
     help='spell-check all infiles for given targets' )
@@ -55,7 +56,7 @@ spell_parser.add_argument('targets',
     nargs='*', metavar='TARGET', type=Target.from_string, )
 spell_parser.set_defaults(command='spell')
 
-review_parser = subparsers.add_parser('review', aliases=['r'],
+review_parser = subparsers.add_parser('review',
     help='review given infiles' )
 review_parser.add_argument('inpaths',
     nargs='*', metavar='INPATH', )

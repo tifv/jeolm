@@ -5,7 +5,7 @@ from string import Template
 import abc
 
 from ..target import Target, TargetError
-from ..records import RecordPath, Records, RecordError
+from ..records import RecordsManager, RecordPath, RecordError
 
 import logging
 logger = logging.getLogger(__name__)
@@ -84,7 +84,7 @@ class Decorationer(type):
 class DriverMetaclass(Substitutioner, Decorationer, abc.ABCMeta):
     pass
 
-class BaseDriver(Records, metaclass=DriverMetaclass):
+class BaseDriver(RecordsManager, metaclass=DriverMetaclass):
 
     driver_errors = frozenset((DriverError, TargetError, RecordError))
 

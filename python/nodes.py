@@ -223,7 +223,7 @@ class PathNode(DatedNode):
         absolute pathlib.Path object
     """
 
-    root = Path.cwd()
+    root = None
 
     if __debug__:
         seen_paths = set()
@@ -283,14 +283,14 @@ class PathNode(DatedNode):
         except:
             self.load_mtime()
             if self.mtime_less(prerun_mtime, self.mtime):
-                # Failed program resulted in a file written.
+                # Failed rule resulted in a file written.
                 # We have to clear it.
                 self.log(ERROR, 'deleting {}'.format(self.relative_path))
                 self.path.unlink()
             raise
         self.load_mtime()
         if self.mtime is None:
-            # Succeeded program did not result in a file
+            # Succeeded rule did not result in a file
             raise FileNotFoundError(
                 "Path is missing after command execution: '{}'"
                 .format(self.path) )
@@ -302,7 +302,7 @@ class PathNode(DatedNode):
             raise ValueError("cwd must be an absolute Path")
         rule_repr = (
             '<cwd=<BLUE>{cwd}<NOCOLOUR>> <GREEN>{command}<NOCOLOUR>'.format(
-                cwd=self.pure_relative(cwd, self.root),
+                cwd=self.root_relative(cwd),
                 command=' '.join(callargs)
             ) )
         @self.add_rule
@@ -319,7 +319,13 @@ class PathNode(DatedNode):
 
     @property
     def relative_path(self):
-        return self.pure_relative(self.path, self.root)
+        return self.root_relative(self.path)
+
+    @classmethod
+    def root_relative(self, path):
+        if self.root is None:
+            return path
+        return self.pure_relative(path, self.root)
 
     @staticmethod
     def pure_relative(path, root):
@@ -327,6 +333,7 @@ class PathNode(DatedNode):
         Compute relative PurePath, with '..' parts.
 
         Both arguments must be absolute PurePath's and lack '..' parts.
+        As a special case, if root is None, than path is returned.
         """
         if not path.is_absolute():
             raise ValueError(path)
@@ -366,7 +373,7 @@ class ProductNode(PathNode):
     def __repr__(self):
         return (
             "{node.__class__.__qualname__}(name='{node.name}', "
-                "source='{node.source!r}', path='{node.relative_path}')"
+                "source={node.source!r}, path='{node.relative_path}')"
             .format(node=self) )
 
 class FileNode(PathNode):
