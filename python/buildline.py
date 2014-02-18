@@ -57,8 +57,8 @@ def mainloop(fs):
             try:
                 target = Target.from_string(target_s)
             except TargetError:
-                import sys, traceback
-                traceback.print_exception(*sys.exc_info())
+                import traceback
+                traceback.print_exc()
                 continue
         if target is None:
             continue
@@ -67,8 +67,8 @@ def mainloop(fs):
                 force=None, delegate=True )
             builder.build()
         except Exception:
-            import sys, traceback
-            traceback.print_exception(*sys.exc_info())
+            import traceback
+            traceback.print_exc()
 
 
 class NotifiedMetadataManager(MetadataManager):

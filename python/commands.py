@@ -4,98 +4,14 @@ module.
 """
 import os
 from contextlib import contextmanager
+from subprocess import CalledProcessError
 
-from pathlib import Path, PurePosixPath as PurePath
+from pathlib import Path, PurePosixPath
 
 import logging
 logger = logging.getLogger(__name__)
 
-##########
-# Main scripts
-
-def main():
-    from . import filesystem, nodes
-    from .argparser import parser
-    from . import setup_logging
-
-    args = parser.parse_args()
-    setup_logging(args.verbose)
-    try:
-        fs = filesystem.FilesystemManager(
-            root=Path(args.root) if args.root is not None else None )
-    except filesystem.RootNotFoundError:
-        raise SystemExit
-    nodes.PathNode.root = fs.root
-    fs.report_broken_links()
-    if 'command' not in args:
-        return parser.print_help()
-    fs.load_local_module()
-    main_function = globals()['main_' + args.command]
-    return main_function(args, fs=fs)
-
-def main_build(args, *, fs):
-    from jeolm.builder import Builder
-    if args.dump:
-        from jeolm.builder import Dumper as Builder
-    from jeolm.metadata import MetadataManager
-
-    if not args.targets:
-        logger.warn('No-op: no targets for building')
-    md = MetadataManager(fs=fs)
-    md.load_metadata()
-    Driver = fs.find_driver_class()
-    driver = md.feed_metadata(Driver())
-
-    if args.review:
-        sources = list_sources( args.targets,
-            fs=fs, driver=driver, source_type='tex' )
-        with print_metadata_diff(md):
-            review( sources, viewpoint=Path.cwd(),
-                fs=fs, md=md, recursive=False )
-        md.dump_metadata()
-        driver = md.feed_metadata(Driver())
-
-    builder = Builder(args.targets, fs=fs, driver=driver,
-        force=args.force, delegate=args.delegate )
-    builder.build()
-
-def main_review(args, *, fs):
-    from jeolm.metadata import MetadataManager
-    if not args.inpaths:
-        logger.warn('No-op: no inpaths for review')
-    md = MetadataManager(fs=fs)
-    md.load_metadata()
-    with print_metadata_diff(md):
-        review(args.inpaths, viewpoint=Path.cwd(),
-                fs=fs, md=md, recursive=args.recursive )
-    md.dump_metadata()
-
-def main_list(args, *, fs):
-    if not args.targets:
-        logger.warn('No-op: no targets for source list')
-    print_source_list(args.targets,
-        fs=fs, driver=load_driver(fs),
-        viewpoint=Path.cwd(), source_type=args.source_type, )
-
-#def main_expose(args, *, fs):
-#    from jeolm.builder import Builder
-#    if not args.targets:
-#        logger.warn('No-op: no targets for exposing source')
-#    builder = Builder(args.targets, fs=fs, force=None)
-#    for node in builder.autosource_nodes.values():
-#        node.update()
-#        print(node.path)
-
-def main_spell(args, *, fs):
-    if not args.targets:
-        logger.warn('No-op: no targets for spell check')
-    check_spelling(args.targets, fs=fs, driver=load_driver(fs))
-
-def main_clean(args, *, fs):
-    clean(root=fs.root)
-    fs.clean_broken_links(fs.build_dir, recursive=True)
-
-
+
 ##########
 # High-level subprograms
 
@@ -223,10 +139,11 @@ def clean(root):
         if target.startswith('build/'):
             x.unlink()
 
+
 ##########
 # Supplementary subprograms
 
-def load_driver(fs):
+def simple_load_driver(fs):
     from jeolm.metadata import MetadataManager
     md = MetadataManager(fs=fs)
     md.load_metadata()
@@ -256,5 +173,16 @@ def resolve_inpaths(paths, *, source_dir, viewpoint=None):
         except FileNotFoundError:
             pass
             # TODO new version of resolve() (in 3.5) should solve this issue
-        yield PurePath(path).relative_to(source_dir)
+        yield PurePosixPath(path).relative_to(source_dir)
+
+@contextmanager
+def refrain_called_process_error():
+    try:
+        yield
+    except CalledProcessError as exception:
+        if getattr(exception, 'reported', False):
+            return
+        logger.critical(
+            "Command {exc.cmd} returned code {exc.returncode}"
+            .format(exc=exception) )
 

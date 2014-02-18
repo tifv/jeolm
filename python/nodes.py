@@ -26,6 +26,9 @@ __all__ = [
 class NodeCycleError(RuntimeError):
     pass
 
+class NodeMissingPathError(FileNotFoundError):
+    pass
+
 class Node:
     """
     Node represents target, or source, or whatever.
@@ -280,9 +283,7 @@ class PathNode(DatedNode):
         self.load_mtime()
         if self.mtime is None:
             # Succeeded rule did not result in a file
-            raise FileNotFoundError(
-                "Path is missing after command execution: '{}'"
-                .format(self.path) )
+            raise NodeMissingPathError(repr(self))
         if prerun_mtime != self.mtime:
             self.modified = True
 
@@ -301,7 +302,7 @@ class PathNode(DatedNode):
                 subprocess.check_call(callargs, cwd=str(cwd), **kwargs)
             except subprocess.CalledProcessError as exception:
                 self.log(CRITICAL,
-                    '{exc.cmd} returned code {exc.returncode}'
+                    'Command {exc.cmd} returned code {exc.returncode}'
                     .format(exc=exception) )
                 exception.reported = True
                 raise
