@@ -3,6 +3,7 @@ Miscellaneous and relatively simple commands, not deserving their own
 module.
 """
 import os
+from contextlib import contextmanager
 
 from pathlib import Path, PurePosixPath as PurePath
 
@@ -48,8 +49,9 @@ def main_build(args, *, fs):
     if args.review:
         sources = list_sources( args.targets,
             fs=fs, driver=driver, source_type='tex' )
-        review( sources, viewpoint=Path.cwd(),
-            fs=fs, md=md, recursive=False )
+        with print_metadata_diff(md):
+            review( sources, viewpoint=Path.cwd(),
+                fs=fs, md=md, recursive=False )
         md.dump_metadata()
         driver = md.feed_metadata(Driver())
 
@@ -63,8 +65,9 @@ def main_review(args, *, fs):
         logger.warn('No-op: no inpaths for review')
     md = MetadataManager(fs=fs)
     md.load_metadata()
-    review(args.inpaths, viewpoint=Path.cwd(),
-            fs=fs, md=md, recursive=args.recursive )
+    with print_metadata_diff(md):
+        review(args.inpaths, viewpoint=Path.cwd(),
+                fs=fs, md=md, recursive=args.recursive )
     md.dump_metadata()
 
 def main_list(args, *, fs):
@@ -96,19 +99,18 @@ def main_clean(args, *, fs):
 ##########
 # High-level subprograms
 
-def review(paths, *, fs, md, viewpoint=None, recursive=False):
+@contextmanager
+def print_metadata_diff(md):
     import difflib
     from . import yaml, diffprint
     from . import cleanlogger
     from .records import RecordsManager
 
-    inpaths = resolve_inpaths(paths,
-        source_dir=fs.source_dir, viewpoint=viewpoint )
-
     old_metarecords = RecordsManager()
     md.feed_metadata(old_metarecords)
-    for inpath in inpaths:
-        md.review(inpath, recursive=recursive)
+
+    yield
+
     new_metarecords = RecordsManager()
     md.feed_metadata(new_metarecords)
 
@@ -137,7 +139,11 @@ def review(paths, *, fs, md, viewpoint=None, recursive=False):
         delta = difflib.ndiff(a=old_dump, b=new_dump)
         diffprint.print_ndiff_delta(delta, fix_newlines=True)
 
-#    fs.dump_metadata(metadata_manager.records) XXX
+def review(paths, *, fs, md, viewpoint=None, recursive=False):
+    inpaths = resolve_inpaths(paths,
+        source_dir=fs.source_dir, viewpoint=viewpoint )
+    for inpath in inpaths:
+        md.review(inpath, recursive=recursive)
 
 def print_source_list(targets, *, fs, driver, viewpoint=None,
     source_type='tex'
@@ -234,13 +240,13 @@ def list_sources(targets, *, fs, driver, source_type='tex'):
         for inpath in inpath_generator:
             yield source_dir/inpath
 
-def resolve_inpaths(paths, *, source_dir, viewpoint):
+def resolve_inpaths(paths, *, source_dir, viewpoint=None):
     if viewpoint is not None:
         if not isinstance(viewpoint, Path) or not viewpoint.is_absolute():
             raise RuntimeError(viewpoint)
         paths = [Path(viewpoint, path) for path in paths]
     else:
-        paths = [Path(paths) for path in paths]
+        paths = [Path(path) for path in paths]
         for path in paths:
             if not path.is_absolute():
                 raise RuntimeError(path)

@@ -26,9 +26,8 @@ class MetadataManager(RecordsManager):
     }
 
     def __init__(self, *, fs):
-        super().__init__()
         self.fs = fs
-        self.source_dir = self.fs.source_dir
+        super().__init__()
 
     def load_metadata(self):
         self.merge(self.fs.load_metadata())
@@ -52,33 +51,30 @@ class MetadataManager(RecordsManager):
         return metarecords
 
     def review(self, inpath, *, recursive=False):
-        path = self.source_dir/inpath
+        path = self.fs.source_dir/inpath
         metapath = RecordPath(inpath)
         exists = path.exists()
         recorded = metapath in self
         is_dir = (metapath.suffix == '')
-        if not is_dir and not inpath.suffix in self.source_types:
-            raise ValueError(inpath)
+        if not inpath.suffix in self.source_types:
+            raise ValueError("Path suffix unrecognized: {}".format(inpath))
+        if is_dir and not path.is_dir() or not is_dir and path.is_dir():
+            # We refuse to see this
+            exists = False
         if not exists:
             assert metapath.name # non-empty path
             if recorded:
-                self.getitem(metapath.parent, original=True).pop(metapath.name)
-                self.clear_cache()
+                self.unmerge(metapath)
             else:
                 logger.warning(
                     '{} was not recorded and does not exist as file. No-op.'
                     .format(metapath) )
             return
-        if is_dir and not path.is_dir():
-            raise NotADirectoryError(inpath)
-        if not is_dir and path.is_dir():
-            raise IsADirectoryError(inpath)
         if is_dir and recorded and recursive:
             if __debug__ and metapath == RecordPath('/'):
                 assert self.getitem(metapath, original=True) is self.records
-                logger.debug('Metadata invalidated')
-            self.getitem(metapath, original=True).clear()
-            self.clear_cache()
+                logger.debug('All metadata cleared.')
+            self.clear(metapath)
         if is_dir:
             metadata = {'$source' : True}
             if recursive:
@@ -88,7 +84,7 @@ class MetadataManager(RecordsManager):
         self.merge({metapath : {'$metadata' : metadata}}, overwrite=True)
 
     def review_subpaths(self, inpath):
-        for subname in os.listdir(str(self.source_dir/inpath)):
+        for subname in os.listdir(str(self.fs.source_dir/inpath)):
             if subname.startswith('.'):
                 continue
             subpath = inpath/subname
@@ -118,14 +114,14 @@ class MetadataManager(RecordsManager):
         return metadata
 
     def query_yaml_file(self, inpath):
-        with (self.source_dir/inpath).open('r') as f:
+        with (self.fs.source_dir/inpath).open('r') as f:
             metadata = yaml.load(f)
         if not isinstance(metadata, dict):
             raise TypeError(inpath, type(metadata))
         return metadata
 
     def query_tex_file(self, inpath):
-        with (self.source_dir/inpath).open('r') as f:
+        with (self.fs.source_dir/inpath).open('r') as f:
             s = f.read()
         return self.query_tex_content(inpath, s)
 
@@ -181,7 +177,7 @@ class MetadataManager(RecordsManager):
         r'(?:\n% [ -].+)*')
 
     def query_asy_file(self, inpath):
-        with (self.source_dir/inpath).open('r') as f:
+        with (self.fs.source_dir/inpath).open('r') as f:
             s = f.read()
         return self.query_asy_content(inpath, s)
 

@@ -5,39 +5,23 @@ from .base import BaseDriver, DriverError
 
 class DelegatingDriver(BaseDriver):
 
-    def __init__(self):
-        super().__init__()
-        self.delegators_cache = dict()
-
-    def clear_cache(self):
-        super().clear_cache()
-        self.delegators_cache.clear()
-
-
     ##########
-    # Interface methods and attributes
+    # High-level functions
+    # (not dealing with metarecords and LaTeX strings directly)
 
-    @folding_driver_errors
-    def list_delegators(self, *targets, recursively=True):
-        if len(targets) != 1 and not recursively:
-            raise RuntimeError
-        for target in targets:
-            try:
-                delegators = self.delegators_cache[target, recursively]
-            except KeyError:
-                if recursively:
-                    delegators = tuple(self.trace_delegators(target))
+    @checking_target_recursion
+    @processing_target_aspect(aspect='delegation', wrap_generator=True)
+    def trace_delegators(self, target, *, seen_targets):
+        """Yield targets."""
+        try:
+            for item in self.generate_delegators(target):
+                if isinstance(item, Target):
+                    yield from self.trace_delegators(item,
+                        seen_targets=seen_targets )
                 else:
-                    try:
-                        delegators = tuple(self.generate_delegators(target))
-                    except self.NoDelegators:
-                        delegators = None
-                self.delegators_cache[target, recursively] = delegators
-            if delegators is None:
-                assert not recursively, target
-                raise self.NoDelegators
-            else:
-                yield from delegators
+                    raise RuntimeError(item)
+        except self.NoDelegators:
+            yield target
 
 
     ##########
@@ -73,18 +57,4 @@ class DelegatingDriver(BaseDriver):
                     yield derive_target(target, item['delegate'])
                 else:
                     raise DriverError(item)
-
-    @checking_target_recursion
-    @processing_target_aspect(aspect='delegation', wrap_generator=True)
-    def trace_delegators(self, target, *, seen_targets):
-        """Yield targets."""
-        try:
-            for item in self.generate_delegators(target):
-                if isinstance(item, Target):
-                    yield from self.trace_delegators(item,
-                        seen_targets=seen_targets )
-                else:
-                    raise RuntimeError(item)
-        except self.NoDelegators:
-            yield target
 

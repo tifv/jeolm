@@ -1,6 +1,7 @@
 from collections import OrderedDict
 
 import pathlib
+from pathlib import Path, PurePosixPath
 
 from .utils import unique, dict_ordered_keys, dict_ordered_items
 
@@ -50,20 +51,26 @@ class RecordsManager:
 
     def __init__(self):
         self.records = self.Dict()
+        self._create_record(RecordPath(), self.records)
         self.cache = dict()
 
     def clear_cache(self):
         self.cache.clear()
 
-    def merge(self, piece, *, overwrite=True, record=None):
-        if piece is None:
-            return
-        if not isinstance(piece, dict):
-            raise TypeError(piece)
-        if record is None:
-            record = self.records
-        for key, value in dict_ordered_items(piece):
-            self._merge_item(key, value, overwrite=overwrite, record=record)
+    def merge(self, data, *, overwrite=True):
+        self._merge(RecordPath(), self.records, data, overwrite=overwrite)
+        self.clear_cache()
+
+    def unmerge(self, path):
+        if path.name == '':
+            raise RuntimeError(path)
+        self._destroy_record(path,
+            self.getitem(path.parent, original=True).pop(path.name) )
+        self.clear_cache()
+
+    def clear(self, path=RecordPath()):
+        self._clear_record(path, self.getitem(path, original=True))
+        self.clear_cache()
 
     def reorder(self, path, sample):
         self.reorder_omap(self.getitem(path, original=True), sample)
@@ -77,36 +84,65 @@ class RecordsManager:
             omap[key] = swap.pop(key)
         omap.update(swap)
 
-    def _merge_item(self, key, value, *, overwrite, record):
+    def _merge(self, path, record, data, *, overwrite=True):
+        if data is None:
+            return
+        if not isinstance(data, dict):
+            raise RecordError("Only able to merge a dict, found {!r}"
+                .format(type(data)) )
+        for key, value in dict_ordered_items(data):
+            self._merge_item(path, record, key, value, overwrite=overwrite)
+
+    def _merge_item(self, path, record, key, value, *, overwrite=True):
         if isinstance(key, RecordPath):
-            return self.merge(value,
-                record=self.getitem( key, record=record,
-                    create_path=True, original=True ),
-                overwrite=overwrite, )
+            if key == RecordPath():
+                return self._merge( path, record, value,
+                    overwrite=overwrite )
+            return self._merge_item( path, record,
+                key.parent, {key.name : value},
+                overwrite=overwrite )
         elif isinstance(key, str):
             pass
         else:
-            raise TypeError(key)
+            raise RecordError("Only able to merge string keys, found {!r}"
+                .format(type(key)) )
 
         if key.startswith('$'):
-            if key not in record or overwrite:
+            if overwrite or key not in record:
                 record[key] = value
-                self.clear_cache()
             else:
                 pass # discard value
         else:
             child_record = record.get(key)
             if child_record is None:
-                child_record = record[key] = self.Dict()
-                self.clear_cache()
-            self.merge(value, overwrite=overwrite, record=child_record)
+                child_record = self._create_subrecord(path, record, key)
+            self._merge(path/key, child_record, value, overwrite=overwrite)
 
-    def getitem(self, path, *, record=None,
-        create_path=False, original=False
-    ):
+    def _create_subrecord(self, path, record, key):
+        child_record = record[key] = self.Dict()
+        return self._create_record(path/key, child_record)
+
+    def _create_record(self, path, record):
+        # To insert the record in the parent
+        # is the resposibility of caller!
+        return record
+
+    def _clear_record(self, path, record):
+        while record:
+            key, value = record.popitem()
+            if key.startswith('$'):
+                continue
+            self._destroy_record(path/key, value)
+
+    def _destroy_record(self, path, record):
+        # To pop the record out of parent
+        # is the resposibility of caller!
+        self._clear_record(path, record)
+
+    def getitem(self, path, *, original=False):
         if not isinstance(path, RecordPath):
             raise RuntimeError(type(path))
-        use_cache = record is None and not create_path and not original
+        use_cache = not original
         if use_cache:
             try:
                 return self.cache[path]
@@ -115,18 +151,14 @@ class RecordsManager:
 
         name = path.name
         if name == '':
-            if record is None:
-                record = self._get_root(
-                    create_path=create_path, original=original )
+            record = self._get_root(original=original)
         elif name.startswith('$'):
             raise ValueError(path)
         else:
             try:
                 # Recurse, making use of cache
-                parent_record = self.getitem(path.parent, record=record,
-                    create_path=create_path, original=original )
-                record = self._get_child(parent_record, name,
-                    create_path=create_path, original=original )
+                parent_record = self.getitem(path.parent, original=original)
+                record = self._get_child(parent_record, name, original=original)
             except RecordNotFoundError as error:
                 if error.args == ():
                     raise RecordNotFoundError(
@@ -137,24 +169,20 @@ class RecordsManager:
             self.cache[path] = record
         return record
 
-    def _get_root(self, create_path=False, original=False):
+    def _get_root(self, original=False):
         record = self.records
-        if not create_path and not original:
+        if not original:
             record = record.copy()
             self.derive_attributes({}, record, name=None)
         return record
 
-    def _get_child(self, record, name, *, create_path, original):
+    def _get_child(self, record, name, *, original=False):
         try:
             child_record = record[name]
         except KeyError:
-            if create_path:
-                child_record = record[name] = self.Dict()
-                self.clear_cache()
-            else:
-                raise RecordNotFoundError from None
+            raise RecordNotFoundError from None
         assert isinstance(child_record, dict), child_record
-        if not create_path and not original:
+        if not original:
             child_record = child_record.copy()
             self.derive_attributes(record, child_record, name)
         return child_record

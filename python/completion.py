@@ -1,4 +1,5 @@
 from collections import OrderedDict as ODict
+import abc
 
 from pathlib import Path, PurePosixPath
 
@@ -94,31 +95,15 @@ def main():
         # Request for filename completion
         sys.exit(100)
     elif subcommand in subcommands_accepting_targets:
-        completer = Completer(fs)
+        completer = CachingCompleter(fs)
         completions = list(completer.complete_target(current))
         print('\n'.join(completions))
 
-class Completer:
-    def __init__(self, fs):
-        self.fs = fs
-        self.load_target_list()
+class BaseCompleter(metaclass=abc.ABCMeta):
 
-    def load_target_list(self):
-
-        self.target_list = self.fs.load_updated_completion_cache()
-        if self.target_list is not None:
-            return
-
-        from jeolm.metadata import MetadataManager
-        Driver = self.fs.find_driver_class()
-
-        md = MetadataManager(fs=self.fs)
-        md.load_metadata()
-        driver = md.feed_metadata(Driver())
-        self.target_list = driver.list_metapaths()
-        if not self.target_list:
-            logger.warning("Target list seems empty.")
-        self.fs.dump_completion_cache(self.target_list)
+    @abc.abstractproperty
+    def target_list(self):
+        raise NotImplementedError
 
     def complete_target(self, uncompleted_arg):
         """Return an iterator over completions."""
@@ -151,13 +136,56 @@ class Completer:
             yield str(uncompleted_parent/name) + '/'
 
     def readline_completer(self, text, state):
-        if not hasattr(self, 'saved_text') or self.saved_text != text:
-            self.saved_completion = list(self.complete_target(text))
-            self.saved_text = text
-        if state < len(self.saved_completion):
-            return self.saved_completion[state];
-        else:
-            return None;
+        try:
+            if not hasattr(self, 'saved_text') or self.saved_text != text:
+                self.saved_completion = list(self.complete_target(text))
+                self.saved_text = text
+            if state < len(self.saved_completion):
+                return self.saved_completion[state];
+            else:
+                return None;
+        except:
+            import sys, traceback
+            traceback.print_exception(*sys.exc_info())
+
+class Completer(BaseCompleter):
+
+    def __init__(self, driver):
+        self.driver = driver
+        super().__init__()
+
+    @property
+    def target_list(self):
+        return ( PurePosixPath(metapath)
+            for metapath in self.driver.list_metapaths() )
+
+class CachingCompleter(BaseCompleter):
+
+    def __init__(self, fs):
+        self.fs = fs
+        super().__init__()
+
+    @property
+    def target_list(self):
+        try:
+            return self._target_list
+        except AttributeError:
+            pass
+
+        target_list = self.fs.load_updated_completion_cache()
+        if target_list is None:
+            from jeolm.metadata import MetadataManager
+            Driver = self.fs.find_driver_class()
+            md = MetadataManager(fs=self.fs)
+            md.load_metadata()
+            driver = md.feed_metadata(Driver())
+            target_list = [ PurePosixPath(metapath)
+                for metapath in driver.list_metapaths() ]
+            if not target_list:
+                logger.warning("Target list seems empty.")
+            self.fs.dump_completion_cache(target_list)
+        self._target_list = target_list
+        return target_list
 
 if __name__ == '__main__':
     main()

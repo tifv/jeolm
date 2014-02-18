@@ -88,48 +88,16 @@ class BaseDriver(RecordsManager, metaclass=DriverMetaclass):
 
     driver_errors = frozenset((DriverError, TargetError, RecordError))
 
-    ##########
-    # Interface methods
+    def __init__(self):
+        super().__init__()
+        self.clear_cache()
 
-    class NoDelegators(Exception):
-        pass
-
-    @abc.abstractmethod
-    def produce_outrecord(self, target):
-        raise DriverError(target)
-
-    @abc.abstractmethod
-    def produce_figrecord(self, figpath):
-        raise DriverError(figpath)
-
-    @abc.abstractmethod
-    def list_inpaths(self, *targets, inpath_type='tex'):
-        raise DriverError(*targets)
-
-    @abc.abstractmethod
-    def list_delegators(self, *targets, recursively=True):
-        if recursively:
-            yield from targets
-        else:
-            raise self.NoDelegators
-
-    def list_metapaths(self, path=None):
-        """Yield metapaths as strings."""
-        if path is None:
-            path = RecordPath()
-            root = True
-        else:
-            root = False
-        record = self.getitem(path)
-        if not record.get('$targetable', True):
-            return
-        if not root:
-            yield str(path)
-        for key in record:
-            if key.startswith('$'):
-                continue
-            yield from self.list_metapaths(path=path/key)
-
+    def clear_cache(self):
+        super().clear_cache()
+        self.outrecords_cache = dict()
+        self.figrecords_cache = dict()
+        self.delegators_cache = dict()
+        self.metapath_list_cache = None
 
     ##########
     # Advanced error reporting
@@ -196,6 +164,133 @@ class BaseDriver(RecordsManager, metaclass=DriverMetaclass):
                         yield from method(self, target, *args, **kwargs)
             return wrapper
         return decorator
+
+    ##########
+    # Interface methods and attributes
+
+    @folding_driver_errors
+    def produce_outrecord(self, target):
+        """
+        Return outrecord.
+
+        Each outrecord must contain the following fields:
+        'outname'
+            string equal to the corresponding outname
+        'sources'
+            {alias_name : inpath for each inpath}
+            where alias_name is a filename with '.tex' extension,
+            and inpath also has '.tex' extension.
+        'fignames'
+            an iterable of strings; all of them must be contained
+            in figrecords.keys()
+        'document'
+            LaTeX document as a string
+        """
+        try:
+            return self.outrecords_cache[target]
+        except KeyError:
+            pass
+        outrecord = self.outrecords_cache[target] = \
+            self.generate_outrecord(target)
+        return outrecord
+
+    @folding_driver_errors
+    def produce_figrecord(self, figpath):
+        """
+        Return figrecord.
+
+        Each figrecord must contain the following fields:
+        'figname'
+            string equal to the corresponding figname
+        'source'
+            inpath with '.asy' or '.eps' extension
+        'type'
+            string, either 'asy' or 'eps'
+
+        In case of Asymptote file ('asy' type), figrecord must also
+        contain:
+        'used'
+            {used_name : inpath for each used inpath}
+            where used_name is a filename with '.asy' extension,
+            and inpath has '.asy' extension
+        """
+        try:
+            return self.figrecords_cache[figpath]
+        except KeyError:
+            pass
+        figrecord = self.figrecords_cache[figpath] = \
+            self.generate_figrecord(figpath)
+        return figrecord
+
+    def list_inpaths(self, *targets, inpath_type='tex'):
+        for target in targets:
+            outrecord = self.produce_outrecord(target)
+            if inpath_type == 'tex':
+                for inpath in outrecord['inpaths'].values():
+                    if inpath.suffix == '.tex':
+                        yield inpath
+            elif inpath_type == 'asy':
+                for figpath in outrecord['figpaths'].values():
+                    figrecord = self.produce_figrecord(figpath)
+                    if figrecord['type'] == 'asy':
+                        yield figrecord['source']
+
+    class NoDelegators(Exception):
+        pass
+
+    @folding_driver_errors
+    def list_delegators(self, *targets, recursively=True):
+        if len(targets) != 1 and not recursively:
+            raise RuntimeError
+        for target in targets:
+            try:
+                delegators = self.delegators_cache[target, recursively]
+            except KeyError:
+                if recursively:
+                    delegators = list(self.trace_delegators(target))
+                else:
+                    try:
+                        delegators = list(self.generate_delegators(target))
+                    except self.NoDelegators:
+                        delegators = None
+                self.delegators_cache[target, recursively] = delegators
+            if delegators is None:
+                assert not recursively, target
+                raise self.NoDelegators
+            else:
+                yield from delegators
+
+    def list_metapaths(self):
+        if self.metapath_list_cache is not None:
+            return iter(self.metapath_list_cache)
+        else:
+            metapath_list = self.metapath_list_cache = \
+                list(self.generate_metapaths())
+            return iter(metapath_list)
+
+
+    ##########
+    # High-level functions
+    # (not dealing with metarecords and LaTeX strings directly)
+
+    @abc.abstractmethod
+    def generate_outrecord(self, target):
+        raise NotImplementedError
+
+    @abc.abstractmethod
+    def generate_figrecord(self, target):
+        raise NotImplementedError
+
+    @abc.abstractmethod
+    def trace_delegators(self, target, *, seen_targets):
+        raise NotImplementedError
+
+    ##########
+    # Record-level functions
+
+    @abc.abstractmethod
+    def generate_delegators(self, target, metarecord):
+        raise NotImplementedError
 
     ##########
     # Record extension
@@ -283,4 +378,21 @@ class BaseDriver(RecordsManager, metaclass=DriverMetaclass):
             return method(self, target, *args,
                 seen_targets=seen_targets, **kwargs )
         return wrapper
+
+    def generate_metapaths(self, path=None):
+        """Yield metapaths."""
+        if path is None:
+            path = RecordPath()
+            root = True
+        else:
+            root = False
+        record = self.getitem(path)
+        if not record.get('$targetable', True):
+            return
+        if not root:
+            yield path
+        for key in record:
+            if key.startswith('$'):
+                continue
+            yield from self.generate_metapaths(path=path/key)
 

@@ -14,87 +14,6 @@ logger = logging.getLogger(__name__)
 
 class GeneratingDriver(BaseDriver):
 
-    def __init__(self):
-        super().__init__()
-        self.outrecords_cache = dict()
-        self.figrecords_cache = dict()
-
-    def clear_cache(self):
-        super().clear_cache()
-        self.outrecords_cache.clear()
-        self.figrecords_cache.clear()
-
-    ##########
-    # Interface methods
-
-    @folding_driver_errors
-    def produce_outrecord(self, target):
-        """
-        Return outrecord.
-
-        Each outrecord must contain the following fields:
-        'outname'
-            string equal to the corresponding outname
-        'sources'
-            {alias_name : inpath for each inpath}
-            where alias_name is a filename with '.tex' extension,
-            and inpath also has '.tex' extension.
-        'fignames'
-            an iterable of strings; all of them must be contained
-            in figrecords.keys()
-        'document'
-            LaTeX document as a string
-        """
-        try:
-            return self.outrecords_cache[target]
-        except KeyError:
-            pass
-        outrecord = self.outrecords_cache[target] = \
-            self.generate_outrecord(target)
-        return outrecord
-
-    @folding_driver_errors
-    def produce_figrecord(self, figpath):
-        """
-        Return figrecord.
-
-        Each figrecord must contain the following fields:
-        'figname'
-            string equal to the corresponding figname
-        'source'
-            inpath with '.asy' or '.eps' extension
-        'type'
-            string, either 'asy' or 'eps'
-
-        In case of Asymptote file ('asy' type), figrecord must also
-        contain:
-        'used'
-            {used_name : inpath for each used inpath}
-            where used_name is a filename with '.asy' extension,
-            and inpath has '.asy' extension
-        """
-        try:
-            return self.figrecords_cache[figpath]
-        except KeyError:
-            pass
-        figrecord = self.figrecords_cache[figpath] = \
-            self.generate_figrecord(figpath)
-        return figrecord
-
-    def list_inpaths(self, *targets, inpath_type='tex'):
-        for target in targets:
-            outrecord = self.produce_outrecord(target)
-            if inpath_type == 'tex':
-                for inpath in outrecord['inpaths'].values():
-                    if inpath.suffix == '.tex':
-                        yield inpath
-            elif inpath_type == 'asy':
-                for figpath in outrecord['figpaths'].values():
-                    figrecord = self.produce_figrecord(figpath)
-                    if figrecord['type'] == 'asy':
-                        yield figrecord['source']
-
-
     ##########
     # High-level functions
     # (not dealing with metarecords and LaTeX strings directly)
@@ -601,7 +520,7 @@ class GeneratingDriver(BaseDriver):
                 for figref, figpath_s in recorded_figures.items():
                     figpath = RecordPath(figpath_s)
                     figalias = self.select_alias(
-                        figpath.as_inpath(suffix='.eps'), suffix='.eps')
+                        figpath.as_inpath(suffix='.eps'), suffix='')
                     figalias_map[figref] = figalias
                     self.check_and_set(figpaths, figalias, figpath)
             elif isinstance(item, self.LaTeXPackageBodyItem):
@@ -679,7 +598,6 @@ class GeneratingDriver(BaseDriver):
     @classmethod
     def load_library(cls, library_name):
         if library_name == 'pgfpages':
-            logger.debug('pgfpages metadata library loaded')
             return cls.pgfpages_library
         else:
             super().load_library(library_name)
@@ -835,7 +753,7 @@ class GeneratingDriver(BaseDriver):
     input_template = r'\input{$filename}% $inpath'
 
     @classmethod
-    def constitute_figalias_map(cls, fignalias_map):
+    def constitute_figalias_map(cls, figalias_map):
         return '\n'.join(
             cls.substitute_jeolmfiguremap(ref=figref, alias=figalias)
             for figref, figalias in figalias_map.items() )

@@ -196,9 +196,9 @@ class Builder:
             LinkNode(
                 name='doc:{:target}:fig:{}'.format(target, figalias),
                 source=self.eps_nodes[figpath],
-                path=build_dir/figalias,
+                path=(build_dir/figalias).with_suffix('.eps'),
                 needs=(build_dir_node,) )
-            for figalias, figpath in outrecord['figpaths'] ]
+            for figalias, figpath in outrecord['figpaths'].items() ]
         assert len(set(node.name for node in linked_figures)) == \
             len(linked_figures)
 

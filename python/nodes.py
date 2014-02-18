@@ -225,9 +225,6 @@ class PathNode(DatedNode):
 
     root = None
 
-    if __debug__:
-        seen_paths = set()
-
     def __init__(self, path, **kwargs):
         if not isinstance(path, Path):
             path = Path(path)
@@ -236,14 +233,6 @@ class PathNode(DatedNode):
                 "{cls.__qualname__} cannot be initialized "
                 "with relative path: '{path}'"
                 .format(cls=self.__class__, path=path) )
-        if __debug__:
-            if path in self.seen_paths:
-                warnings.warn(
-                    "Duplicate {node.__class__.__qualname__}"
-                    "(path='{path}') detected"
-                    .format(node=self, path=path),
-                    stacklevel=2 )
-            self.seen_paths.add(path)
         if 'name' not in kwargs:
             kwargs['name'] = str(path)
         super().__init__(**kwargs)

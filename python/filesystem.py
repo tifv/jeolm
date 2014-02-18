@@ -1,6 +1,6 @@
 from functools import lru_cache
 
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 import logging
 logger = logging.getLogger(__name__)
@@ -86,11 +86,6 @@ class FilesystemManager:
     ##########
     # Complicated matters
 
-#    def load_driver(self):
-#        metadata_manager = self.load_metadata_manager()
-#        Driver = self.find_driver_class()
-#        return metadata_manager.construct_metarecords(Metarecords=Driver)
-
     def find_driver_class(self):
         """
         Return appropriate Driver class.
@@ -137,13 +132,6 @@ class FilesystemManager:
             .format(module_path, module_name) )
         return local_module
 
-#    def load_metadata_manager(self):
-#        metadata = self.load_metadata()
-#        from .metadata import MetadataManager
-#        metadata_manager = MetadataManager(fsmanager=self)
-#        metadata_manager.merge(metadata)
-#        return metadata_manager
-
     def load_metadata(self):
         try:
             with self.metadata_path.open('rb') as f:
@@ -182,16 +170,15 @@ class FilesystemManager:
             f.write(s)
         new_path.rename(self.outrecords_cache_path)
 
-    def load_updated_completion_cache(self):
+    def load_updated_completion_cache(self, _Path=PurePosixPath):
         cache_path = self.completion_cache_path
         if not cache_path.exists():
             return None
         if cache_path.stat().st_mtime_ns <= self.metadata_mtime:
             # Do not load if the cache is outdated
             return None
-        from pathlib import PurePosixPath as PurePath
         with cache_path.open() as f:
-            return [ PurePath(x)
+            return [ _Path(x)
                 for x in f.read().split('\n') if x != '' ]
 
     def dump_completion_cache(self, target_list):
