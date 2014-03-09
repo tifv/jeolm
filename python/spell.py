@@ -12,37 +12,22 @@ class TextPiece:
     def __init__(self, s):
         if isinstance(s, str):
             self.s = s
-        elif isinstance(s, TextPiece):
-            self.s = s.s
         else:
             raise RuntimeError(type(s))
 
-    def __str__(self):
-        return self.s
-
 class Word(TextPiece):
-
-    def correct(self, is_correct=True):
-        if is_correct:
-            return CorrectWord(self)
-        else:
-            return self.incorrect()
-
-    def incorrect(self):
-        return IncorrectWord(self)
+    __slots__ = []
 
 class DottedAbbr(Word):
-    pass
+    __slots__ = []
 
 class CorrectWord(Word):
-    def __str__(self):
-        return '<GREEN>' + super().__str__() + '<NOCOLOUR>'
+    __slots__ = []
 
 class IncorrectWord(Word):
-    def __str__(self):
-        return '<RED>' + super().__str__() + '<NOCOLOUR>'
+    __slots__ = []
 
-class Speller:
+class LaTeXSpeller:
     def __init__(self, text, lang):
         self.lang = lang
         self.text = self.prepare_text(text, lang=lang)
@@ -60,12 +45,17 @@ class Speller:
             assert isinstance(text_piece, TextPiece), type(text_piece)
             if not isinstance(text_piece, Word):
                 yield text_piece
+            elif isinstance(text_piece, DottedAbbr):
+                if text_piece.s in self.dotted_abbrs[self.lang]:
+                    yield CorrectWord(text_piece.s)
+                else:
+                    yield IncorrectWord(text_piece.s)
                 continue
-            if isinstance(text_piece, DottedAbbr):
-                yield text_piece.correct(
-                    text_piece.s in self.dotted_abbrs[self.lang] )
-                continue
-            yield text_piece.correct(dictionary.check(text_piece.s))
+            else:
+                if dictionary.check(text_piece.s):
+                    yield CorrectWord(text_piece.s)
+                else:
+                    yield IncorrectWord(text_piece.s)
 
     prepare_text_pattern = re.compile('(?m)'
         r'^% spell (?P<delimiter>.)(?P<from>.*?)(?P=delimiter)'

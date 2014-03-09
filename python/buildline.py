@@ -7,7 +7,8 @@ from jeolm.builder import Builder
 from jeolm.filesystem import FilesystemManager
 from jeolm.metadata import MetadataManager
 
-from jeolm.commands import review, print_metadata_diff
+from jeolm.commands import review
+from jeolm.diffprint import log_metadata_diff
 from jeolm.completion import Completer
 
 from jeolm.records import RecordPath
@@ -30,7 +31,7 @@ def mainloop(fs):
     md.feed_metadata(driver)
 
     def review_metadata():
-        with print_metadata_diff(md):
+        with log_metadata_diff(md):
             review_list = md.generate_review_list()
             metadata_changed = bool(review_list)
             if metadata_changed:

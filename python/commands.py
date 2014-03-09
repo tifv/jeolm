@@ -15,46 +15,6 @@ logger = logging.getLogger(__name__)
 ##########
 # High-level subprograms
 
-@contextmanager
-def print_metadata_diff(md):
-    import difflib
-    from . import yaml, diffprint
-    from . import cleanlogger
-    from .records import RecordsManager
-
-    old_metarecords = RecordsManager()
-    md.feed_metadata(old_metarecords)
-
-    yield
-
-    new_metarecords = RecordsManager()
-    md.feed_metadata(new_metarecords)
-
-    comparing_iterator = RecordsManager.compare_items(
-        old_metarecords, new_metarecords, wipe_subrecords=True )
-    for inpath, old_record, new_record in comparing_iterator:
-        assert old_record is not None or new_record is not None, inpath
-        if old_record == new_record:
-            continue
-        old_dump = yaml.dump(old_record).splitlines()
-        new_dump = yaml.dump(new_record).splitlines()
-        if old_record is None:
-            cleanlogger.info(
-                '<BOLD><GREEN>{}<NOCOLOUR> metarecord added<RESET>'
-                .format(inpath) )
-            old_dump = []
-        elif new_record is None:
-            cleanlogger.info(
-                '<BOLD><RED>{}<NOCOLOUR> metarecord removed<RESET>'
-                .format(inpath) )
-            new_dump = []
-        else:
-            cleanlogger.info(
-                '<BOLD><YELLOW>{}<NOCOLOUR> metarecord changed<RESET>'
-                .format(inpath) )
-        delta = difflib.ndiff(a=old_dump, b=new_dump)
-        diffprint.print_ndiff_delta(delta, fix_newlines=True)
-
 def review(paths, *, fs, md, viewpoint=None, recursive=False):
     inpaths = resolve_inpaths(paths,
         source_dir=fs.source_dir, viewpoint=viewpoint )
@@ -74,8 +34,8 @@ def print_source_list(targets, *, fs, driver, viewpoint=None,
 
 def check_spelling(targets, *, fs, driver, context=0):
     from . import spell
-    from .spell import IncorrectWord
-    from . import cleanlogger
+    from .spell import LaTeXSpeller, CorrectWord, IncorrectWord
+    from .fancify import fancifying_print
 
     indicator_length = 0
     def indicator_clean():
@@ -87,6 +47,13 @@ def check_spelling(targets, *, fs, driver, context=0):
         nonlocal indicator_length
         print(s, end='\r')
         indicator_length = len(str(s))
+    def piece_to_string(piece):
+        if isinstance(piece, CorrectWord):
+            return '<GREEN>{}<NOCOLOUR>'.format(piece.s)
+        elif isinstance(piece, IncorrectWord):
+            return '<RED>{}<NOCOLOUR>'.format(piece.s)
+        else:
+            return piece.s
 
     path_generator = list_sources(targets,
         fs=fs, driver=driver, source_type='tex' )
@@ -99,14 +66,14 @@ def check_spelling(targets, *, fs, driver, context=0):
         lines = ['']
         printed_line_numbers = set()
         try:
-            for text_piece in spell.Speller(text, lang='ru_RU'):
-                if isinstance(text_piece, IncorrectWord):
+            for piece in spell.LaTeXSpeller(text, lang='ru_RU'):
+                if isinstance(piece, IncorrectWord):
                     lineno = len(lines) - 1
                     printed_line_numbers.update(
                         range(lineno-context, lineno+context+1) )
-                text_piece = str(text_piece).split('\n')
-                lines[-1] += text_piece[0]
-                for subpiece in text_piece[1:]:
+                piece_sl = piece_to_string(piece).split('\n')
+                lines[-1] += piece_sl[0]
+                for subpiece in piece_sl[1:]:
                     lines.append(subpiece)
         except ValueError as error:
             raise ValueError(
@@ -116,15 +83,19 @@ def check_spelling(targets, *, fs, driver, context=0):
         if not printed_line_numbers:
             continue
         indicator_clean()
-        cleanlogger.info(
+        fancifying_print(
             '<BOLD><YELLOW>{}<NOCOLOUR> possible misspellings<RESET>'
             .format(path.relative_to(fs.source_dir)) )
         line_range = range(len(lines))
+        lineno_offset = len(str(len(lines)))
         for lineno in sorted(printed_line_numbers):
             if lineno not in line_range:
                 continue
-            cleanlogger.info(
-                '<MAGENTA>{}<NOCOLOUR>:{}'.format(lineno+1, lines[lineno]) )
+            fancifying_print(
+                '<MAGENTA>{lineno: >{lineno_offset}}<NOCOLOUR>:{line}'
+                .format( lineno=lineno+1, lineno_offset=lineno_offset,
+                    line=lines[lineno] )
+            )
     indicator_clean()
 
 def clean(root):

@@ -13,9 +13,9 @@ cleanlogger.addHandler(logging.NullHandler())
 def setup_logging(verbose=False):
     import sys
     if sys.stderr.isatty():
-        from jeolm.fancify import FancyFormatter as Formatter
+        from jeolm.fancify import FancifyingFormatter as Formatter
     else:
-        from jeolm.fancify import NotSoFancyFormatter as Formatter
+        from jeolm.fancify import UnfancifyingFormatter as Formatter
     handler = logging.StreamHandler()
     handler.setLevel(logging.INFO if not verbose else logging.DEBUG)
     handler.setFormatter(Formatter("%(name)s: %(message)s"))

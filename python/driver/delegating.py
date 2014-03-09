@@ -39,8 +39,7 @@ class DelegatingDriver(BaseDriver):
             if not isinstance(pre_delegators, list):
                 raise DriverError(type(pre_delegators))
             derive_target = partial( target.derive_from_string,
-                origin=lambda: (
-                    'delegate {target:target}, key {key}'
+                origin=lambda: ( 'delegate {target:target}, key {key}'
                     .format(target=target, key=delegate_key)
                 ) )
             for item in pre_delegators:

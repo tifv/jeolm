@@ -4,8 +4,9 @@ from pathlib import Path
 
 import jeolm
 from jeolm.target import Target
+from jeolm.diffprint import log_metadata_diff
 from jeolm.commands import (
-    review, print_metadata_diff, print_source_list, check_spelling, clean,
+    review, print_source_list, check_spelling, clean,
     list_sources, simple_load_driver, refrain_called_process_error, )
 
 import logging
@@ -48,7 +49,7 @@ def main_build(args, *, fs):
     if args.review:
         sources = list_sources( args.targets,
             fs=fs, driver=driver, source_type='tex' )
-        with print_metadata_diff(md):
+        with log_metadata_diff(md):
             review( sources, viewpoint=Path.cwd(),
                 fs=fs, md=md, recursive=False )
         md.dump_metadata()
@@ -65,7 +66,7 @@ def main_review(args, *, fs):
         logger.warn('No-op: no inpaths for review')
     md = MetadataManager(fs=fs)
     md.load_metadata()
-    with print_metadata_diff(md):
+    with log_metadata_diff(md):
         review(args.inpaths, viewpoint=Path.cwd(),
                 fs=fs, md=md, recursive=args.recursive )
     md.dump_metadata()

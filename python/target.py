@@ -15,7 +15,7 @@ class UnutilizedFlagError(FlagError):
     def __init__(self, unutilized_flags, *, origin=None):
         joined_flags = ', '.join(
             "'{}'".format(flag) for flag in sorted(unutilized_flags) )
-        message = "Unutilizd flags {flags}".format(flags=joined_flags)
+        message = "Unutilized flags {flags}".format(flags=joined_flags)
         if origin is not None:
             if not isinstance(origin, str):
                 try:

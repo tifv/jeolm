@@ -298,15 +298,16 @@ class GeneratingDriver(BaseDriver):
         manner_key, manner = self.select_flagged_item(
             metarecord, '$manner', target.flags )
         with self.process_target_key(target, manner_key):
-            yield from self.generate_matter_metabody(target, metarecord,
-                date_set=date_set, pre_matter=manner )
+            yield from self.generate_matter_metabody( target, metarecord,
+                pre_matter=manner, pre_matter_key=manner_key,
+                date_set=date_set )
 
     @fetching_metarecord
     @checking_target_recursion
     @processing_target_aspect(aspect='matter metabody', wrap_generator=True)
     @classifying_items(aspect='metabody', default=None)
     def generate_matter_metabody(self, target, metarecord,
-        *, date_set, seen_targets, pre_matter=None
+        *, date_set, seen_targets, pre_matter=None, pre_matter_key=None
     ):
         """
         Yield metabody items.
@@ -336,7 +337,8 @@ class GeneratingDriver(BaseDriver):
             return # recurse
 
         matter_generator = self.generate_matter(
-            target, metarecord, pre_matter=pre_matter )
+            target, metarecord,
+            pre_matter=pre_matter, pre_matter_key=pre_matter_key )
         for item in matter_generator:
             if isinstance(item, self.MetabodyItem):
                 yield item
@@ -359,14 +361,12 @@ class GeneratingDriver(BaseDriver):
     @processing_target_aspect(aspect='matter', wrap_generator=True)
     @classifying_items(aspect='matter', default='verbatim')
     def generate_matter(self, target, metarecord,
-        pre_matter=None, recursed=False
+        pre_matter=None, pre_matter_key=None, recursed=False
     ):
         """Yield matter items."""
         if pre_matter is None:
-            matter_key, pre_matter = self.select_flagged_item(
+            pre_matter_key, pre_matter = self.select_flagged_item(
                 metarecord, '$matter', target.flags )
-        else:
-            matter_key = None
         if pre_matter is None:
             if not metarecord.get('$source', False):
                 return
@@ -378,13 +378,15 @@ class GeneratingDriver(BaseDriver):
                     continue
                 if metarecord[name].get('$source', False):
                     yield target.path_derive(name)
+                    yield self.substitute_clearpage()
             return
-        with self.process_target_key(target, matter_key):
+        with self.process_target_key(target, pre_matter_key):
             if not isinstance(pre_matter, list):
                 raise DriverError(type(pre_matter))
             derive_target = partial( target.derive_from_string,
-                origin='matter {target:target}, key {key}'
-                .format(target=target, key=matter_key) )
+                origin=lambda: ( 'matter {target:target}, key {key}'
+                    .format(target=target, key=pre_matter_key)
+                ))
             for item in pre_matter:
                 if isinstance(item, str):
                     yield derive_target(item)
@@ -398,7 +400,8 @@ class GeneratingDriver(BaseDriver):
                     else:
                         yield from self.generate_matter(
                             target, metarecord,
-                            pre_matter=item, recursed=True )
+                            pre_matter=item, pre_matter_key=pre_matter_key,
+                            recursed=True )
                         yield self.substitute_clearpage()
                     continue
                 if not isinstance(item, dict):
@@ -435,20 +438,21 @@ class GeneratingDriver(BaseDriver):
             metarecord, '$manner$style', target.flags )
         with self.process_target_key(target, manner_style_key):
             yield from self.generate_style_metapreamble(
-                target, metarecord, pre_style=manner_style )
+                target, metarecord,
+                pre_style=manner_style, pre_style_key=manner_style_key )
 
     @fetching_metarecord
     @checking_target_recursion
     @processing_target_aspect(aspect='style', wrap_generator=True)
     @classifying_items(aspect='metapreamble', default=None)
     def generate_style_metapreamble(self, target, metarecord,
-        *, seen_targets, pre_style=None
+        *, seen_targets, pre_style=None, pre_style_key=None
     ):
         if pre_style is not None:
             seen_targets -= {target}
 
         style_generator = self.generate_style(
-            target, metarecord, pre_style=pre_style )
+            target, metarecord, pre_style=pre_style, pre_style_key=pre_style_key )
         for item in style_generator:
             if isinstance(item, self.MetapreambleItem):
                 yield item
@@ -459,24 +463,23 @@ class GeneratingDriver(BaseDriver):
                 raise RuntimeError(type(item))
 
     @classifying_items(aspect='style', default=None)
-    def generate_style(self, target, metarecord, pre_style):
+    def generate_style(self, target, metarecord, pre_style, pre_style_key=None):
         if pre_style is None:
-            style_key, pre_style = self.select_flagged_item(
+            pre_style_key, pre_style = self.select_flagged_item(
                 metarecord, '$style', target.flags )
-        else:
-            style_key = None
         if pre_style is None:
             if '$sty$source' in metarecord:
                 yield {'inpath' : target.path.as_inpath(suffix='.sty')}
             else:
                 yield target.path_derive('..')
             return
-        with self.process_target_key(target, style_key):
+        with self.process_target_key(target, pre_style_key):
             if not isinstance(pre_style, list):
                 raise DriverError(type(pre_style))
             derive_target = partial( target.derive_from_string,
-                origin='style {target:target}, key {key}'
-                .format(target=target, key=style_key) )
+                origin=lambda: ( 'style {target:target}, key {key}'
+                    .format(target=target, key=pre_style_key)
+                ) )
             for item in pre_style:
                 if isinstance(item, str):
                     yield derive_target(item)
@@ -615,7 +618,7 @@ class GeneratingDriver(BaseDriver):
             ('$style[2on1]', [{'verbatim' :
                 '\\pgfpagesuselayout{2 on 1}[a4paper,landscape]'
             }]),
-            ('$style[2on1-portrait]', [{'verbatim' :
+            ('$style[2on1,portrait]', [{'verbatim' :
                 '\\pgfpagesuselayout{2 on 1}[a4paper]'
             }]),
             ('$style[4on1]', [{'verbatim' :
@@ -666,16 +669,18 @@ class GeneratingDriver(BaseDriver):
         for option in class_options:
             yield str(option)
 
-        if paper_option not in {'a4paper', 'a5paper'}:
+        if paper_option not in { 'a4paper', 'a5paper',
+            'a4paper,landscape', 'a5paper,landscape'
+        }:
             logger.warning(
                 "<BOLD><MAGENTA>{name}<NOCOLOUR> uses "
                 "bad paper option '<YELLOW>{option}<NOCOLOUR>'<RESET>"
-                .format(name=outrecord.outname, option=paper_option) )
+                .format(name=outrecord['outname'], option=paper_option) )
         if font_option not in {'10pt', '11pt', '12pt'}:
             logger.warning(
                 "<BOLD><MAGENTA>{name}<NOCOLOUR> uses "
                 "bad font option '<YELLOW>{option}<NOCOLOUR>'<RESET>"
-                .format(name=outrecord.outname, option=font_option) )
+                .format(name=outrecord['outname'], option=font_option) )
 
     @classmethod
     def constitute_preamble(cls, outrecord, metapreamble):
