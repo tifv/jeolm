@@ -21,8 +21,9 @@ class MetadataManager(RecordsManager):
         '.tex'  : 'latex',
         '.sty'  : 'latex style',
         '.asy'  : 'asymptote image',
-        '.eps'  : 'eps image',
-        '.yaml' : 'metadata',
+        '.svg'  : 'SVG image',
+        '.eps'  : 'EPS image',
+        '.yaml' : 'metadata in YAML',
     }
 
     def __init__(self, *, fs):
@@ -109,6 +110,8 @@ class MetadataManager(RecordsManager):
             metadata = {'$sty$source' : True}
         elif inpath.suffix == '.eps':
             metadata = {'$eps$source' : True}
+        elif inpath.suffix == '.svg':
+            metadata = {'$svg$source' : True}
         else:
             raise RuntimeError(inpath)
         return metadata

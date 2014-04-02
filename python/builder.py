@@ -110,13 +110,17 @@ class Builder:
         return outnode
 
     def prebuild_figures(self, build_dir):
-        self.eps_nodes = OrderedDict()
+        self.figure_nodes = {
+            key : OrderedDict()
+            for key in {'eps', 'pdf'} }
         for figpath, figrecord in self.figrecords.items():
             figtype = figrecord['type']
             if figtype == 'asy':
                 prebuild_figure = self.prebuild_asy_figure
             elif figtype == 'eps':
                 prebuild_figure = self.prebuild_eps_figure
+            elif figtype == 'svg': # XXX implement on driver level and test
+                prebuild_figure = self.prebuild_svg_figure
             else:
                 raise RuntimeError(figtype, figpath)
             prebuild_figure( figpath, figrecord,
@@ -126,28 +130,78 @@ class Builder:
         build_dir_node = DirectoryNode(
             name='fig:{}:dir'.format(figpath),
             path=build_dir, parents=True, )
-        source_node = LinkNode(
+        main_source_node = LinkNode(
             name='fig:{}:source:main'.format(figpath),
             source=self.get_source_node(figrecord['source']),
             path=build_dir/'main.asy',
             needs=(build_dir_node,) )
-        eps_node = self.eps_nodes[figname] = FileNode(
-            name='fig:{}:eps'.format(figpath),
-            path=build_dir/'main.eps',
-            needs=(source_node, build_dir_node) )
-        eps_node.extend_needs(
+        other_source_nodes = [
             LinkNode(
                 name='fig:{}:source:{}'.format(figpath, used_name),
                 source=self.get_source_node(original_path),
                 path=build_dir/used_name,
                 needs=(build_dir_node,) )
             for used_name, original_path
-            in figrecord['used'].items() )
+            in figrecord['used'].items() ]
+        eps_node = self.figure_nodes['eps'][figpath] = FileNode(
+            name='fig:{}:eps'.format(figpath),
+            path=build_dir/'main.eps',
+            needs=(main_source_node, build_dir_node) )
+        eps_node.extend_needs(other_source_nodes)
         eps_node.add_subprocess_rule(
-            ('asy', '-offscreen', 'main.asy'), cwd=build_dir )
+            ('asy', '-outformat=eps', '-offscreen', 'main.asy'),
+            cwd=build_dir )
+        pdf_node = self.figure_nodes['pdf'][figpath] = FileNode(
+            name='fig:{}:pdf'.format(figpath),
+            path=build_dir/'main.pdf',
+            needs=(main_source_node, build_dir_node) )
+        pdf_node.extend_needs(other_source_nodes)
+        pdf_node.add_subprocess_rule(
+            ('asy', '-outformat=pdf', '-offscreen', 'main.asy'),
+            cwd=build_dir )
 
-    def prebuild_eps_figure(self, figname, figrecord, build_dir):
-        self.eps_nodes[figname] = self.get_source_node(figrecord['source'])
+    def prebuild_svg_figure(self, figpath, figrecord, build_dir):
+        build_dir_node = DirectoryNode(
+            name='fig:{}:dir'.format(figpath),
+            path=build_dir, parents=True, )
+        svg_node = LinkNode(
+            name='fig:{}:svg'.format(figpath),
+            source=self.get_source_node(figrecord['source']),
+            path=build_dir/'main.svg',
+            needs=(build_dir_node,) )
+        eps_node = self.figure_nodes['eps'][figpath] = FileNode(
+            name='fig:{}:eps'.format(figpath),
+            path=build_dir/'main.eps',
+            needs=(svg_node, build_dir_node) )
+        eps_node.add_subprocess_rule(
+            ('inkscape', '--export-eps=main.eps', '-without-gui', 'main.svg'),
+            cwd=build_dir )
+        pdf_node = self.figure_nodes['pdf'][figpath] = FileNode(
+            name='fig:{}:pdf'.format(figpath),
+            path=build_dir/'main.pdf',
+            needs=(svg_node, build_dir_node) )
+        pdf_node.add_subprocess_rule(
+            ('inkscape', '--export-pdf=main.pdf', '-without-gui', 'main.svg'),
+            cwd=build_dir )
+
+    def prebuild_eps_figure(self, figpath, figrecord, build_dir):
+        build_dir_node = DirectoryNode(
+            name='fig:{}:dir'.format(figpath),
+            path=build_dir, parents=True, )
+        eps_node = LinkNode(
+            name='fig:{}:eps'.format(figpath),
+            source=self.get_source_node(figrecord['source']),
+            path=build_dir/'main.eps',
+            needs=(build_dir_node,) )
+        self.figure_nodes['eps'][figpath] = \
+            self.get_source_node(figrecord['source'])
+        pdf_node = self.figure_nodes['pdf'][figpath] = FileNode(
+            name='fig:{}:pdf'.format(figpath),
+            path=build_dir/'main.pdf',
+            needs=(eps_node, build_dir_node) )
+        pdf_node.add_subprocess_rule(
+            ('inkscape', '--export-pdf=main.pdf', '-without-gui', 'main.eps'),
+            cwd=build_dir )
 
     def prebuild_documents(self, build_dir):
         self.autosource_nodes = OrderedDict()
@@ -195,7 +249,7 @@ class Builder:
         linked_figures = [
             LinkNode(
                 name='doc:{:target}:fig:{}'.format(target, figalias),
-                source=self.eps_nodes[figpath],
+                source=self.figure_nodes['eps'][figpath],
                 path=(build_dir/figalias).with_suffix('.eps'),
                 needs=(build_dir_node,) )
             for figalias, figpath in outrecord['figpaths'].items() ]

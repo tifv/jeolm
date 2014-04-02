@@ -564,13 +564,14 @@ class GeneratingDriver(BaseDriver):
     figtypes = (
         ('asy', '$asy$source', '.asy'),
         ('eps', '$eps$source', '.eps'),
+        ('svg', '$svg$source', '.svg'),
     )
 
     def find_figure_type(self, figpath):
         """
         Return (figtype, inpath).
 
-        figtype is one of 'asy', 'eps'.
+        figtype is one of 'asy', 'eps', 'svg'.
         """
         try:
             metarecord = self.getitem(figpath)
