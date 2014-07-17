@@ -1,7 +1,8 @@
-from sys import stdout
-from logging import Formatter
+import sys
+import logging
 
 # Terminal colour codes
+# http://en.wikipedia.org/wiki/ANSI_escape_code#Colors
 FANCIFY_REPLACEMENTS = {
     '<RESET>' : '\033[0m', '<BOLD>' : '\033[1m',
     '<NOCOLOUR>' : '\033[39m',
@@ -20,45 +21,43 @@ def fancify(text, replacements=FANCIFY_REPLACEMENTS):
         text = text.replace(key, value)
     return text
 
-def unfancify(text, replacements=FANCIFY_REPLACEMENTS):
+def unfancify(text, replacements=UNFANCIFY_REPLACEMENTS):
     return fancify(text, replacements=replacements)
 
 
-class FancifyingFormatter(Formatter):
+class FancifyingFormatter(logging.Formatter):
     def format(self, record):
         return self.fancify(super().format(record))
 
     @staticmethod
-    def fancify(s):
-        return fancify(s)
+    def fancify(text):
+        return fancify(text)
 
 class UnfancifyingFormatter(FancifyingFormatter):
     @staticmethod
-    def fancify(s):
-        return unfancify(s)
+    def fancify(text):
+        return unfancify(text)
 
 
 class FancifyingWrapper:
     def __init__(self, stream):
         self.stream = stream
 
-    def write(self, s):
-        self.stream.write(self.fancify(s))
+    def write(self, text):
+        self.stream.write(self.fancify(text))
 
     @staticmethod
-    def fancify(s):
-        return fancify(s)
+    def fancify(text):
+        return fancify(text)
 
 class UnfancifyingWrapper(FancifyingWrapper):
     @staticmethod
-    def fancify(s):
-        return unfancify(s)
+    def fancify(text):
+        return unfancify(text)
 
-if stdout.isatty():
-    fancifying_stdout = FancifyingWrapper(stdout)
-else:
-    fancifying_stdout = UnfancifyingWrapper(stdout)
+def fancifying_print(*args, file=FancifyingWrapper(sys.stdout), **kwargs):
+    return print(*args, file=file, **kwargs)
 
-def fancifying_print(*args, file=fancifying_stdout, **kwargs):
+def unfancifying_print(*args, file=UnfancifyingWrapper(sys.stdout), **kwargs):
     return print(*args, file=file, **kwargs)
 

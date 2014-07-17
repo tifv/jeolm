@@ -1,15 +1,16 @@
 import readline
+import traceback
 
 from pathlib import Path, PurePosixPath
-import pyinotify as pyin
+import pyinotify
 
-from jeolm.builder import Builder
-from jeolm.filesystem import FilesystemManager
-from jeolm.metadata import MetadataManager
+import jeolm.builder
+import jeolm.filesystem
+import jeolm.metadata
 
 from jeolm.commands import review
 from jeolm.diffprint import log_metadata_diff
-from jeolm.completion import Completer
+import jeolm.completion
 
 from jeolm.records import RecordPath
 from jeolm.target import Target, TargetError
@@ -20,7 +21,8 @@ logger.setLevel(logging.DEBUG)
 if __name__ == '__main__':
     handler = logging.StreamHandler()
     handler.setLevel(logging.DEBUG)
-    handler.setFormatter(logging.Formatter("%(name)s: %(message)s"))
+    from jeolm.fancify import FancifyingFormatter as Formatter
+    handler.setFormatter(Formatter("%(name)s: %(message)s"))
     logger.addHandler(handler)
 
 def mainloop(fs):
@@ -33,138 +35,124 @@ def mainloop(fs):
     def review_metadata():
         with log_metadata_diff(md):
             review_list = md.generate_review_list()
-            metadata_changed = bool(review_list)
-            if metadata_changed:
-                review(review_list, fs=fs, md=md, recursive=True)
-        if metadata_changed:
+            assert isinstance(review_list, (list, tuple)), type(review_list)
+            for review_file in review_list:
+                try:
+                    review([review_file], fs=fs, md=md, recursive=True)
+                except Exception as exc:
+                    traceback.print_exc()
+                    logger.error(
+                        "<BOLD>Error occured while reviewing "
+                        "<RED>{}<NOCOLOUR>.<RESET>"
+                        .format(review_file.relative_to(fs.source_dir)) )
+        if review_list:
             driver.clear()
             md.feed_metadata(driver)
 
-    completer = Completer(driver=driver).readline_completer
+    completer = jeolm.completion.Completer(driver=driver).readline_completer
     readline.set_completer(completer)
     readline.set_completer_delims('')
     readline.parse_and_bind('tab: complete')
 
+    target = None
     while True:
         try:
             target_s = input('jeolm> ')
         except (KeyboardInterrupt, EOFError):
             print()
+            md.dump_metadata()
             raise SystemExit
         review_metadata()
         if target_s == '':
-            target = None
+            pass # use previous target
         else:
             try:
                 target = Target.from_string(target_s)
             except TargetError:
-                import traceback
                 traceback.print_exc()
                 continue
         if target is None:
             continue
         try:
-            builder = Builder([target], fs=fs, driver=driver,
+            builder = jeolm.builder.Builder([target], fs=fs, driver=driver,
                 force=None, delegate=True )
             builder.build()
         except Exception:
-            import traceback
             traceback.print_exc()
 
 
-class NotifiedMetadataManager(MetadataManager):
+class NotifiedMetadataManager(jeolm.metadata.MetadataManager):
 
-    creative_mask = pyin.IN_CREATE | pyin.IN_CLOSE_WRITE | pyin.IN_MOVED_TO
-    destructive_mask = pyin.IN_MOVED_FROM | pyin.IN_DELETE
-    self_destructive_mask = pyin.IN_MOVE_SELF | pyin.IN_DELETE_SELF
+    creative_mask = (
+        pyinotify.IN_CREATE | pyinotify.IN_CLOSE_WRITE |
+        pyinotify.IN_MOVED_TO )
+    destructive_mask = pyinotify.IN_MOVED_FROM | pyinotify.IN_DELETE
+    self_destructive_mask = pyinotify.IN_MOVE_SELF | pyinotify.IN_DELETE_SELF
     mask = creative_mask | destructive_mask | self_destructive_mask
 
     def __init__(self, *, fs):
         self.review_set = set()
-        self.wm = wm = pyin.WatchManager()
+        self.wm = wm = pyinotify.WatchManager()
         self.eh = eh = self.EventHandler(md=self)
-        self.notifier = pyin.Notifier(wm, eh, timeout=0)
+        self.notifier = pyinotify.Notifier(wm, eh, timeout=0)
         self.wdm = self.WatchDescriptorManager()
         super().__init__(fs=fs)
+        self.wdm.add(self.wm.add_watch(
+            str(self.fs.source_dir), self.mask, rec=False ))
+        self.source_dir_wd, = self.wdm.path_by_wd
 
     def generate_review_list(self):
-        notifier = self.notifier
-        if not notifier.check_events():
+        if not self.notifier.check_events():
             return ()
-        notifier.read_events()
-        notifier.process_events()
-        overreviewed = set()
-        for reviewed in self.review_set:
-            assert reviewed.suffix in self.source_types, reviewed
-            is_overreviewed = any(
-                path in reviewed.parents
-                for path in self.review_set
-                if path is not reviewed )
-            if is_overreviewed:
-                overreviewed.add(review_candidate)
-        review_list = sorted(self.review_set - overreviewed)
-        self.review_set.clear()
-        logger.debug(review_list)
-        while self.wdm.untrusted_wds:
-            wd = next(iter(self.wdm.untrusted_wds))
-            self.unmerge(RecordPath(
-                Path(self.wdm.path_by_wd[wd]).relative_to(self.fs.source_dir)
-            ))
-        return review_list
+        self.eh.prepare_event_lists()
+        self.notifier.read_events()
+        self.notifier.process_events()
+        creative_events, destructive_events = self.eh.get_event_lists()
+        if self.source_dir_wd in self.eh.distrusted_wds:
+            raise RuntimeError(
+                "Source directory appears to be moved or deleted, "
+                "unable to continue." )
 
-    def _create_record(self, path, record):
+        created_path_set = set(
+            self.filter_reasonable_paths(creative_events) )
+        destroyed_path_set = set(
+            self.filter_reasonable_paths(destructive_events) )
+        return list(destroyed_path_set) + \
+            list(created_path_set - destroyed_path_set)
+
+    @classmethod
+    def filter_reasonable_paths(cls, events):
+        for event in events:
+            path = Path(event.pathname)
+            if (event.dir and path.suffix != ''):
+                continue
+            if (not event.dir and path.suffix not in cls.source_types):
+                continue
+            yield path
+
+    def _create_record(self, path, parent_record, key):
         if path.suffix == '':
             source_path = str(self.fs.source_dir/path.as_inpath())
             self.wdm.add(self.wm.add_watch(source_path, self.mask, rec=False))
-        return super()._create_record(path, record)
+        return super()._create_record(path, parent_record, key)
 
-    def _destroy_record(self, path, record):
+    def _delete_record(self, path, *args, **kwargs):
         if path.suffix == '':
             source_path = str(self.fs.source_dir/path.as_inpath())
             self.wm.rm_watch(self.wdm.pop(path=source_path))
-        return super()._destroy_record(path, record)
-
-    class EventHandler(pyin.ProcessEvent):
-        def my_init(self, md):
-            self.md = md
-
-        def process_needs_review(self, event):
-            if not self.md.wdm.is_trusted(event.wd):
-                return
-            path = Path(event.pathname)
-            if event.dir:
-                if path.suffix != '':
-                    return
-            else:
-                if path.suffix not in self.md.source_types or path.suffix == '':
-                    return
-            self.md.review_set.add(path)
-
-        process_IN_CREATE = process_needs_review
-        process_IN_CLOSE_WRITE = process_needs_review
-        process_IN_MOVED_TO = process_needs_review
-
-        process_IN_DELETE = process_needs_review
-        process_IN_MOVED_FROM = process_needs_review
-
-        def process_self_destructive(self, event):
-            if not self.md.wdm.is_trusted(event.wd):
-                return
-            self.md.wdm.distrust(event.wd)
-
-        process_IN_DELETE_SELF = process_self_destructive
-        process_IN_MOVE_SELF = process_self_destructive
+        return super()._delete_record(path, *args, **kwargs)
 
     class WatchDescriptorManager:
         def __init__(self):
             self.wd_by_path = dict()
             self.path_by_wd = dict()
-            self.untrusted_wds = set()
             super().__init__()
 
         def add(self, mapping):
             for path, wd in mapping.items():
-                logger.debug("Start watching path={path} (wd={wd})"
+                logger.debug("<GREEN>Start<NOCOLOUR> watching "
+                    "path=<MAGENTA>{path}<NOCOLOUR> "
+                    "(wd=<BLUE>{wd}<NOCOLOUR>)"
                     .format(path=path, wd=wd) )
                 assert path not in self.wd_by_path
                 assert wd not in self.path_by_wd
@@ -174,23 +162,53 @@ class NotifiedMetadataManager(MetadataManager):
         def pop(self, *, path):
             wd = self.wd_by_path.pop(path)
             reverse_path = self.path_by_wd.pop(wd)
-            logger.debug("Stop watching path={path} (wd={wd})"
+            logger.debug("<RED>Stop<NOCOLOUR> watching "
+                "path=<MAGENTA>{path}<NOCOLOUR> "
+                "(wd=<CYAN>{wd}<NOCOLOUR>)"
                 .format(path=path, wd=wd) )
             assert reverse_path == path
-            self.untrusted_wds.discard(wd)
             return wd
 
-        def distrust(self, wd):
-            path = self.path_by_wd[wd]
-            logger.debug("Distrusting path={path} (wd={wd})"
-                .format(path=path, wd=wd) )
-            for subpath, subwd in self.wd_by_path.items():
-                if subpath.startswith(path + '/'):
-                    self.untrusted_wds.add(subwd)
-            self.untrusted_wds.add(wd)
+    class EventHandler(pyinotify.ProcessEvent):
 
-        def is_trusted(self, wd):
-            return wd not in self.untrusted_wds
+        def prepare_event_lists(self):
+            self.creative_events = []
+            self.destructive_events = []
+            self.distrusted_wds = set()
+
+        def get_event_lists(self):
+            """
+            Return pair of lists (creative_events, destructive_events).
+
+            Exclude any events from distrusted watches.
+            """
+            distrusted_wds = self.distrusted_wds
+            return [
+                event for event in self.creative_events
+                if event.wd not in distrusted_wds
+            ], [
+                event for event in self.destructive_events
+                if event.wd not in distrusted_wds
+            ]
+
+        def process_creative_event(self, event):
+            self.creative_events.append(event)
+
+        process_IN_CREATE = process_creative_event
+        process_IN_CLOSE_WRITE = process_creative_event
+        process_IN_MOVED_TO = process_creative_event
+
+        def process_destructive_event(self, event):
+            self.destructive_events.append(event)
+
+        process_IN_DELETE = process_destructive_event
+        process_IN_MOVED_FROM = process_destructive_event
+
+        def process_self_destructive_event(self, event):
+            self.distrusted_wds.add(event.wd)
+
+        process_IN_DELETE_SELF = process_self_destructive_event
+        process_IN_MOVE_SELF = process_self_destructive_event
 
 if __name__ == '__main__':
     from jeolm import nodes
@@ -198,8 +216,8 @@ if __name__ == '__main__':
 
     setup_logging(verbose=False)
     try:
-        fs = FilesystemManager(root=Path.cwd())
-    except filesystem.RootNotFoundError:
+        fs = jeolm.filesystem.FilesystemManager(root=Path.cwd())
+    except jeolm.filesystem.RootNotFoundError:
         raise SystemExit
     nodes.PathNode.root = fs.root
     fs.report_broken_links()

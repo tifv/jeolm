@@ -10,9 +10,9 @@ cleanlogger.propagate = False
 cleanlogger.setLevel(logging.INFO)
 cleanlogger.addHandler(logging.NullHandler())
 
-def setup_logging(verbose=False):
+def setup_logging(verbose=False, colour=True):
     import sys
-    if sys.stderr.isatty():
+    if colour:
         from jeolm.fancify import FancifyingFormatter as Formatter
     else:
         from jeolm.fancify import UnfancifyingFormatter as Formatter

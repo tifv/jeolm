@@ -1,0 +1,68 @@
+$style:
+- document_class: article
+  options: [a4paper]
+- font: 10pt
+- verbatim: |-
+    \usepackage[T2A]{fontenc}
+    \usepackage[utf8]{inputenc}
+    \usepackage[russian]{babel}
+    \pagestyle{empty}
+- jeolm
+- optional
+
+optional:
+  $target$able: off
+  $style:
+  - delegate: geometry
+    condition: -no-geometry
+  - verbatim:
+      \usepackage{parskip}
+    condition: -no-parskip
+  - delegate: pgfpages
+    condition: -no-pgfpages
+  - delegate: shrink-formulas
+    condition: shrink-formulas
+  $style[print]:
+  - .[a5paper,2-on-1,-print]
+  $style[tiled4]:
+  - .[a6paper,landscape,4-on-1,-tiled4]
+  geometry:
+    $style:
+    - verbatim: \usepackage{geometry}
+    - verbatim: \geometry{margin=2em,lmargin=2em,rmargin=2em}
+    - set-paper-size
+    - verbatim: \geometry{landscape}
+      condition: landscape
+    set-paper-size:
+      $style[-a6paper,-a5paper,-a4paper,-a3paper]:
+      - .[a5paper]
+      $style[a6paper]:
+      - verbatim: \geometry{a6paper}
+      $style[a5paper]:
+      - verbatim: \geometry{a5paper}
+      $style[a4paper]:
+      - verbatim: \geometry{a4paper}
+      $style[a3paper]:
+      - verbatim: \geometry{a3paper}
+  pgfpages:
+    $style[-resize-to,-2-on-1,-4-on-1]: []
+    $style:
+    - verbatim: \usepackage{pgfpages}
+    - verbatim: \pgfpagesuselayout{resize to}[a4paper]
+      condition: [resize-to, -landscape]
+    - verbatim: \pgfpagesuselayout{resize to}[a4paper,landscape]
+      condition: [resize-to, landscape]
+    - verbatim: \pgfpagesuselayout{2 on 1}[a4paper]
+      condition: [2-on-1, landscape]
+    - verbatim: \pgfpagesuselayout{2 on 1}[a4paper,landscape]
+      condition: [2-on-1, -landscape]
+    - verbatim: \pgfpagesuselayout{4 on 1}[a4paper]
+      condition: [4-on-1, -landscape]
+    - verbatim: \pgfpagesuselayout{4 on 1}[a4paper,landscape]
+      condition: [4-on-1, landscape]
+  shrink-formulas:
+    $style:
+    - verbatim: |-
+        \AtBeginDocument{\abovedisplayskip=10pt minus 7pt}
+        \AtBeginDocument{\belowdisplayskip=\abovedisplayskip}
+

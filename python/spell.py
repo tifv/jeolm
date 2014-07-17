@@ -34,8 +34,8 @@ class LaTeXSpeller:
 
     known_langs = frozenset(('en_US', 'ru_RU'))
     dotted_abbrs = {
-        'en_US' : frozenset(('e.\,g.', 'i.\,e.')),
-        'ru_RU' : frozenset(('т.\,д.', 'т.\,е.')),
+        'en_US' : frozenset(('e.~g.', 'i.~e.')),
+        'ru_RU' : frozenset(('т.~д.', 'т.~е.')),
     }
 
     def __iter__(self):
@@ -111,7 +111,7 @@ class LaTeXSlicer:
         ('char_macro',              r'\\(?:[^a-zA-Z${}%\n])'),
         ('tex_size_argument',
             r'(?:\d+\.?\d*|\.\d+)(?:em|ex|in|pt|cm)' ),
-        ('dotted_abbr',             r'(?!\d)\w\.(?:(?:\\,)?(?!\d)\w\.)+'),
+        ('dotted_abbr',             r'(?!\d)\w\.(?:(?:~)?(?!\d)\w\.)+'),
         ('word',
             r'(?<![\-\w])(?!-)'
                 r'(?:(?!\d)[\w\-])+'

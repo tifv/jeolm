@@ -8,6 +8,7 @@ import os
 from stat import S_ISDIR
 import sys
 import subprocess
+import time
 
 from pathlib import Path, PurePath
 
@@ -61,18 +62,22 @@ class Node:
         if name is not None:
             self.name = str(name)
         else:
-            self.name = 'id{}'.format(id(instance))
+            self.name = 'id{}'.format(id(self))
         self.needs = list(needs)
         self.rules = list(rules)
 
         self._updated = False
         self.modified = False
+        self.forced = False
 
         self._locked = False
 
+    def is_updated(self):
+        return self._updated
+
     def update(self):
         """
-        Update the node, recursively updating needs.
+        Update the node, first recursively updating needs.
         """
         if self._locked:
             raise NodeCycleError(self.name)
@@ -106,7 +111,7 @@ class Node:
         1) any of needed nodes are modified.
         (Subclasses may introduce different conditions)
         """
-        if any(node.modified for node in self.needs):
+        if self.forced or any(node.modified for node in self.needs):
             return True
         return False
 
@@ -123,7 +128,7 @@ class Node:
         return self
 
     def force(self):
-        self.needs_build = lambda: True
+        self.forced = True
 
     def add_rule(self, rule):
         """Decorator."""
@@ -140,8 +145,8 @@ class Node:
         Log a message specific for this node.
 
         Prepend a message with node.name and delegate to module logger.
-        This function expects FancyFormatter to be used somewhere in
-        logging facility.
+        This function expects FancifyingFormatter to be used somewhere
+        in logging facility.
         """
         if level <= INFO:
             colour = '<MAGENTA>'
@@ -196,23 +201,26 @@ class DatedNode(Node):
         for node in self.needs:
             if hasattr(node, 'mtime') and self.mtime_less(mtime, node.mtime):
                 return True
-        return super().needs_build();
+        return super().needs_build()
 
     def load_mtime(self):
         """
         Set node.mtime to appropriate value.
 
-        No-op yet. Subclasses may introduce appropriate behavior.
+        No-op here. Subclasses may introduce appropriate behavior.
         """
         pass
+
+    def set_mtime_to_now(self):
+        self.mtime = int(time.time() * (10**9))
 
     @staticmethod
     def mtime_less(x, y):
         if y is None:
-            return False;
+            return False
         if x is None:
-            return True;
-        return x < y;
+            return True
+        return x < y
 
 class PathNode(DatedNode):
     """

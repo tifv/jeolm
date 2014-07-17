@@ -1,3 +1,4 @@
+import re
 from collections import OrderedDict
 
 import pathlib
@@ -51,25 +52,27 @@ class RecordsManager:
 
     def __init__(self):
         self.records = self.Dict()
-        self._create_record(RecordPath(), self.records)
-        self.cache = dict()
-
-    def clear_cache(self):
-        self.cache.clear()
-
-    def merge(self, data, *, overwrite=True):
-        self._merge(RecordPath(), self.records, data, overwrite=overwrite)
         self.clear_cache()
 
-    def unmerge(self, path):
+    def clear_cache(self):
+        self.cache = dict()
+
+    def absorb(self, data, *, overwrite=True):
+        self._absorb_into(data, RecordPath(), self.records, overwrite=overwrite)
+        self.clear_cache()
+
+    def delete(self, path):
+        if not isinstance(path, RecordPath):
+            raise RuntimeError(type(path))
         if path.name == '':
-            raise RuntimeError(path)
-        self._destroy_record(path,
-            self.getitem(path.parent, original=True).pop(path.name) )
+            raise RuntimeError("Deleting root is impossible")
+        self._delete_record(path)
         self.clear_cache()
 
     def clear(self, path=RecordPath()):
-        self._clear_record(path, self.getitem(path, original=True))
+        if not isinstance(path, RecordPath):
+            raise RuntimeError(type(path))
+        self._clear_record(path)
         self.clear_cache()
 
     def reorder(self, path, sample):
@@ -84,27 +87,28 @@ class RecordsManager:
             omap[key] = swap.pop(key)
         omap.update(swap)
 
-    def _merge(self, path, record, data, *, overwrite=True):
+    def _absorb_into(self, data, path, record, *, overwrite=True):
         if data is None:
             return
         if not isinstance(data, dict):
-            raise RecordError("Only able to merge a dict, found {!r}"
+            raise RecordError("Only able to absorb a dict, found {!r}"
                 .format(type(data)) )
         for key, value in dict_ordered_items(data):
-            self._merge_item(path, record, key, value, overwrite=overwrite)
+            self._absorb_item_into(key, value, path, record, overwrite=overwrite)
 
-    def _merge_item(self, path, record, key, value, *, overwrite=True):
+    def _absorb_item_into(self, key, value, path, record, *, overwrite=True):
         if isinstance(key, RecordPath):
             if key == RecordPath():
-                return self._merge( path, record, value,
+                return self._absorb_into( value, path, record,
                     overwrite=overwrite )
-            return self._merge_item( path, record,
+            return self._absorb_item_into(
                 key.parent, {key.name : value},
+                path, record,
                 overwrite=overwrite )
         elif isinstance(key, str):
             pass
         else:
-            raise RecordError("Only able to merge string keys, found {!r}"
+            raise RecordError("Only able to absorb string keys, found {!r}"
                 .format(type(key)) )
 
         if key.startswith('$'):
@@ -115,29 +119,29 @@ class RecordsManager:
         else:
             child_record = record.get(key)
             if child_record is None:
-                child_record = self._create_subrecord(path, record, key)
-            self._merge(path/key, child_record, value, overwrite=overwrite)
+                child_record = self._create_record(
+                    path/key, parent_record=record, key=key)
+            self._absorb_into(value, path/key, child_record, overwrite=overwrite)
 
-    def _create_subrecord(self, path, record, key):
-        child_record = record[key] = self.Dict()
-        return self._create_record(path/key, child_record)
-
-    def _create_record(self, path, record):
-        # To insert the record in the parent
-        # is the resposibility of caller!
+    def _create_record(self, path, parent_record, key):
+        record = parent_record[key] = self.Dict()
         return record
 
-    def _clear_record(self, path, record):
+    def _clear_record(self, path, record=None):
+        if record is None:
+            record = self.getitem(path, original=True)
         while record:
-            key, value = record.popitem()
+            key, subrecord = record.popitem()
             if key.startswith('$'):
                 continue
-            self._destroy_record(path/key, value)
+            self._delete_record(path/key, popped_record=subrecord)
 
-    def _destroy_record(self, path, record):
-        # To pop the record out of parent
-        # is the resposibility of caller!
-        self._clear_record(path, record)
+    def _delete_record(self, path, parent_record=None, popped_record=None):
+        if popped_record is None:
+            if parent_record is None:
+                parent_record = self.getitem(path.parent, original=True)
+            popped_record = parent_record.pop(path.name)
+        self._clear_record(path, popped_record)
 
     def getitem(self, path, *, original=False):
         if not isinstance(path, RecordPath):
@@ -201,8 +205,13 @@ class RecordsManager:
 
     def keys(self, path=RecordPath()):
         """Yield paths."""
-        for path, record in self.items():
-            yield path
+        for a_path, record in self.items(path=path):
+            yield a_path
+
+    def values(self, path=RecordPath()):
+        """Yield paths."""
+        for a_path, record in self.items(path=path):
+            yield record
 
     def __contains__(self, path):
         try:
@@ -254,4 +263,34 @@ class RecordsManager:
             if not key.startswith('$'):
                 record[key] = cls.Dict()
         return record
+
+    flagged_pattern = re.compile(
+        r'^(?P<key>[^\[\]]+)'
+        r'(?:\['
+            r'(?P<flags>.+)'
+        r'\])?$' )
+
+    @classmethod
+    def select_flagged_item(cls, mapping, stemkey, flags):
+        assert isinstance(stemkey, str), type(stemkey)
+        assert stemkey.startswith('$'), stemkey
+
+        flagset_mapping = dict()
+        for key, value in mapping.items():
+            flagged_match = cls.flagged_pattern.match(key)
+            if flagged_match is None:
+                continue
+            if flagged_match.group('key') != stemkey:
+                continue
+            flagset_s = flagged_match.group('flags')
+            if flagset_s is None:
+                flagset = frozenset()
+            else:
+                flagset = frozenset(flagset_s.split(','))
+            if flagset in flagset_mapping:
+                raise RecordError("Clashing keys '{}' and '{}'"
+                    .format(key, flagset_mapping[flagset][0]) )
+            flagset_mapping[flagset] = (key, value)
+        return flags.select_matching_value( flagset_mapping,
+            default=(None, None) )
 

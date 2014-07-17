@@ -11,7 +11,7 @@ from pathlib import Path, PurePosixPath
 import logging
 logger = logging.getLogger(__name__)
 
-
+
 ##########
 # High-level subprograms
 
@@ -32,10 +32,13 @@ def print_source_list(targets, *, fs, driver, viewpoint=None,
     for path in paths:
         print(path)
 
-def check_spelling(targets, *, fs, driver, context=0):
+def check_spelling(targets, *, fs, driver, context=0, colour=True):
     from . import spell
     from .spell import LaTeXSpeller, CorrectWord, IncorrectWord
-    from .fancify import fancifying_print
+    if colour:
+        from .fancify import fancifying_print as fprint
+    else:
+        from .fancify import unfancifying_print as fprint
 
     indicator_length = 0
     def indicator_clean():
@@ -83,7 +86,7 @@ def check_spelling(targets, *, fs, driver, context=0):
         if not printed_line_numbers:
             continue
         indicator_clean()
-        fancifying_print(
+        fprint(
             '<BOLD><YELLOW>{}<NOCOLOUR> possible misspellings<RESET>'
             .format(path.relative_to(fs.source_dir)) )
         line_range = range(len(lines))
@@ -91,7 +94,7 @@ def check_spelling(targets, *, fs, driver, context=0):
         for lineno in sorted(printed_line_numbers):
             if lineno not in line_range:
                 continue
-            fancifying_print(
+            fprint(
                 '<MAGENTA>{lineno: >{lineno_offset}}<NOCOLOUR>:{line}'
                 .format( lineno=lineno+1, lineno_offset=lineno_offset,
                     line=lines[lineno] )
@@ -110,7 +113,7 @@ def clean(root):
         if target.startswith('build/'):
             x.unlink()
 
-
+
 ##########
 # Supplementary subprograms
 
@@ -122,8 +125,9 @@ def simple_load_driver(fs):
 
 def list_sources(targets, *, fs, driver, source_type='tex'):
     source_dir = fs.source_dir
-    for target in driver.list_delegators(*targets, recursively=True):
-        inpath_generator = driver.list_inpaths( target,
+    for target in driver.list_delegated_targets(*targets, recursively=True):
+        inpath_generator = driver.list_inpaths(
+            target.flags_clean_copy(origin='target'),
             inpath_type=source_type )
         for inpath in inpath_generator:
             yield source_dir/inpath

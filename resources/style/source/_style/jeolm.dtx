@@ -1,65 +1,9 @@
-% \iffalse meta-comment
-%
-% jeolm.dtx
-%
-% Copyright 2013 July Tikhonov <july.tikh@gmail.com>.
-%
-% This work may be distributed and/or modified under the
-% conditions of the LaTeX Project Public License, either version 1.3
-% of this license or (at your option) any later version.
-% The latest version of this license is in
-%   http://www.latex-project.org/lppl.txt
-% and version 1.3 or later is part of all distributions of LaTeX
-% version 2005/12/01 or later.
-%
-% This work has the LPPL maintenance status `author-maintained'.
-%
-% \fi
-%
 % \iffalse
 %
-%<*driver>
+%<package|driver>\NeedsTeXFormat{LaTeX2e}[2009/09/24]
 \ProvidesFile{jeolm.dtx}
-%</driver>
-%
-%<package>\NeedsTeXFormat{LaTeX2e}[2009/09/24]
 %<package>\ProvidesPackage{jeolm}
-%<*package>
-    [2013/07/22 v0.4 Jeolm LaTeX routines]
-%</package>
-%
-%<*batchfile>
-\begingroup
-
-\input docstrip.tex
-
-\keepsilent
-\askforoverwritefalse
-
-\preamble
-
-This is a generated file.
-
-Copyright 2013 July Tikhonov <july.tikh@gmail.com>.
-
-This work may be distributed and/or modified under the
-conditions of the LaTeX Project Public License, either version 1.3
-of this license or (at your option) any later version.
-The latest version of this license is in
-  http://www.latex-project.org/lppl.txt
-and version 1.3 or later is part of all distributions of LaTeX
-version 2005/12/01 or later.
-
-This work has the LPPL maintenance status `author-maintained'.
-
-\endpreamble
-
-\generate{
-    \file{jeolm.sty}{\from{jeolm.dtx}{package}}
-}
-
-\endgroup
-%</batchfile>
+%<driver>\ProvidesFile{jeolm.drv}
 %
 %<*driver>
 \documentclass{ltxdoc}
@@ -69,9 +13,11 @@ This work has the LPPL maintenance status `author-maintained'.
 \usepackage[russian,english]{babel}
 \usepackage[braces]{colordoc}
 
-\usepackage[nogeometry]{jeolm}
+\usepackage{jeolm}
 
-\usepackage{ltxdoc-local}
+\makeatletter
+\c@IndexColumns = 2
+\makeatother
 
 \EnableCrossrefs
 \CodelineIndex
@@ -80,6 +26,17 @@ This work has the LPPL maintenance status `author-maintained'.
 \DocInput{jeolm.dtx}
 \end{document}
 %</driver>
+%
+%<*batchfile>
+\input docstrip.tex
+\keepsilent
+\askforoverwritefalse
+\nopreamble
+\nopostamble
+\generate{\file{jeolm.sty}{\from{jeolm.dtx}{package}}}
+\endbatchfile
+%</batchfile>
+%<batchfile>\endinput
 %
 % \fi
 %
@@ -102,11 +59,9 @@ This work has the LPPL maintenance status `author-maintained'.
 %   Right brace   \}     Tilde         \~}
 %
 %
-% \GetFileInfo{jeolm.dtx}
+% \GetFileInfo{jeolm.sty}
 %
-% \title{The \textsf{jeolm} package%
-%    \thanks{This document corresponds to
-%        \textsf{jeolm}~\fileversion, dated \filedate.}}
+% \title{The \textsf{jeolm} package}
 %
 % \author{July Tikhonov \\ \texttt{july.tikh@gmail.com}}
 %
@@ -123,14 +78,6 @@ This work has the LPPL maintenance status `author-maintained'.
 % to course listeners over time.
 %
 % \section{Usage}
-%
-% \subsection{Package options}
-%
-% \subsubsection{Geometry options}
-%
-% Option |geometry| (default) enables loading of \textsf{geometry} package,
-% setting \emph{all} margins to |2em|, and setting |\pagestyle{empty}|;
-% option |nogeometry| disables this behavior.
 %
 % \subsection{Figures}
 %
@@ -235,8 +182,8 @@ This work has the LPPL maintenance status `author-maintained'.
 % \theorem
 % For |\theorem|.
 %
-% \theoremof{Ван Обеля}
-% For |\theoremof{Ван Обеля}|, referencing next theorem \ref{a theorem}.
+% \theoremof{ван Обеля}
+% For |\theoremof{ван Обеля}|, referencing next theorem \ref{a theorem}.
 %
 % \theoremnum\label{a theorem}%
 % For |\theoremnum|.
@@ -252,33 +199,88 @@ This work has the LPPL maintenance status `author-maintained'.
 %<*package>
 %    \end{macrocode}
 %
+% \subsection{Some imports}
+%
+% Not really used in this package, but very common.
 %    \begin{macrocode}
-\RequirePackage{math-common}
+\RequirePackage{amsmath}
+\RequirePackage{amssymb}
+\RequirePackage{mathrsfs}
+\RequirePackage{multicol}
+\RequirePackage{graphicx}
+\RequirePackage{anyfontsize}
+%    \end{macrocode}
+%
+% \subsection{Some definitions}
+%
+% Russian-specific or just convenient (re)definitions.
+%
+%    \begin{macrocode}
+\let\geq\geqslant
+\let\leq\leqslant
+\let\eps\varepsilon
+\let\originalphi\phi
+\let\phi\varphi
+\let\ov\overline
+%    \end{macrocode}
+%
+%    \begin{macrocode}
+\newcommand{\NN}{\mathbb{N}}
+\newcommand{\ZZ}{\mathbb{Z}}
+\newcommand{\QQ}{\mathbb{Q}}
+\newcommand{\RR}{\mathbb{R}}
+\newcommand{\CC}{\mathbb{C}}
+%    \end{macrocode}
+%
+%    \begin{macrocode}
+\DeclareMathOperator{\Arg}{Arg}
+\DeclareMathOperator{\Ln}{Ln}
+\DeclareMathOperator{\const}{const}
+\DeclareMathOperator{\ord}{ord}
+\DeclareMathOperator{\sgn}{sgn}
+\DeclareMathOperator{\supp}{supp}
+\DeclareMathOperator*{\esssup}{ess\,sup}
+\DeclareMathOperator*{\osc}{osc}
+\newcommand{\ud}{\mathrm{d}}
+\newcommand{\pd}{\partial}
+%    \end{macrocode}
+%
+%    \begin{macrocode}
+\let\originalRe\Re
+\let\originalIm\Im
+\let\Re\undefined
+\let\Im\undefined
+\DeclareMathOperator{\Re}{Re}
+\DeclareMathOperator{\Im}{Im}
+%    \end{macrocode}
+%
+% This macro will work only on the second run, when the label is substituted.
+% Watch out for build cycles!
+%    \begin{macrocode}
+\def\iflabelundefined#1{\expandafter\ifx\csname r@#1\endcsname\relax}
+%    \end{macrocode}
+%
+% |\mathclap| and related definitions:
+%    \begin{macrocode}
+% For comparison, the existing overlap macros:
+% \def\llap#1{\hbox to 0pt{\hss#1}}
+% \def\rlap#1{\hbox to 0pt{#1\hss}}
+\def\clap#1{\hbox to 0pt{\hss#1\hss}}
+\def\mathllap{\mathpalette\mathllapinternal}
+\def\mathrlap{\mathpalette\mathrlapinternal}
+\def\mathclap{\mathpalette\mathclapinternal}
+\def\mathllapinternal#1#2{%
+    \llap{$\mathsurround=0pt#1{#2}$}}
+\def\mathrlapinternal#1#2{%
+    \rlap{$\mathsurround=0pt#1{#2}$}}
+\def\mathclapinternal#1#2{%
+    \clap{$\mathsurround=0pt#1{#2}$}}
 %    \end{macrocode}
 %
 % \subsection{Package options}
 %
 %    \begin{macrocode}
-\newif\if@jeolm@option@geometry
-\@jeolm@option@geometrytrue
-\DeclareOption{geometry}{\@jeolm@option@geometrytrue}
-\DeclareOption{nogeometry}{\@jeolm@option@geometryfalse}
-%    \end{macrocode}
-%
-%    \begin{macrocode}
 \ProcessOptions
-%    \end{macrocode}
-%
-% \subsubsection{Geometry options}
-%
-%    \begin{macrocode}
-\if@jeolm@option@geometry
-\RequirePackage{geometry}
-\geometry{margin=2em,lmargin=2em,rmargin=2em}
-\pagestyle{empty}
-\RequirePackage{parskip}
-\setlength{\parindent}{0ex}
-\fi
 %    \end{macrocode}
 %
 % \subsection{Figures}
@@ -307,10 +309,10 @@ This work has the LPPL maintenance status `author-maintained'.
 \newcommand\jeolmheadertemplate[3]{%
     {\Large\vspace{4ex}}\par%
     \begingroup\small\sffamily%
-    \strut\hfill{\bfseries#1}\hfill\strut\\%
+    \strut\hfill{\bfseries#1}\hfill\strut\nopagebreak\\%
     \strut\hfill{\itshape#2}\qquad{#3}%
         \ifx\jeolmdate\relax\else\qquad{\itshape\jeolmdate}\fi%
-        \hfill\strut\\%
+        \hfill\strut\nopagebreak\\%
     \rule[1ex]{\textwidth}{0.5pt} %
     \endgroup%
     {\vspace{-1ex}\Large\vspace{-4ex}\vspace{-\parskip}}}
@@ -433,11 +435,6 @@ This work has the LPPL maintenance status `author-maintained'.
 %    \begin{macrocode}
 \newenvironment{problems}{%
 %    \end{macrocode}
-% This solves the problem of vast space, that occures if the environment is
-% placed immediatly after a section start.
-%    \begin{macrocode}
-\if@nobreak\vspace{-1.5ex}\fi
-%    \end{macrocode}
 % Macros |\itemx|, |\itemy| and |\itemyx| are defined only inside the
 % environment.
 %    \begin{macrocode}
@@ -472,7 +469,7 @@ This work has the LPPL maintenance status `author-maintained'.
 % \begin{macro}{\claim}
 %    \begin{macrocode}
 \newcommand\claim[1]{\claim@format{#1}}
-\newcommand\claim@format[1]{\textbf{#1.\ }\ignorespaces}
+\newcommand\claim@format[1]{\noindent\textbf{#1.\ }\ignorespaces}
 %    \end{macrocode}
 % \end{macro}
 %
@@ -526,4 +523,3 @@ This work has the LPPL maintenance status `author-maintained'.
 % \Finale
 %
 \endinput
-

@@ -137,13 +137,13 @@ class BaseCompleter(metaclass=abc.ABCMeta):
 
     def readline_completer(self, text, state):
         try:
-            if not hasattr(self, 'saved_text') or self.saved_text != text:
-                self.saved_completion = list(self.complete_target(text))
-                self.saved_text = text
-            if state < len(self.saved_completion):
-                return self.saved_completion[state];
+            if getattr(self, '_saved_text', None) != text:
+                self._saved_completion = list(self.complete_target(text))
+                self._saved_text = text
+            if state < len(self._saved_completion):
+                return self._saved_completion[state]
             else:
-                return None;
+                return None
         except:
             import sys, traceback
             traceback.print_exception(*sys.exc_info())
@@ -168,7 +168,7 @@ class CachingCompleter(BaseCompleter):
     @property
     def target_list(self):
         try:
-            return self._target_list
+            return getattr(self, '_target_list')
         except AttributeError:
             pass
 

@@ -363,16 +363,18 @@ class Target:
         try:
             self.flags.check_unutilized_flags()
         except UnutilizedFlagError as error:
-            raise TargetError( "Unutilized flags in target {target:target}"
+            raise TargetError( "Unutilized flags in target {target}"
                 .format(target=self)
             ) from error
 
     def __format__(self, fmt):
-        if fmt == 'target':
-            return '{self.path!s}{self.flags:flags}'.format(self=self)
-        elif fmt == 'outname':
+        if fmt == 'outname':
             return '{self.path:join}{self.flags:flags}'.format(self=self)
-        return super().__format__(fmt)
+        else:
+            return super().__format__(fmt)
+
+    def __str__(self):
+        return '{self.path!s}{self.flags:flags}'.format(self=self)
 
     def __repr__(self):
         return ( '{self.__class__.__qualname__}'

@@ -4,10 +4,11 @@ import logging
 logger = logging.getLogger(__name__)
 
 class TestPaperDriver(Driver):
-    @processing_target_aspect(aspect='tex matter', wrap_generator=True)
-    @classifying_items(aspect='matter', default='verbatim')
-    def generate_tex_matter(self, target, metarecord):
-        super_matter = super().generate_tex_matter(target, metarecord)
+    @processing_target_aspect( aspect='source metabody [testpaper]',
+        wrap_generator=True )
+    @classifying_items(aspect='metabody', default='verbatim')
+    def generate_source_metabody(self, target, metarecord):
+        super_matter = super().generate_source_metabody(target, metarecord)
         if 'no-header' not in target.flags:
             yield from super_matter
             return
@@ -16,7 +17,7 @@ class TestPaperDriver(Driver):
                 return
             yield self.substitute_begingroup()
             yield self.substitute_interrobang_section()
-            yield {'latex_package' : 'textcomp'}
+            yield {'required_package' : 'textcomp'}
             yield from super_matter
             yield from self.generate_test_postword(target, metarecord)
             yield self.substitute_endgroup()
@@ -26,11 +27,11 @@ class TestPaperDriver(Driver):
     begingroup_template = r'\begingroup'
     endgroup_template = r'\endgroup'
     interrobang_section_template = (
-        r'\let\oldsection\section'
+        r'\let\oldsection\section' '\n'
         r'\def\section#1#2{\oldsection#1{\textinterrobang\ #2}}' )
 
     @processing_target_aspect(aspect='test postword', wrap_generator=True)
-    @classifying_items(aspect='matter', default='verbatim')
+    @classifying_items(aspect='metabody', default='verbatim')
     def generate_test_postword(self, target, metarecord):
         problem_scores = metarecord.get('$test$problem-scores')
         mark_limits = metarecord.get('$test$mark-limits')

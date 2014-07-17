@@ -1,4 +1,5 @@
 from functools import lru_cache
+import os.path
 
 from pathlib import Path, PurePosixPath
 
@@ -11,8 +12,9 @@ class RootNotFoundError(Exception):
 class FilesystemManager:
     def __init__(self, root=None):
         if root is not None:
+            root = Path(root)
             try:
-                root = Path(root).resolve()
+                root = root.resolve()
             except FileNotFoundError:
                 raise RootNotFoundError(root)
             else:
@@ -30,6 +32,7 @@ class FilesystemManager:
                 self.report_failed_check()
                 raise RootNotFoundError()
         self.root = root
+        self.jeolm_dir = root/'.jeolm'
         self.build_dir = self.root/'build'
         self.source_dir = self.root/'source'
         self.metadata_path = self.build_dir/'metadata.pickle'
@@ -119,7 +122,7 @@ class FilesystemManager:
         if hasattr(self, '_local_module'):
             raise RuntimeError("Local module should not be loaded twice.")
 
-        module_path = self.root/'.jeolm/local.py'
+        module_path = self.jeolm_dir/'local.py'
         if not module_path.exists():
             self._local_module = None
             return None
@@ -205,4 +208,40 @@ class FilesystemManager:
                 raise NotADirectoryError(str(self.build_dir))
         else:
             self.build_dir.mkdir(mode=0b111101101, parents=False)
+
+class InitFilesystemManager(FilesystemManager):
+    """
+    Supplementary class used with 'jeolm init'.
+    """
+
+    @classmethod
+    def check_root(cls, root):
+        return root.exists()
+
+    def fix_root(self):
+        for d in (self.jeolm_dir, self.source_dir, self.build_dir):
+            if not d.exists():
+                d.mkdir()
+            elif not d.is_dir():
+                raise NotADirectoryError(d)
+
+    resources_list = [
+        Path(s) / 'jeolm/resources'
+        for s in (
+            os.path.expanduser('~/.local/share'),
+            '/usr/local/share',
+            '/usr/share',
+        )
+    ]
+
+    @classmethod
+    def locate_resource(cls, resource_name):
+        for resources_dir in cls.resources_list:
+            if not resources_dir.exists():
+                continue
+            if (resources_dir/resource_name).exists():
+                break
+        else:
+            raise LookupError(resource_name)
+        return resources_dir / resource_name
 
