@@ -12,35 +12,33 @@ Additionally, dump() enables unicode serializing by default.
 
 """
 
-from collections import OrderedDict as ODict
+from collections import OrderedDict
 
 from pathlib import PurePosixPath
 
+import yaml as the_yaml
 from yaml.nodes import SequenceNode, MappingNode
-from yaml.constructor import ConstructorError
-from yaml.loader import SafeLoader
-from yaml.dumper import SafeDumper
 
 from yaml import load as original_load, dump as original_dump
 
-class JeolmLoader(SafeLoader):
+class JeolmLoader(the_yaml.loader.SafeLoader):
     def construct_yaml_omap(self, node):
-        omap = ODict()
+        omap = OrderedDict()
         yield omap
         if not isinstance(node, SequenceNode):
-            raise ConstructorError(
+            raise the_yaml.constructor.ConstructorError(
                 "while constructing an ordered map", node.start_mark,
                 "expected a sequence, but found %s" % node.id,
                 node.start_mark )
         for subnode in node.value:
             if not isinstance(subnode, MappingNode):
-                raise ConstructorError(
+                raise the_yaml.constructor.ConstructorError(
                     "while constructing an ordered map", node.start_mark,
                     "expected a mapping of length 1, but found %s"
                         % subnode.id,
                     subnode.start_mark )
             if len(subnode.value) != 1:
-                raise ConstructorError(
+                raise the_yaml.constructor.ConstructorError(
                     "while constructing an ordered map", node.start_mark,
                     "expected a single mapping item, but found %d items"
                         % len(subnode.value),
@@ -50,7 +48,7 @@ class JeolmLoader(SafeLoader):
             value = self.construct_object(value_node)
             omap[key] = value
         if len(omap) < len(node.value):
-            raise ConstructorError(
+            raise the_yaml.constructor.ConstructorError(
                 "while constructing an ordered map", node.start_mark,
                 "found duplicate keys", node.start_mark )
 
@@ -65,7 +63,7 @@ JeolmLoader.add_constructor(
         '!path',
         JeolmLoader.construct_path)
 
-class JeolmDumper(SafeDumper):
+class JeolmDumper(the_yaml.dumper.SafeDumper):
     def represent_OrderedDict(self, data):
         value = [{key : value} for key, value in data.items()]
         return self.represent_sequence('tag:yaml.org,2002:omap', value)
@@ -76,7 +74,7 @@ class JeolmDumper(SafeDumper):
     def ignore_aliases(self, data):
         return True
 
-JeolmDumper.add_representer(ODict,
+JeolmDumper.add_representer(OrderedDict,
         JeolmDumper.represent_OrderedDict)
 
 JeolmDumper.add_representer(PurePosixPath,
