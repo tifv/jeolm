@@ -9,7 +9,7 @@ from stat import S_ISDIR
 import subprocess
 import time
 
-from pathlib import Path, PurePath
+from pathlib import Path, PurePosixPath
 
 import logging
 from logging import DEBUG, INFO, WARNING, ERROR, CRITICAL
@@ -327,9 +327,9 @@ class PathNode(DatedNode):
     @staticmethod
     def pure_relative(path, root):
         """
-        Compute relative PurePath, with '..' parts.
+        Compute relative PurePosixPath, with '..' parts.
 
-        Both arguments must be absolute PurePath's and lack '..' parts.
+        Both arguments must be absolute PurePosixPath's and lack '..' parts.
         As a special case, if root is None, than path is returned.
         """
         if not path.is_absolute():
@@ -344,7 +344,7 @@ class PathNode(DatedNode):
             assert parent != root
             root = parent
             upstairs += 1
-        return PurePath(*
+        return PurePosixPath(*
             ['..'] * upstairs + [path.relative_to(root)] )
 
 class ProductNode(PathNode):
