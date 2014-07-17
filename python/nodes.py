@@ -6,7 +6,6 @@ from itertools import chain
 
 import os
 from stat import S_ISDIR
-import sys
 import subprocess
 import time
 
