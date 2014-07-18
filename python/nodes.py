@@ -8,6 +8,9 @@ import os
 from stat import S_ISDIR
 import subprocess
 import time
+from contextlib import contextmanager
+
+from concurrent import futures
 
 from pathlib import Path, PurePosixPath
 
@@ -38,23 +41,29 @@ class Node:
     name
         str, some short-but-identifying name.
     needs
-        list of Node instances, prerequisites of this node.
-        Expectd to be populated with initialization,
-        node.extend_needs() and node.append_needs() methods.
+        list of Node instances, prerequisites of this node.  Expected to be
+        populated with initialization, node.extend_needs() and
+        node.append_needs() methods.
     rules
-        list of functions, that are responsible for (re)building node
-        and setting node.modified attribute as appropriate.
-        Expected to be populated with @node.add_rule decorator.
+        list of functions, that are responsible for (re)building node and
+        setting node.modified attribute as appropriate.  Expected to be
+        populated with @node.add_rule decorator.
     modified
-        bool, True if node was modified, causing any
-        dependent nodes to be rebuilt.  Only node.needs_build() method
+        bool, True if node was modified, causing any dependent nodes to be
+        rebuilt.  Only node.needs_build() method of depending node
         should be interested in quering this attribute.
+    forced
+        bool, setting it to True will cause node.needs_build() to
+        always return True.  Should be changed only by node.force()
+        method.
     _updated
-        bool, True if node.update() was ever triggered.
-        Should be read and written only by node.update() method.
+        bool, True if self.update() has ever completed in either
+        concurrent or non-concurrent fashion.
     _locked
-        bool, dependency cycle protection.
-        Should be read and written only by node.update() method.
+        bool, dependency cycle protection.  Should be read and written
+        only by node.update() method.
+    _future
+        concurrent.futures.Future or None
     """
 
     def __init__(self, *, name=None, needs=(), rules=()):
@@ -65,38 +74,80 @@ class Node:
         self.needs = list(needs)
         self.rules = list(rules)
 
-        self._updated = False
         self.modified = False
         self.forced = False
 
+        self._updated = False
         self._locked = False
+        self._future = None
 
-    def is_updated(self):
-        return self._updated
+    def __hash__(self):
+        return hash(id(self))
 
-    def update(self):
+    def update(self, *, executor=None):
         """
         Update the node, first recursively updating needs.
+
+        If executor is None, return None.
+        Otherwise, return a future.
         """
+
+        if executor is not None and not isinstance(executor, futures.Executor):
+            raise RuntimeError(type(executor))
+
+        with self._check_for_cycle():
+            if self._updated:
+                if executor is None:
+                    if self._future is not None:
+                        self._future.result()
+                    return
+                else:
+                    if self._future is None:
+                        self._future = self._one_shot_future(lambda: None)
+                    return self._future
+            if executor is not None:
+                needed_futures = [
+                    node.update(executor=executor)
+                    for node in self.needs ]
+            else:
+                for node in self.needs:
+                    node.update()
+            if executor is not None:
+                if not needed_futures: # no dependencies
+                    self._future = executor.submit(self.update_self)
+                else:
+                    def wait_for_needs_and_update_self():
+                        futures.wait(needed_futures)
+                        return executor.submit(self.update_self).result()
+                    self._future = self._one_shot_future(
+                        wait_for_needs_and_update_self )
+            else:
+                self.update_self()
+            self._updated = True
+            if executor is not None:
+                return self._future
+            else:
+                return
+
+    @contextmanager
+    def _check_for_cycle(self):
         if self._locked:
             raise NodeCycleError(self.name)
-        if self._updated:
-            return
-        self.update_needs()
-        self.update_self()
-        self._updated = True
-
-    def update_needs(self):
+        self._locked = True
         try:
-            self._locked = True
-            for node in self.needs:
-                try:
-                    node.update()
-                except NodeCycleError as exception:
-                    exception.args += (self.name,)
-                    raise
+            yield
+        except NodeCycleError as exception:
+            exception.args += (self.name,)
+            raise
         finally:
             self._locked = False
+
+    @staticmethod
+    def _one_shot_future(func, *args, **kwargs):
+        one_shot_executor = futures.ThreadPoolExecutor(max_workers=1)
+        future = one_shot_executor.submit(func, *args, **kwargs)
+        one_shot_executor.shutdown(wait=False)
+        return future
 
     def update_self(self):
         if self.needs_build():
@@ -351,8 +402,9 @@ class ProductNode(PathNode):
     """
     ProductionNode has a source.
 
-    ProductionNode is a subclass of PathNode that introduces a notion
-    of source, which is also a PathNode.
+    ProductionNode is a subclass of PathNode that introduces a notion of
+    source, which is also a PathNode. The source is automatically
+    prepended to node.needs list.
 
     Attributes
     ----------
@@ -433,7 +485,7 @@ class LinkNode(ProductNode):
 
     Attributes
     ----------
-    source (derived)
+    source (derived from ProductNode)
         PathNode instance. Represents the target of the link.
     """
 

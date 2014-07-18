@@ -67,6 +67,9 @@ build_parser.add_argument('-r', '--review',
 build_parser.add_argument('--dump',
     help='instead of building create standalone version of document',
     action='store_true', )
+build_parser.add_argument('-j', '--jobs',
+    help='number of parallel jobs',
+    type=int, default=1, )
 build_parser.set_defaults(command='build', force=None)
 
 def main_build(args, *, fs):
@@ -91,8 +94,18 @@ def main_build(args, *, fs):
         md.dump_metadata()
         driver = md.feed_metadata(Driver())
 
+    if args.jobs < 1:
+        raise argparse.ArgumentTypeError(
+            "Positive integral number of jobs is required." )
+    elif args.jobs > 1:
+        from concurrent import futures
+        executor = futures.ThreadPoolExecutor(max_workers=args.jobs)
+    else:
+        executor = None
+
     builder = Builder(args.targets, fs=fs, driver=driver,
-        force=args.force, delegate=args.delegate )
+        force=args.force, delegate=args.delegate,
+        executor=executor )
     with refrain_called_process_error():
         builder.build()
 

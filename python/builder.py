@@ -24,7 +24,9 @@ class Builder:
     build_formats = ('pdf', )
     known_formats = ('pdf', 'ps', 'dump')
 
-    def __init__(self, targets, *, fs, driver, force=None, delegate=True):
+    def __init__(self, targets, *, fs, driver,
+        force=None, delegate=True, executor=None
+    ):
         self.fs = fs
         self.driver = driver
 
@@ -32,6 +34,8 @@ class Builder:
         assert force in {'latex', 'generate', None}
         self.force = force
         self.delegate = delegate
+
+        self.executor = executor
 
     def prebuild(self):
         self.outrecords_cache = self.fs.load_outrecords_cache()
@@ -85,7 +89,9 @@ class Builder:
     def build(self):
         if not hasattr(self, 'ultimate_node'):
             self.prebuild()
-        self.ultimate_node.update()
+        self.ultimate_node.update(executor=self.executor)
+        if self.executor is not None:
+            self.ultimate_node.update()
 
     def dump_outrecords_cache(self):
         self.fs.dump_outrecords_cache(self.outrecords_cache)
@@ -384,7 +390,6 @@ class Builder:
         pieces = []
         for alias_name, package_path in outrecord['package_paths'].items():
             package_node = self.package_nodes[package_path]
-            assert package_node.is_updated()
             with package_node.open() as f:
                 contents = f.read().strip('\n')
             pieces.append(self.substitute_filecontents(
