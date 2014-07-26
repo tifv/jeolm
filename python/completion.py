@@ -1,4 +1,3 @@
-from collections import OrderedDict as ODict
 import abc
 
 from pathlib import Path, PurePosixPath
@@ -40,7 +39,7 @@ def main():
         if previous == '--root':
             # Request for directory completion
             sys.exit(101)
-    from . import filesystem
+    import jeolm.local
     root = None
     while '--root' in args:
         root_key_index = args.index('--root')
@@ -58,8 +57,9 @@ def main():
         else:
             return
     try:
-        fs = filesystem.FilesystemManager(root=root)
-    except filesystem.RootNotFoundError:
+        local = jeolm.local.LocalManager(root=root)
+    except local.RootNotFoundError:
+        jeolm.local.report_missing_root()
         raise SystemExit
 
     while '--verbose' in args:
@@ -95,7 +95,7 @@ def main():
         # Request for filename completion
         sys.exit(100)
     elif subcommand in subcommands_accepting_targets:
-        completer = CachingCompleter(fs)
+        completer = CachingCompleter(local)
         completions = list(completer.complete_target(current))
         print('\n'.join(completions))
 
@@ -161,8 +161,8 @@ class Completer(BaseCompleter):
 
 class CachingCompleter(BaseCompleter):
 
-    def __init__(self, fs):
-        self.fs = fs
+    def __init__(self, local):
+        self.local = local
         super().__init__()
 
     @property
@@ -172,20 +172,51 @@ class CachingCompleter(BaseCompleter):
         except AttributeError:
             pass
 
-        target_list = self.fs.load_updated_completion_cache()
+        target_list = self._load_target_list_cache()
         if target_list is None:
             from jeolm.metadata import MetadataManager
-            Driver = self.fs.find_driver_class()
-            md = MetadataManager(fs=self.fs)
-            md.load_metadata()
-            driver = md.feed_metadata(Driver())
+            driver_class = self.local.driver_class
+            md = MetadataManager(local=self.local)
+            md.load_metadata_cache()
+            driver = md.feed_metadata(driver_class())
             target_list = [ PurePosixPath(metapath)
                 for metapath in driver.list_metapaths() ]
             if not target_list:
-                logger.warning("Target list seems empty.")
-            self.fs.dump_completion_cache(target_list)
+                logger.warning("Target list is empty.")
+            self._dump_target_list_cache(target_list)
         self._target_list = target_list
         return target_list
+
+    def _load_target_list_cache(self):
+        try:
+            with self._target_list_cache_path.open('r') as cache_file:
+                cache = cache_file.read()
+        except FileNotFoundError:
+            return None
+        else:
+            return [
+                PurePosixPath(line)
+                for line in cache.split('\n')
+                if line != '' ]
+
+    def _dump_target_list_cache(self, target_list):
+        cache = '\n'.join(str(target) for target in target_list)
+        if not cache or not target_list:
+            logger.warning("Completion cache seems empty")
+        new_path = self.local.build_dir / '.targets.cache.list.new'
+        with new_path.open('w') as cache_file:
+            cache_file.write(cache)
+        new_path.rename(self._target_list_cache_path)
+
+    def invalidate_target_list_cache(self):
+        if self._target_list_cache_path.exists():
+            self._target_list_cache_path.unlink()
+
+    @property
+    def _target_list_cache_path(self):
+        return self.local.build_dir / self._target_list_cache_name
+
+    _target_list_cache_name = 'targets.cache.list'
 
 if __name__ == '__main__':
     main()

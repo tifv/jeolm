@@ -1,6 +1,5 @@
 from string import Template
 from collections import OrderedDict
-from itertools import chain
 from functools import partial
 from datetime import date
 
@@ -8,14 +7,14 @@ import os
 import re
 import hashlib
 import json
+import pickle
 import subprocess
 
 from pathlib import Path, PurePosixPath
 
-from .nodes import (
+from jeolm.nodes import (
     Node, DatedNode, FileNode, TextNode, ProductFileNode,
     LinkNode, DirectoryNode )
-from .target import Target
 
 import logging
 logger = logging.getLogger(__name__)
@@ -24,10 +23,10 @@ class Builder:
     build_formats = ('pdf', )
     known_formats = ('pdf', 'ps', 'dump')
 
-    def __init__(self, targets, *, fs, driver,
+    def __init__(self, targets, *, local, driver,
         force=None, delegate=True, executor=None
     ):
-        self.fs = fs
+        self.local = local
         self.driver = driver
 
         self.targets = targets
@@ -38,7 +37,7 @@ class Builder:
         self.executor = executor
 
     def prebuild(self):
-        self.outrecords_cache = self.fs.load_outrecords_cache()
+        outrecords_cache = self._load_outrecords_cache()
 
         targets = self.targets
         if self.delegate:
@@ -48,7 +47,7 @@ class Builder:
                 in self.driver.list_delegated_targets(
                     *targets, recursively=True )
             ]
-        self.outrecords = outrecords = OrderedDict(
+        outrecords = OrderedDict(
             (target, self.driver.produce_outrecord(target))
             for target in targets )
         figure_paths = [ figure_path
@@ -59,25 +58,29 @@ class Builder:
             for outrecord in outrecords.values()
             if outrecord['type'] in {'regular', 'latexdoc'}
             for package_path in outrecord['package_paths'].values() ]
-        self.figure_records = figure_records = OrderedDict(
+        figure_records = OrderedDict(
             (figure_path, self.driver.produce_figure_record(figure_path))
             for figure_path in figure_paths )
-        self.package_records = package_records = OrderedDict(
+        package_records = OrderedDict(
             (package_path, self.driver.produce_package_record(package_path))
             for package_path in package_paths )
-        self.cache_updated = False
         self.outnodes = OrderedDict(
-            (target, self.create_outnode(target, outrecord))
+            (target, self.create_outnode(
+                target, outrecord,
+                outrecords_cache=outrecords_cache ))
             for target, outrecord in outrecords.items() )
-        if self.cache_updated:
-            self.dump_outrecords_cache()
+        if any(node.modified for node in self.outnodes.values()):
+            self._dump_outrecords_cache(outrecords_cache)
 
         self.source_nodes = OrderedDict()
         assert set(self.known_formats) >= set(self.build_formats)
 
-        self.prebuild_figures(self.fs.build_dir/'figures')
-        self.prebuild_packages(self.fs.build_dir/'packages')
-        self.prebuild_documents(self.fs.build_dir/'documents')
+        self.prebuild_packages( package_records,
+            self.local.build_dir/'packages' )
+        self.prebuild_figures( figure_records,
+            build_dir=self.local.build_dir/'figures' )
+        self.prebuild_documents( outrecords,
+            build_dir=self.local.build_dir/'documents' )
 
         self.ultimate_node = Node(
             name='ultimate',
@@ -93,21 +96,44 @@ class Builder:
         if self.executor is not None:
             self.ultimate_node.update()
 
-    def dump_outrecords_cache(self):
-        self.fs.dump_outrecords_cache(self.outrecords_cache)
 
-    def create_outnode(self, target, outrecord):
+    ##########
+    # Outrecords cache management
+
+    def _load_outrecords_cache(self):
+        try:
+            with self._outrecords_cache_path.open('rb') as cache_file:
+                pickled_cache = cache_file.read()
+        except FileNotFoundError:
+            return {}
+        else:
+            return pickle.loads(pickled_cache)
+
+    def _dump_outrecords_cache(self, outrecords_cache):
+        pickled_cache = pickle.dumps(outrecords_cache)
+        new_path = self.local.build_dir / '.outrecords.cache.pickle.new'
+        with new_path.open('wb') as cache_file:
+            cache_file.write(pickled_cache)
+        new_path.rename(self._outrecords_cache_path)
+
+    @property
+    def _outrecords_cache_path(self):
+        return self.local.build_dir / self._outrecords_cache_name
+
+    _outrecords_cache_name = 'outrecords.cache.pickle'
+
+
+    def create_outnode(self, target, outrecord, *, outrecords_cache):
         target_s = str(target)
         outnode = DatedNode(name='doc:{}:record'.format(target))
         outnode.record = outrecord
-        cache = self.outrecords_cache
         outrecord_hash = self.outrecord_hash(outrecord)
 
-        if target_s not in cache:
+        if target_s not in outrecords_cache:
             logger.debug("Metanode {} was not found in cache"
                 .format(target_s) )
             modified = True
-        elif cache[target_s]['hash'] != outrecord_hash:
+        elif outrecords_cache[target_s]['hash'] != outrecord_hash:
             logger.debug("Metanode {} was found obsolete in cache"
                 .format(target_s) )
             modified = True
@@ -118,19 +144,18 @@ class Builder:
 
         if modified:
             outnode.set_mtime_to_now()
-            cache[target_s] = {
+            outrecords_cache[target_s] = {
                 'hash' : outrecord_hash, 'mtime' : outnode.mtime }
             outnode.modified = True
-            self.cache_updated = True
         else:
-            outnode.mtime = cache[target_s]['mtime']
+            outnode.mtime = outrecords_cache[target_s]['mtime']
         return outnode
 
-    def prebuild_figures(self, build_dir):
+    def prebuild_figures(self, figure_records, *, build_dir):
         self.figure_nodes = {
             figure_outtype : OrderedDict()
             for figure_outtype in ('eps', 'pdf') }
-        for figure_path, figure_record in self.figure_records.items():
+        for figure_path, figure_record in figure_records.items():
             build_subdir = build_dir / figure_record['buildname']
             build_dir_node = DirectoryNode(
                 name='fig:{}:dir'.format(figure_path),
@@ -222,9 +247,9 @@ class Builder:
             ('inkscape', '--export-pdf=main.pdf', '-without-gui', 'main.eps'),
             cwd=build_dir )
 
-    def prebuild_packages(self, build_dir):
+    def prebuild_packages(self, package_records, build_dir):
         self.package_nodes = OrderedDict()
-        for package_path, package_record in self.package_records.items():
+        for package_path, package_record in package_records.items():
             build_subdir = build_dir / package_record['buildname']
             build_dir_node = DirectoryNode(
                 name='sty:{}:dir'.format(package_path),
@@ -285,14 +310,14 @@ class Builder:
         sty_node = self.package_nodes[package_path] = \
             self.get_source_node(package_record['source'])
 
-    def prebuild_documents(self, build_dir):
+    def prebuild_documents(self, outrecords, *, build_dir):
         self.document_nodes = {
             build_format : OrderedDict()
             for build_format in self.known_formats }
         self.exposed_nodes = {
             build_format : OrderedDict()
             for build_format in self.known_formats }
-        for target, outrecord in self.outrecords.items():
+        for target, outrecord in outrecords.items():
             build_subdir = build_dir / outrecord['buildname']
             build_dir_node = DirectoryNode(
                 name='doc:{}:dir'.format(target),
@@ -521,7 +546,7 @@ class Builder:
             self.exposed_nodes[build_format][target] = LinkNode(
                 name='doc:{}:exposed:{}'.format(target, build_format),
                 source=document_node,
-                path=(self.fs.root/outrecord['outname'])
+                path=(self.local.root/outrecord['outname'])
                     .with_suffix(document_node.path.suffix)
             )
 
@@ -532,7 +557,7 @@ class Builder:
             return self.source_nodes[inpath]
         node = self.source_nodes[inpath] = \
             FileNode(name='source:{}'.format(inpath),
-                path=self.fs.source_dir/inpath )
+                path=self.local.source_dir/inpath )
         if not node.path.exists():
             logger.warning( "Requested source node {} does not exist as file."
                 .format(inpath) )

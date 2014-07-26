@@ -15,24 +15,24 @@ logger = logging.getLogger(__name__)
 ##########
 # High-level subprograms
 
-def review(paths, *, fs, md, viewpoint=None, recursive=False):
+def review(paths, *, local, md, viewpoint=None, recursive=False):
     inpaths = resolve_inpaths(paths,
-        source_dir=fs.source_dir, viewpoint=viewpoint )
+        source_dir=local.source_dir, viewpoint=viewpoint )
     for inpath in inpaths:
         md.review(inpath, recursive=recursive)
 
-def print_source_list(targets, *, fs, driver, viewpoint=None,
+def print_source_list(targets, *, local, driver, viewpoint=None,
     source_type='tex'
 ):
     paths = list(list_sources(targets,
-        fs=fs, driver=driver, source_type=source_type ))
+        local=local, driver=driver, source_type=source_type ))
     if viewpoint is not None:
         paths = [ path.relative_to(viewpoint)
             for path in paths ]
     for path in paths:
         print(path)
 
-def check_spelling(targets, *, fs, driver, context=0, colour=True):
+def check_spelling(targets, *, local, driver, context=0, colour=True):
     from . import spell
     from .spell import LaTeXSpeller, CorrectWord, IncorrectWord
     if colour:
@@ -59,7 +59,7 @@ def check_spelling(targets, *, fs, driver, context=0, colour=True):
             return piece.s
 
     path_generator = list_sources(targets,
-        fs=fs, driver=driver, source_type='tex' )
+        local=local, driver=driver, source_type='tex' )
     for path in path_generator:
         indicator_clean()
         indicator_show(str(path))
@@ -81,14 +81,14 @@ def check_spelling(targets, *, fs, driver, context=0, colour=True):
         except ValueError as error:
             raise ValueError(
                 "Error while spell-checking {}"
-                .format(path.relative_to(fs.root))
+                .format(path.relative_to(local.source_dir))
             ) from error
         if not printed_line_numbers:
             continue
         indicator_clean()
         fprint(
             '<BOLD><YELLOW>{}<NOCOLOUR> possible misspellings<RESET>'
-            .format(path.relative_to(fs.source_dir)) )
+            .format(path.relative_to(local.source_dir)) )
         line_range = range(len(lines))
         lineno_offset = len(str(len(lines)))
         for lineno in sorted(printed_line_numbers):
@@ -117,14 +117,14 @@ def clean(root):
 ##########
 # Supplementary subprograms
 
-def simple_load_driver(fs):
+def simple_load_driver(local):
     from jeolm.metadata import MetadataManager
-    md = MetadataManager(fs=fs)
-    md.load_metadata()
-    return md.feed_metadata(fs.find_driver_class()())
+    md = MetadataManager(local=local)
+    md.load_metadata_cache()
+    return md.feed_metadata(local.driver_class())
 
-def list_sources(targets, *, fs, driver, source_type='tex'):
-    source_dir = fs.source_dir
+def list_sources(targets, *, local, driver, source_type='tex'):
+    source_dir = local.source_dir
     for target in driver.list_delegated_targets(*targets, recursively=True):
         inpath_generator = driver.list_inpaths(
             target.flags_clean_copy(origin='target'),
@@ -160,4 +160,50 @@ def refrain_called_process_error():
         logger.critical(
             "Command {exc.cmd} returned code {exc.returncode}"
             .format(exc=exception) )
+
+def iter_broken_links(directory, *, recursive):
+    """
+    Yield all paths in directory that are broken links.
+
+    Args:
+      directory (Path): directory to search for broken links.
+      recursive (bool): if the search should dwell into subdirectories.
+
+    Yields:
+      Broken links in the directory. If recursive argument is true, then
+      all subdirectories are also searched.
+
+    Raises:
+      FileNotFoundError: if the given directory does not exist.
+    """
+    if not isinstance(directory, Path):
+        raise TypeError(type(directory))
+    if not directory.exists():
+        raise FileNotFoundError(directory)
+    for path in directory.iterdir():
+        if not path.exists():
+            yield path
+            continue
+        if recursive and path.is_dir():
+            yield from iter_broken_links(path, recursive=recursive)
+
+def clean_broken_links(directory, *, recursive):
+    """
+    Unlink all paths in directory that are broken links.
+
+    Args:
+      directory (Path): directory to search for broken links.
+      recursive (bool): if the search should dwell into subdirectories.
+
+    Returns nothing. Removes all broken links in the directory.
+    If recursive argument is true, then all subdirectories are also
+    searched and cleaned.
+
+    Raises:
+      FileNotFoundError: if the given directory does not exist.
+    """
+    for path in iter_broken_links(directory, recursive=recursive):
+        logger.info("Removing broken link at '{}'"
+            .format(path) )
+        path.unlink()
 

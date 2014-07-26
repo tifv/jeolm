@@ -4,15 +4,16 @@ import traceback
 from pathlib import Path, PurePosixPath
 import pyinotify
 
+import jeolm
+import jeolm.nodes
 import jeolm.builder
-import jeolm.filesystem
+import jeolm.local
 import jeolm.metadata
 
 from jeolm.commands import review
 from jeolm.diffprint import log_metadata_diff
 import jeolm.completion
 
-from jeolm.records import RecordPath
 from jeolm.target import Target, TargetError
 
 import logging
@@ -25,26 +26,26 @@ if __name__ == '__main__':
     handler.setFormatter(Formatter("%(name)s: %(message)s"))
     logger.addHandler(handler)
 
-def mainloop(fs):
-    md = NotifiedMetadataManager(fs=fs)
-    Driver = fs.find_driver_class()
+def mainloop(local):
+    md = NotifiedMetadataManager(local=local)
+    driver_class = local.driver_class
     md.review(PurePosixPath(), recursive=True)
-    driver = Driver()
+    driver = driver_class()
     md.feed_metadata(driver)
 
     def review_metadata():
         with log_metadata_diff(md):
             review_list = md.generate_review_list()
             assert isinstance(review_list, (list, tuple)), type(review_list)
-            for review_file in review_list:
+            for review_path in review_list:
                 try:
-                    review([review_file], fs=fs, md=md, recursive=True)
+                    review([review_path], local=local, md=md, recursive=True)
                 except Exception as exc:
                     traceback.print_exc()
                     logger.error(
                         "<BOLD>Error occured while reviewing "
                         "<RED>{}<NOCOLOUR>.<RESET>"
-                        .format(review_file.relative_to(fs.source_dir)) )
+                        .format(review_path.relative_to(local.source_dir)) )
         if review_list:
             driver.clear()
             md.feed_metadata(driver)
@@ -60,7 +61,7 @@ def mainloop(fs):
             target_s = input('jeolm> ')
         except (KeyboardInterrupt, EOFError):
             print()
-            md.dump_metadata()
+            md.dump_metadata_cache()
             raise SystemExit
         review_metadata()
         if target_s == '':
@@ -74,7 +75,8 @@ def mainloop(fs):
         if target is None:
             continue
         try:
-            builder = jeolm.builder.Builder([target], fs=fs, driver=driver,
+            builder = jeolm.builder.Builder(
+                [target], local=local, driver=driver,
                 force=None, delegate=True )
             builder.build()
         except Exception:
@@ -90,15 +92,15 @@ class NotifiedMetadataManager(jeolm.metadata.MetadataManager):
     self_destructive_mask = pyinotify.IN_MOVE_SELF | pyinotify.IN_DELETE_SELF
     mask = creative_mask | destructive_mask | self_destructive_mask
 
-    def __init__(self, *, fs):
+    def __init__(self, *, local):
         self.review_set = set()
         self.wm = wm = pyinotify.WatchManager()
         self.eh = eh = self.EventHandler(md=self)
         self.notifier = pyinotify.Notifier(wm, eh, timeout=0)
         self.wdm = self.WatchDescriptorManager()
-        super().__init__(fs=fs)
+        super().__init__(local=local)
         self.wdm.add(self.wm.add_watch(
-            str(self.fs.source_dir), self.mask, rec=False ))
+            str(self.local.source_dir), self.mask, rec=False ))
         self.source_dir_wd, = self.wdm.path_by_wd
 
     def generate_review_list(self):
@@ -132,13 +134,13 @@ class NotifiedMetadataManager(jeolm.metadata.MetadataManager):
 
     def _create_record(self, path, parent_record, key):
         if path.suffix == '':
-            source_path = str(self.fs.source_dir/path.as_inpath())
+            source_path = str(self.local.source_dir/path.as_inpath())
             self.wdm.add(self.wm.add_watch(source_path, self.mask, rec=False))
         return super()._create_record(path, parent_record, key)
 
     def _delete_record(self, path, *args, **kwargs):
         if path.suffix == '':
-            source_path = str(self.fs.source_dir/path.as_inpath())
+            source_path = str(self.local.source_dir/path.as_inpath())
             self.wm.rm_watch(self.wdm.pop(path=source_path))
         return super()._delete_record(path, *args, **kwargs)
 
@@ -210,18 +212,16 @@ class NotifiedMetadataManager(jeolm.metadata.MetadataManager):
         process_IN_DELETE_SELF = process_self_destructive_event
         process_IN_MOVE_SELF = process_self_destructive_event
 
-if __name__ == '__main__':
-    from jeolm import nodes
-    from jeolm import setup_logging
-
-    setup_logging(verbose=False)
+def main():
+    jeolm.setup_logging(verbose=False)
     try:
-        fs = jeolm.filesystem.FilesystemManager(root=Path.cwd())
-    except jeolm.filesystem.RootNotFoundError:
+        local = jeolm.local.LocalManager(root=Path.cwd())
+    except jeolm.local.RootNotFoundError:
+        jeolm.local.report_missing_root()
         raise SystemExit
-    nodes.PathNode.root = fs.root
-    fs.report_broken_links()
-    fs.load_local_module()
+    jeolm.nodes.PathNode.root = local.root
+    mainloop(local)
 
-    mainloop(fs)
+if __name__ == '__main__':
+    main()
 

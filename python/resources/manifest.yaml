@@ -1,0 +1,5 @@
+style:
+  source/_style/jeolm.dtx: jeolm.dtx
+  source/_style/core.yaml: style-core.yaml
+figure-style:
+  source/_style/jeolm.asy: jeolm.asy

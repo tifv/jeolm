@@ -1,6 +1,8 @@
 import os
 import io
 import re
+import pickle
+
 from collections import OrderedDict
 
 from pathlib import PurePosixPath
@@ -27,15 +29,35 @@ class MetadataManager(RecordsManager):
         '.yaml' : 'metadata in YAML',
     }
 
-    def __init__(self, *, fs):
-        self.fs = fs
+    def __init__(self, *, local):
+        self.local = local
         super().__init__()
 
-    def load_metadata(self):
-        self.absorb(self.fs.load_metadata())
+    def load_metadata_cache(self):
+        try:
+            with self._metadata_cache_path.open('rb') as cache_file:
+                pickled_cache = cache_file.read()
+        except FileNotFoundError:
+            cache = {}
+        else:
+            cache = pickle.loads(pickled_cache)
+        self.absorb(cache)
 
-    def dump_metadata(self):
-        self.fs.dump_metadata(self.records)
+    def dump_metadata_cache(self):
+        pickled_cache = pickle.dumps(self.records)
+        new_path = self.local.build_dir / '.metadata.cache.pickle.new'
+        with new_path.open('wb') as cache_file:
+            cache_file.write(pickled_cache)
+        new_path.rename(self._metadata_cache_path)
+        from jeolm.completion import CachingCompleter
+        completer = CachingCompleter(local=self.local)
+        completer.invalidate_target_list_cache()
+
+    @property
+    def _metadata_cache_path(self):
+        return self.local.build_dir / self._metadata_cache_name
+
+    _metadata_cache_name = 'metadata.cache.pickle'
 
     def feed_metadata(self, metarecords):
         for metainpath, record in self.items():
@@ -58,7 +80,7 @@ class MetadataManager(RecordsManager):
 
         if not isinstance(inpath, PurePosixPath):
             raise RuntimeError(type(inpath))
-        path = self.fs.source_dir/inpath
+        path = self.local.source_dir/inpath
         metainpath = RecordPath(inpath)
 
         exists = path.exists()
@@ -98,11 +120,11 @@ class MetadataManager(RecordsManager):
         self.absorb({metainpath : {'$metadata' : metadata}}, overwrite=True)
 
     def review_subpaths(self, inpath):
-        for subname in os.listdir(str(self.fs.source_dir/inpath)):
+        for subname in os.listdir(str(self.local.source_dir/inpath)):
             if subname.startswith('.'):
                 continue
             subinpath = inpath/subname
-            subpath = self.fs.source_dir/subinpath
+            subpath = self.local.source_dir/subinpath
             subsuffix = subinpath.suffix
             if subsuffix not in self.source_types:
                 logger.warning('<BOLD><MAGENTA>{}<NOCOLOUR>: '
@@ -128,7 +150,7 @@ class MetadataManager(RecordsManager):
         return query_method(inpath)
 
     def query_yaml_file(self, inpath):
-        with (self.fs.source_dir/inpath).open('r') as f:
+        with (self.local.source_dir/inpath).open('r') as f:
             metadata = yaml.load(f)
         if not isinstance(metadata, dict):
             raise TypeError(
@@ -137,7 +159,7 @@ class MetadataManager(RecordsManager):
         return metadata
 
     def query_tex_file(self, inpath):
-        with (self.fs.source_dir/inpath).open('r') as f:
+        with (self.local.source_dir/inpath).open('r') as f:
             s = f.read()
         metadata = {}
         metadata.update(self.query_tex_content(inpath, s))
@@ -211,7 +233,7 @@ class MetadataManager(RecordsManager):
         r'(?:\n% [ \-#].+)*')
 
     def query_dtx_file(self, inpath):
-        with (self.fs.source_dir/inpath).open('r') as f:
+        with (self.local.source_dir/inpath).open('r') as f:
             s = f.read()
         metadata = {
             '$package$able' : True,
@@ -221,7 +243,7 @@ class MetadataManager(RecordsManager):
         return metadata
 
     def query_sty_file(self, inpath):
-        with (self.fs.source_dir/inpath).open('r') as f:
+        with (self.local.source_dir/inpath).open('r') as f:
             s = f.read()
         metadata = {
             '$package$able' : True,
@@ -242,7 +264,7 @@ class MetadataManager(RecordsManager):
     )
 
     def query_asy_file(self, inpath):
-        with (self.fs.source_dir/inpath).open('r') as f:
+        with (self.local.source_dir/inpath).open('r') as f:
             s = f.read()
         metadata = {
             '$figure$able' : True,

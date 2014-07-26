@@ -1,19 +1,18 @@
-from argparse import ArgumentParser
+import argparse
 
-from pathlib import Path, PurePosixPath
+from pathlib import Path
 
 import jeolm
-from jeolm.target import Target
-from jeolm.diffprint import log_metadata_diff
+import jeolm.target
+import jeolm.diffprint
 from jeolm.commands import (
-    review, print_source_list, check_spelling, clean,
+    review, print_source_list, check_spelling, clean, clean_broken_links,
     list_sources, simple_load_driver, refrain_called_process_error, )
 
 import logging
 logger = logging.getLogger(__name__)
 
-
-parser = ArgumentParser(prog='jeolm',
+parser = argparse.ArgumentParser(prog='jeolm',
     description='Automated build system for course-like projects' )
 parser.add_argument('-R', '--root',
     help='explicit root path of a jeolm project', )
@@ -27,7 +26,8 @@ parser.add_argument('-C', '--no-colour',
 subparsers = parser.add_subparsers()
 
 def main():
-    from jeolm import filesystem, nodes
+    import jeolm.local
+    import jeolm.nodes
     from jeolm import setup_logging
 
     args = parser.parse_args()
@@ -35,22 +35,21 @@ def main():
         return parser.print_help()
     setup_logging(verbose=args.verbose, colour=args.colour)
     if args.command == 'init':
-        # special case: no fs expected
+        # special case: no local expected
         return main_init(args)
     try:
-        fs = filesystem.FilesystemManager(root=args.root)
-    except filesystem.RootNotFoundError:
+        local = jeolm.local.LocalManager(root=args.root)
+    except jeolm.local.RootNotFoundError:
+        jeolm.local.report_missing_root()
         raise SystemExit
-    nodes.PathNode.root = fs.root
-    fs.report_broken_links()
-    fs.load_local_module()
+    jeolm.nodes.PathNode.root = local.root
     main_function = globals()['main_' + args.command]
-    return main_function(args, fs=fs)
+    return main_function(args, local=local)
 
 build_parser = subparsers.add_parser('build',
     help='build specified targets', )
 build_parser.add_argument('targets',
-    nargs='*', metavar='TARGET', type=Target.from_string)
+    nargs='*', metavar='TARGET', type=jeolm.target.Target.from_string)
 force_build_group = build_parser.add_mutually_exclusive_group()
 force_build_group.add_argument('-f', '--force-latex',
     help='force recompilation on LaTeX stage',
@@ -72,7 +71,7 @@ build_parser.add_argument('-j', '--jobs',
     type=int, default=1, )
 build_parser.set_defaults(command='build', force=None)
 
-def main_build(args, *, fs):
+def main_build(args, *, local):
     from jeolm.builder import Builder
     if args.dump:
         from jeolm.builder import Dumper as Builder
@@ -80,19 +79,19 @@ def main_build(args, *, fs):
 
     if not args.targets:
         logger.warn('No-op: no targets for building')
-    md = MetadataManager(fs=fs)
-    md.load_metadata()
-    Driver = fs.find_driver_class()
-    driver = md.feed_metadata(Driver())
+    md = MetadataManager(local=local)
+    md.load_metadata_cache()
+    driver = md.feed_metadata(local.driver_class())
 
     if args.review:
         sources = list_sources( args.targets,
-            fs=fs, driver=driver, source_type='tex' )
-        with log_metadata_diff(md):
+            local=local, driver=driver, source_type='tex' )
+        with jeolm.diffprint.log_metadata_diff(md):
             review( sources, viewpoint=Path.cwd(),
-                fs=fs, md=md, recursive=False )
-        md.dump_metadata()
-        driver = md.feed_metadata(Driver())
+                local=local, md=md, recursive=False )
+        md.dump_metadata_cache()
+        driver.clear()
+        md.feed_metadata(driver)
 
     if args.jobs < 1:
         raise argparse.ArgumentTypeError(
@@ -103,7 +102,7 @@ def main_build(args, *, fs):
     else:
         executor = None
 
-    builder = Builder(args.targets, fs=fs, driver=driver,
+    builder = Builder(args.targets, local=local, driver=driver,
         force=args.force, delegate=args.delegate,
         executor=executor )
     with refrain_called_process_error():
@@ -117,16 +116,16 @@ review_parser.add_argument('-r', '--recursive',
     action='store_true', )
 review_parser.set_defaults(command='review')
 
-def main_review(args, *, fs):
+def main_review(args, *, local):
     from jeolm.metadata import MetadataManager
     if not args.inpaths:
         logger.warn('No-op: no inpaths for review')
-    md = MetadataManager(fs=fs)
-    md.load_metadata()
-    with log_metadata_diff(md):
+    md = MetadataManager(local=local)
+    md.load_metadata_cache()
+    with jeolm.diffprint.log_metadata_diff(md):
         review(args.inpaths, viewpoint=Path.cwd(),
-                fs=fs, md=md, recursive=args.recursive )
-    md.dump_metadata()
+                local=local, md=md, recursive=args.recursive )
+    md.dump_metadata_cache()
 
 init_parser = subparsers.add_parser('init',
     help='create jeolm directory/file structure' )
@@ -135,69 +134,47 @@ init_parser.add_argument('resources',
 init_parser.set_defaults(command='init')
 
 def main_init(args):
-    from shutil import copyfile
-    from jeolm import filesystem
-    fs = filesystem.InitFilesystemManager(root=args.root)
-    fs.fix_root()
-    for resource_name in args.resources:
-        resource_dir = fs.locate_resource(resource_name)
-        assert isinstance(resource_dir, Path), type(resource_dir)
-        assert resource_dir.is_dir(), resource_dir
-        for p in sorted(resource_dir.glob('**/*')):
-            assert not p.is_symlink(), p
-            r = p.relative_to(resource_dir)
-            q = fs.root/r
-            if p.is_dir():
-                if q.exists():
-                    if not q.is_dir():
-                        raise NotADirectoryError(q)
-                    else:
-                        continue
-                else:
-                    q.mkdir()
-            else:
-                logger.info("Updating {}".format(r))
-                copyfile(str(p), str(q))
+    import jeolm.local
+    jeolm.local.InitLocalManager(
+        root=args.root, resources=args.resources )
 
 list_parser = subparsers.add_parser('list',
     help='list all infiles for given targets' )
 list_parser.add_argument('targets',
-    nargs='*', metavar='TARGET', type=Target.from_string, )
+    nargs='*', metavar='TARGET', type=jeolm.target.Target.from_string, )
 list_parser.add_argument('--type',
     help='searched-for infiles type',
     choices=['tex', 'asy'], default='tex',
     dest='source_type', metavar='SOURCE_TYPE', )
 list_parser.set_defaults(command='list')
 
-def main_list(args, *, fs):
+def main_list(args, *, local):
     if not args.targets:
         logger.warn('No-op: no targets for source list')
     print_source_list( args.targets,
-        fs=fs, driver=simple_load_driver(fs),
+        local=local, driver=simple_load_driver(local),
         viewpoint=Path.cwd(), source_type=args.source_type, )
 
 spell_parser = subparsers.add_parser('spell',
     help='spell-check all infiles for given targets' )
 spell_parser.add_argument('targets',
-    nargs='*', metavar='TARGET', type=Target.from_string, )
+    nargs='*', metavar='TARGET', type=jeolm.target.Target.from_string, )
 spell_parser.set_defaults(command='spell')
 
-def main_spell(args, *, fs):
+def main_spell(args, *, local):
     if not args.targets:
         logger.warn('No-op: no targets for spell check')
-    if not args.colour:
-        logger.warn('Spelling is nearly useless in colourless mode.')
     check_spelling( args.targets,
-        fs=fs, driver=simple_load_driver(fs),
+        local=local, driver=simple_load_driver(local),
         colour=args.colour )
 
 clean_parser = subparsers.add_parser('clean',
     help='clean toplevel links to build/**.pdf', )
 clean_parser.set_defaults(command='clean')
 
-def main_clean(args, *, fs):
-    clean(root=fs.root)
-    fs.clean_broken_links(fs.build_dir, recursive=True)
+def main_clean(args, *, local):
+    clean(root=local.root)
+    clean_broken_links(local.build_dir, recursive=True)
 
 
 if __name__ == '__main__':
