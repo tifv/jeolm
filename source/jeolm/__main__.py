@@ -3,11 +3,11 @@ import argparse
 from pathlib import Path
 
 import jeolm
+import jeolm.local
+import jeolm.nodes
 import jeolm.target
 import jeolm.diffprint
-from jeolm.commands import (
-    review, print_source_list, check_spelling, clean, clean_broken_links,
-    list_sources, simple_load_driver, refrain_called_process_error, )
+import jeolm.commands
 
 import logging
 logger = logging.getLogger(__name__)
@@ -26,14 +26,10 @@ parser.add_argument('-C', '--no-colour',
 subparsers = parser.add_subparsers()
 
 def main():
-    import jeolm.local
-    import jeolm.nodes
-    from jeolm import setup_logging
-
     args = parser.parse_args()
     if 'command' not in args:
         return parser.print_help()
-    setup_logging(verbose=args.verbose, colour=args.colour)
+    jeolm.setup_logging(verbose=args.verbose, colour=args.colour)
     if args.command == 'init':
         # special case: no local expected
         return main_init(args)
@@ -84,11 +80,12 @@ def main_build(args, *, local):
     driver = md.feed_metadata(local.driver_class())
 
     if args.review:
-        sources = list_sources( args.targets,
+        sources = jeolm.commands.list_sources( args.targets,
             local=local, driver=driver, source_type='tex' )
         with jeolm.diffprint.log_metadata_diff(md):
-            review( sources, viewpoint=Path.cwd(),
-                local=local, md=md, recursive=False )
+            jeolm.commands.review( sources,
+                viewpoint=Path.cwd(), local=local,
+                md=md, recursive=False )
         md.dump_metadata_cache()
         driver.clear()
         md.feed_metadata(driver)
@@ -105,7 +102,7 @@ def main_build(args, *, local):
     builder = Builder(args.targets, local=local, driver=driver,
         force=args.force, delegate=args.delegate,
         executor=executor )
-    with refrain_called_process_error():
+    with jeolm.commands.refrain_called_process_error():
         builder.build()
 
 review_parser = subparsers.add_parser('review',
@@ -123,8 +120,9 @@ def main_review(args, *, local):
     md = MetadataManager(local=local)
     md.load_metadata_cache()
     with jeolm.diffprint.log_metadata_diff(md):
-        review(args.inpaths, viewpoint=Path.cwd(),
-                local=local, md=md, recursive=args.recursive )
+        jeolm.commands.review( args.inpaths,
+            viewpoint=Path.cwd(), local=local,
+            md=md, recursive=args.recursive )
     md.dump_metadata_cache()
 
 init_parser = subparsers.add_parser('init',
@@ -134,7 +132,6 @@ init_parser.add_argument('resources',
 init_parser.set_defaults(command='init')
 
 def main_init(args):
-    import jeolm.local
     jeolm.local.InitLocalManager(
         root=args.root, resources=args.resources )
 
@@ -151,9 +148,10 @@ list_parser.set_defaults(command='list')
 def main_list(args, *, local):
     if not args.targets:
         logger.warn('No-op: no targets for source list')
-    print_source_list( args.targets,
-        local=local, driver=simple_load_driver(local),
-        viewpoint=Path.cwd(), source_type=args.source_type, )
+    jeolm.commands.print_source_list( args.targets,
+        viewpoint=Path.cwd(), local=local,
+        driver=jeolm.commands.simple_load_driver(local),
+        source_type=args.source_type, )
 
 spell_parser = subparsers.add_parser('spell',
     help='spell-check all infiles for given targets' )
@@ -164,8 +162,8 @@ spell_parser.set_defaults(command='spell')
 def main_spell(args, *, local):
     if not args.targets:
         logger.warn('No-op: no targets for spell check')
-    check_spelling( args.targets,
-        local=local, driver=simple_load_driver(local),
+    jeolm.commands.check_spelling( args.targets,
+        local=local, driver=jeolm.commands.simple_load_driver(local),
         colour=args.colour )
 
 clean_parser = subparsers.add_parser('clean',
@@ -173,8 +171,8 @@ clean_parser = subparsers.add_parser('clean',
 clean_parser.set_defaults(command='clean')
 
 def main_clean(args, *, local):
-    clean(root=local.root)
-    clean_broken_links(local.build_dir, recursive=True)
+    jeolm.commands.clean(root=local.root)
+    jeolm.commands.clean_broken_links(local.build_dir, recursive=True)
 
 
 if __name__ == '__main__':
