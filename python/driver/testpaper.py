@@ -15,20 +15,20 @@ class TestPaperDriver(Driver):
         if metarecord.get('$test', False):
             if 'exclude-test' in target.flags:
                 return
-            yield self.substitute_begingroup()
-            yield self.substitute_interrobang_section()
-            yield {'required_package' : 'textcomp'}
+#            yield self.substitute_begingroup()
+#            yield self.substitute_interrobang_section()
+#            yield {'required_package' : 'textcomp'}
             yield from super_matter
             yield from self.generate_test_postword(target, metarecord)
-            yield self.substitute_endgroup()
+#            yield self.substitute_endgroup()
         else:
             yield from super_matter
 
-    begingroup_template = r'\begingroup'
-    endgroup_template = r'\endgroup'
-    interrobang_section_template = (
-        r'\let\oldsection\section' '\n'
-        r'\def\section#1#2{\oldsection#1{\textinterrobang\ #2}}' )
+#    begingroup_template = r'\begingroup'
+#    endgroup_template = r'\endgroup'
+#    interrobang_section_template = (
+#        r'\let\oldsection\section' '\n'
+#        r'\def\section#1#2{\oldsection#1{\textinterrobang\ #2}}' )
 
     @processing_target_aspect(aspect='test postword', wrap_generator=True)
     @classifying_items(aspect='metabody', default='verbatim')
