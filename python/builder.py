@@ -353,21 +353,6 @@ class Builder:
         if self.force == 'generate':
             main_tex_node.force()
 
-        source_nodes = [
-            LinkNode(
-                name='doc:{}:source:{}'.format(target, alias),
-                source=self.get_source_node(inpath),
-                path=build_dir/alias,
-                needs=(build_dir_node,) )
-            for alias, inpath in outrecord['sources'].items() ]
-        figure_nodes = [
-            LinkNode(
-                name='doc:{}:fig:{}'.format(target, alias_name),
-                source=self.figure_nodes['eps'][figure_path],
-                path=(build_dir/alias_name).with_suffix('.eps'),
-                needs=(build_dir_node,) )
-            for alias_name, figure_path
-            in outrecord['figure_paths'].items() ]
         package_nodes = [
             LinkNode(
                 name='doc:{}:sty:{}'.format(target, alias_name),
@@ -376,15 +361,30 @@ class Builder:
                 needs=(build_dir_node,) )
             for alias_name, package_path
             in outrecord['package_paths'].items() ]
+        figure_nodes = [
+            LinkNode(
+                name='doc:{}:fig:{}'.format(target, alias_name),
+                source=self.figure_nodes['eps'][figure_path],
+                path=(build_dir/alias_name).with_suffix('.eps'),
+                needs=(build_dir_node,) )
+            for alias_name, figure_path
+            in outrecord['figure_paths'].items() ]
+        source_nodes = [
+            LinkNode(
+                name='doc:{}:source:{}'.format(target, alias),
+                source=self.get_source_node(inpath),
+                path=build_dir/alias,
+                needs=(build_dir_node,) )
+            for alias, inpath in outrecord['sources'].items() ]
 
         dvi_node = LaTeXNode(
             name='doc:{}:dvi'.format(target),
             source=main_tex_node,
             path=(build_dir/buildname).with_suffix('.dvi'),
             cwd=build_dir, )
-        dvi_node.extend_needs(source_nodes)
-        dvi_node.extend_needs(figure_nodes)
         dvi_node.extend_needs(package_nodes)
+        dvi_node.extend_needs(figure_nodes)
+        dvi_node.extend_needs(source_nodes)
         if self.force == 'latex':
             dvi_node.force()
         self.prebuild_document_postdvi( target, dvi_node, figure_nodes,
@@ -691,12 +691,12 @@ class LaTeXNode(ProductFileNode):
     latex_log_page_pattern = re.compile(r'\[(?P<number>(?:\d|\s)+)\]')
 
     def print_overfulls(self, logpath):
-        enc_args = {}
         with logpath.open(**self.latex_decoding_kwargs) as f:
             s = f.read()
 
         page_marks = {1 : 0}
-        last_page = 1; last_mark = 0
+        last_page = 1
+        last_mark = 0
         while True:
             for match in self.latex_log_page_pattern.finditer(s):
                 value = match.group('number').replace('\n', '')
@@ -732,7 +732,6 @@ class LaTeXNode(ProductFileNode):
                 return page + 1
 
         for match in self.latex_log_overfull_pattern.finditer(s):
-            start = match.start()
             print(
                 '[{}]'.format(current_page(match.start())),
                 match.group(0) )

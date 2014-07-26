@@ -26,14 +26,13 @@ def main():
 
     import sys
     n = int(sys.argv[1]) - 1
-#    prog = sys.argv[2]
+    #prog = sys.argv[2]
     args = sys.argv[3:]
     if n == len(args):
         # workaround
         args.append('')
     current = args[n]
     previous = args[n-1] if n > 0 else None
-    preceding = args[:n]
 
     if previous is not None:
         if previous == '--root':
@@ -108,7 +107,7 @@ class BaseCompleter(metaclass=abc.ABCMeta):
     def complete_target(self, uncompleted_arg):
         """Return an iterator over completions."""
         if ' ' in uncompleted_arg:
-            return;
+            return
 
         uncompleted_path = PurePosixPath(uncompleted_arg)
         if not uncompleted_path.is_absolute():
@@ -128,11 +127,11 @@ class BaseCompleter(metaclass=abc.ABCMeta):
 
         for path in self.target_list:
             if uncompleted_parent != path.parent:
-                continue;
+                continue
             name = path.name
             assert path.suffix == ''
             if not name.startswith(uncompleted_name):
-                continue;
+                continue
             yield str(uncompleted_parent/name) + '/'
 
     def readline_completer(self, text, state):
@@ -145,8 +144,8 @@ class BaseCompleter(metaclass=abc.ABCMeta):
             else:
                 return None
         except:
-            import sys, traceback
-            traceback.print_exception(*sys.exc_info())
+            import traceback
+            traceback.print_exc()
 
 class Completer(BaseCompleter):
 

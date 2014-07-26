@@ -38,6 +38,7 @@ def check_spelling(targets, *, local, driver, context=0, colour=True):
     if colour:
         from .fancify import fancifying_print as fprint
     else:
+        logger.warn('Spelling is nearly useless in colourless mode.')
         from .fancify import unfancifying_print as fprint
 
     indicator_length = 0

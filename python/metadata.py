@@ -10,7 +10,7 @@ from pathlib import PurePosixPath
 from .utils import unique
 
 from . import yaml
-from .records import RecordsManager, RecordPath, RecordNotFoundError
+from .records import RecordsManager, RecordPath
 
 import logging
 logger = logging.getLogger(__name__)
@@ -291,7 +291,7 @@ class MetadataManager(RecordsManager):
             return {}
 
     asy_access_pattern = re.compile(
-        r'(?m)^// access (?P<accessed_path>[-.a-zA-Z0-9/]*?\.asy) '
+        r'(?m)^// access (?P<accessed_path>[-._a-zA-Z0-9/]*?\.asy) '
         r'as (?P<alias_name>[-a-zA-Z0-9]*?\.asy)$' )
 
     def query_svg_file(self, inpath):

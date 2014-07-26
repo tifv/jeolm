@@ -126,9 +126,11 @@ class NotifiedMetadataManager(jeolm.metadata.MetadataManager):
     def filter_reasonable_paths(cls, events):
         for event in events:
             path = Path(event.pathname)
-            if (event.dir and path.suffix != ''):
+            if event.dir and path.suffix != '':
                 continue
-            if (not event.dir and path.suffix not in cls.source_types):
+            if (not event.dir and
+                cls.source_types.get(path.suffix) in {'directory', None}
+            ):
                 continue
             yield path
 
