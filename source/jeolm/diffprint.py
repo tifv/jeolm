@@ -11,7 +11,7 @@ def log_metadata_diff(md):
     from .records import RecordsManager
 
     old_metarecords = RecordsManager()
-    md.feed_metadata(old_metarecords)
+    md.feed_metadata(old_metarecords, warn_dropped_keys=False)
 
     yield
 

@@ -59,7 +59,7 @@ class MetadataManager(RecordsManager):
 
     _metadata_cache_name = 'metadata.cache.pickle'
 
-    def feed_metadata(self, metarecords):
+    def feed_metadata(self, metarecords, *, warn_dropped_keys=True):
         for metainpath, record in self.items():
             if metainpath.suffix == '':
                 assert '$metadata' not in record
@@ -71,9 +71,12 @@ class MetadataManager(RecordsManager):
                     raise ValueError(metainpath)
                 metapath = metainpath.with_suffix('')
             metadata = record.get('$metadata')
-            self.check_dropped_metarecord_keys(metadata, origin=metainpath)
             if metadata is not None:
                 metarecords.absorb({metapath : metadata})
+        if warn_dropped_keys:
+            for metapath, metarecord in metarecords.items():
+                self.check_dropped_metarecord_keys(
+                    metarecord, origin=metapath )
         return metarecords
 
     def review(self, inpath, *, recursive=False):
@@ -307,24 +310,31 @@ class MetadataManager(RecordsManager):
         return metadata
 
     dropped_keys = {
-        '$required$packages' : ('$latex$packages',),
+        '$required$packages' : ('$latex$packages', ),
         '$matter' : ('$fluid',),
-        '$build$matter' : ('$manner', '$rigid',),
+        '$build$matter' : ('$manner', '$rigid', ),
         '$build$style' : ('$manner$style', '$manner$options',
-            '$out$options', '$fluid$opt', '$rigid$opt', '$manner$opt' ),
-        '$delegate' : ('$target$delegate'),
+            '$out$options', '$fluid$opt', '$rigid$opt', '$manner$opt', ),
+        '$delegate' : ('$target$delegate', ),
+        '$target$able' : ('$targetable', ),
+        '$required$packages' : ('$latex$packages', '$tex$packages')
     }
 
     @classmethod
     def check_dropped_metarecord_keys(cls, metarecord, origin='somewhere'):
         for modern_key, dropped_keys in cls.dropped_keys.items():
+            assert not isinstance(dropped_keys, str), dropped_keys
             for dropped_key in dropped_keys:
                 for key in metarecord:
                     match = cls.flagged_pattern.match(key)
                     if match.group('key') != dropped_key:
                         continue
                     logger.warning(
-                        '<BOLD><RED>{key}<RESET> dropped key '
-                        'detected in <BOLD><YELLOW>{origin}<RESET>'
-                        .format(key=dropped_key, origin=origin) )
+                        'Dropped key <BOLD><RED>{key}<RESET> '
+                        'detected in <BOLD><YELLOW>{origin}<RESET> '
+                        '(replace it with {modern_key})'
+                        .format(
+                            key=dropped_key, origin=origin,
+                            modern_key=modern_key )
+                    )
 
