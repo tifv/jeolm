@@ -117,7 +117,8 @@ class Node:
                     self._future = executor.submit(self.update_self)
                 else:
                     def wait_for_needs_and_update_self():
-                        futures.wait(needed_futures)
+                        for future in needed_futures:
+                            future.result()
                         return executor.submit(self.update_self).result()
                     self._future = self._one_shot_future(
                         wait_for_needs_and_update_self )
