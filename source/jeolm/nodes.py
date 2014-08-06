@@ -19,17 +19,11 @@ from logging import DEBUG, INFO, WARNING, ERROR, CRITICAL
 import warnings
 logger = logging.getLogger(__name__)
 
-__all__ = [
-    'Node', 'NodeCycleError',
-    'DatedNode', 'PathNode', 'ProductNode',
-    'FileNode', 'TextNode', 'ProductFileNode',
-    'LinkNode', 'DirectoryNode'
-]
-
-class NodeCycleError(RuntimeError):
+class CycleError(RuntimeError):
     pass
 
-class NodeMissingPathError(FileNotFoundError):
+class MissingTargetError(FileNotFoundError):
+    """Missing target file after execution of build rules."""
     pass
 
 class Node:
@@ -133,11 +127,11 @@ class Node:
     @contextmanager
     def _check_for_cycle(self):
         if self._locked:
-            raise NodeCycleError(self.name)
+            raise CycleError(self.name)
         self._locked = True
         try:
             yield
-        except NodeCycleError as exception:
+        except CycleError as exception:
             exception.args += (self.name,)
             raise
         finally:
@@ -342,7 +336,7 @@ class PathNode(DatedNode):
         self.load_mtime()
         if self.mtime is None:
             # Succeeded rule did not result in a file
-            raise NodeMissingPathError(repr(self))
+            raise MissingTargetError(repr(self))
         if prerun_mtime != self.mtime:
             self.modified = True
 
