@@ -3,6 +3,7 @@ Nodes, and dependency trees constructed of them.
 """
 
 from itertools import chain
+from functools import partial
 
 import os
 from stat import S_ISDIR
@@ -16,7 +17,6 @@ from pathlib import Path, PurePosixPath
 
 import logging
 from logging import DEBUG, INFO, WARNING, ERROR, CRITICAL
-import warnings
 logger = logging.getLogger(__name__)
 
 class CycleError(RuntimeError):
@@ -33,20 +33,22 @@ class Node:
     Attributes
     ----------
     name
-        str, some short-but-identifying name.
+        str, some short-but-identifying name.  Shows up in log messages.
     needs
-        list of Node instances, prerequisites of this node.  Expected to be
-        populated with initialization, node.extend_needs() and
-        node.append_needs() methods.
+        list of Node instances, prerequisites of this node.  Should not be
+        populated directly, but rather with initialization and
+        node.extend_needs() method.
     rules
         list of functions, that are responsible for (re)building node and
         setting node.modified attribute as appropriate.  Expected to be
         populated with @node.add_rule decorator.
     modified
-        bool, True if node was modified, causing any dependent nodes to be
-        rebuilt.  Only node.needs_build() method of depending node
-        should be interested in quering this attribute.
-    forced
+        bool, True if node was modified (causing any dependent nodes to be
+        rebuilt).  False by default, should be conditionally set to True by
+        build rules or node._run_rules() method.  Only node.needs_build()
+        method of depending node should be interested in reading this
+        attribute.
+    _forced
         bool, setting it to True will cause node.needs_build() to
         always return True.  Should be changed only by node.force()
         method.
@@ -69,7 +71,7 @@ class Node:
         self.rules = list(rules)
 
         self.modified = False
-        self.forced = False
+        self._forced = False
 
         self._updated = False
         self._locked = False
@@ -108,16 +110,16 @@ class Node:
                     node.update()
             if executor is not None:
                 if not needed_futures: # no dependencies
-                    self._future = executor.submit(self.update_self)
+                    self._future = executor.submit(self._update_self)
                 else:
                     def wait_for_needs_and_update_self():
                         for future in needed_futures:
                             future.result()
-                        return executor.submit(self.update_self).result()
+                        return executor.submit(self._update_self).result()
                     self._future = self._one_shot_future(
                         wait_for_needs_and_update_self )
             else:
-                self.update_self()
+                self._update_self()
             self._updated = True
             if executor is not None:
                 return self._future
@@ -144,9 +146,9 @@ class Node:
         one_shot_executor.shutdown(wait=False)
         return future
 
-    def update_self(self):
+    def _update_self(self):
         if self.needs_build():
-            self.run_rules()
+            self._run_rules()
 
     def needs_build(self):
         """
@@ -156,36 +158,34 @@ class Node:
         1) any of needed nodes are modified.
         (Subclasses may introduce different conditions)
         """
-        if self.forced or any(node.modified for node in self.needs):
+        if self._forced or any(node.modified for node in self.needs):
             return True
         return False
 
-    def extend_needs(self, needs):
-        needs = list(needs)
-        for need in needs:
-            if not isinstance(need, Node):
-                raise TypeError(need)
-        self.needs.extend(needs)
+    def extend_needs(self, nodes):
+        for node in nodes:
+            self._append_needs(node)
         return self
 
-    def append_needs(self, *needs):
-        self.extend_needs(needs)
-        return self
+    def _append_needs(self, node):
+        if not isinstance(node, Node):
+            raise TypeError(node)
+        self.needs.append(node)
 
     def force(self):
-        self.forced = True
+        self._forced = True
 
     def add_rule(self, rule):
         """Decorator."""
         self.rules.append(rule)
         return rule
 
-    def run_rules(self):
-        # Should be only called by self.update_self()
+    def _run_rules(self):
+        # Should be only called by self._update_self()
         for rule in self.rules:
             rule()
 
-    def log(self, level, message):
+    def _log(self, level, message):
         """
         Log a message specific for this node.
 
@@ -226,9 +226,9 @@ class DatedNode(Node):
         super().__init__(**kwargs)
         self.mtime = mtime
 
-    def update_self(self):
+    def _update_self(self):
         self.load_mtime()
-        super().update_self()
+        super()._update_self()
 
     def needs_build(self):
         """
@@ -321,16 +321,16 @@ class PathNode(DatedNode):
             "name='{node.name}', path='{node.relative_path}')"
             .format(node=self) )
 
-    def run_rules(self):
+    def _run_rules(self):
         prerun_mtime = self.mtime
         try:
-            super().run_rules()
+            super()._run_rules()
         except:
             self.load_mtime()
             if self.mtime_less(prerun_mtime, self.mtime):
                 # Failed rule resulted in a file written.
                 # We have to clear it.
-                self.log(ERROR, 'deleting {}'.format(self.relative_path))
+                self._log(ERROR, 'deleting {}'.format(self.relative_path))
                 self.path.unlink()
             raise
         self.load_mtime()
@@ -343,32 +343,38 @@ class PathNode(DatedNode):
     def add_subprocess_rule(self, callargs, *, cwd, **kwargs):
         if not isinstance(cwd, Path) or not cwd.is_absolute():
             raise ValueError("cwd must be an absolute Path")
-        rule_repr = (
-            '<cwd=<BLUE>{cwd}<NOCOLOUR>> <GREEN>{command}<NOCOLOUR>'.format(
+        self.add_rule(partial(
+            self._subprocess_rule, callargs, cwd=cwd, **kwargs
+        ))
+
+    def _subprocess_rule(self, callargs, *, cwd, **kwargs):
+        assert isinstance(cwd, Path), type(cwd)
+        self._log(INFO, (
+            '<cwd=<BLUE>{cwd}<NOCOLOUR>> <GREEN>{command}<NOCOLOUR>'
+            .format(
                 cwd=self.root_relative(cwd),
-                command=' '.join(callargs)
-            ) )
-        @self.add_rule
-        def subprocess_rule():
-            self.log(INFO, rule_repr)
-            try:
-                subprocess.check_call(callargs, cwd=str(cwd), **kwargs)
-            except subprocess.CalledProcessError as exception:
-                self.log(CRITICAL,
-                    'Command {exc.cmd} returned code {exc.returncode}'
-                    .format(exc=exception) )
-                exception.reported = True
-                raise
+                command=' '.join(callargs), )
+        ))
+        try:
+            subprocess.check_call(callargs, cwd=str(cwd), **kwargs)
+        except subprocess.CalledProcessError as exception:
+            self._log(CRITICAL,
+                'Command {exc.cmd[0]} returned code {exc.returncode}'
+                .format(exc=exception) )
+            # Stop jeolm.commands.refrain_called_process_error from reporting
+            # the error.
+            exception.reported = True
+            raise
 
     @property
     def relative_path(self):
         return self.root_relative(self.path)
 
     @classmethod
-    def root_relative(self, path):
-        if self.root is None:
+    def root_relative(cls, path):
+        if cls.root is None:
             return path
-        return self.pure_relative(path, self.root)
+        return cls.pure_relative(path, cls.root)
 
     @staticmethod
     def pure_relative(path, root):
@@ -420,6 +426,15 @@ class ProductNode(PathNode):
                 "source={node.source!r}, path='{node.relative_path}')"
             .format(node=self) )
 
+    def _turn_older_than_source(self):
+        """Alter mtime to be just below source mtime."""
+        sourcestat = self.source.stat()
+        os.utime(
+            str(self.path),
+            ns=(sourcestat.st_atime_ns-1, sourcestat.st_mtime_ns-1)
+        )
+        self.load_mtime()
+
 class FileNode(PathNode):
     """
     FileNode represents a file, existing or not (yet).
@@ -434,11 +449,11 @@ class FileNode(PathNode):
     def open(self, *args, **kwargs):
         return open(str(self.path), *args, **kwargs)
 
-    def run_rules(self):
+    def _run_rules(self):
         # Written in blood
         if self.path.exists() and self.path.is_symlink():
             self.path.unlink()
-        super().run_rules()
+        super()._run_rules()
 
 class TextNode(FileNode):
     """
@@ -446,32 +461,34 @@ class TextNode(FileNode):
     """
     def __init__(self, path, text=None, textfunc=None, **kwargs):
         super().__init__(path, **kwargs)
-        if text is not None:
-            if textfunc is not None:
-                raise ValueError(
-                    "Exactly one of the 'text' and 'textfunc' arguments "
-                    "must be supplied" )
-            if not isinstance(text, str):
-                raise TypeError(type(text))
-            textfunc = lambda: text
-        if textfunc is None:
+        if (text is None) + (textfunc is None) != 1:
             raise ValueError(
                 "Exactly one of the 'text' and 'textfunc' arguments "
                 "must be supplied" )
+        if text is not None:
+            assert textfunc is None
+            if not isinstance(text, str):
+                raise TypeError(type(text))
+            textfunc = lambda: text
+        else:
+            assert textfunc is not None
 
-        rule_repr = (
+        self.add_rule(partial(
+            self._write_text_rule, textfunc
+        ))
+
+    def _write_text_rule(self, textfunc):
+        self._log(INFO, (
             '<GREEN>Write generated text to {node.relative_path}<NOCOLOUR>'
-            .format(node=self) )
-        @self.add_rule
-        def write_text_rule(textfunc=textfunc):
-            self.log(INFO, rule_repr)
-            text = textfunc()
-            assert isinstance(text, str), text
-            with self.open('w') as f:
-                f.write(text)
+            .format(node=self)
+        ))
+        text = textfunc()
+        if not isinstance(text, str):
+            raise TypeError(type(text))
+        with self.open('w') as f:
+            f.write(text)
 
 class ProductFileNode(ProductNode, FileNode):
-    # Order is everything.
     pass
 
 class LinkNode(ProductNode):
@@ -502,7 +519,7 @@ class LinkNode(ProductNode):
         def link_rule():
             if os.path.lexists(str(self.path)):
                 self.path.unlink()
-            self.log(INFO, rule_repr)
+            self._log(INFO, rule_repr)
             os.symlink(str(self.source_path), str(self.path))
             self.modified = True
 
@@ -545,13 +562,15 @@ class DirectoryNode(PathNode):
         super().__init__(path, **kwargs)
         rule_repr = (
             '<GREEN>{command} {node.relative_path}<NOCOLOUR>'
-            .format(node=self,
-                command='mkdir --parents' if parents else 'mkdir' ) )
+            .format(
+                node=self,
+                command='mkdir --parents' if parents else 'mkdir' )
+        )
         @self.add_rule
         def mkdir_rule():
             if os.path.lexists(str(path)):
                 path.unlink()
-            self.log(INFO, rule_repr)
+            self._log(INFO, rule_repr)
             # rwxr-xr-x
             path.mkdir(mode=0b111101101, parents=parents)
             self.modified = True

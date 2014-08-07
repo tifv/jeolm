@@ -14,29 +14,28 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 logger.addHandler(logging.NullHandler())
 
-# This logger is intended to print messages as-is, without name
-# prefix.
-cleanlogger = logging.getLogger(__name__ + '.clean')
-cleanlogger.propagate = False
-cleanlogger.setLevel(logging.INFO)
-cleanlogger.addHandler(logging.NullHandler())
-
-def setup_logging(verbose=False, colour=True):
+def setup_logging(verbose=False, colour=True, concurrent=True):
     """
-    Setup handlers and formatters for package-top-level loggers.
-
-    These include jeolm and jeolm.clean loggers.
+    Setup handlers and formatters for package-top-level logger.
     """
     if colour:
         from jeolm.fancify import FancifyingFormatter as Formatter
     else:
         from jeolm.fancify import UnfancifyingFormatter as Formatter
-    handler = logging.StreamHandler()
+    formatter = Formatter("%(name)s: %(message)s")
+    if concurrent:
+        from logging.handlers import QueueHandler, QueueListener
+        import queue
+        import atexit
+        log_queue = queue.Queue()
+        handler = QueueHandler(log_queue)
+        finishing_handler = logging.StreamHandler()
+        listener = QueueListener(log_queue, finishing_handler)
+        listener.start()
+        atexit.register(listener.stop)
+    else:
+        handler = finishing_handler = logging.StreamHandler()
     handler.setLevel(logging.INFO if not verbose else logging.DEBUG)
-    handler.setFormatter(Formatter("%(name)s: %(message)s"))
+    finishing_handler.setFormatter(formatter)
     logger.addHandler(handler)
-    cleanhandler = logging.StreamHandler()
-    cleanhandler.setLevel(logging.INFO)
-    cleanhandler.setFormatter(Formatter("%(message)s"))
-    cleanlogger.addHandler(cleanhandler)
 

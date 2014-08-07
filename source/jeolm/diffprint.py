@@ -1,15 +1,17 @@
 from collections import OrderedDict
 from contextlib import contextmanager
+from itertools import chain
 
-from jeolm import cleanlogger
+import difflib
+
+from jeolm import yaml
+from jeolm.records import RecordsManager
+
+import logging
+logger = logging.getLogger(__name__)
 
 @contextmanager
-def log_metadata_diff(md):
-    import difflib
-    from . import yaml
-    from . import cleanlogger
-    from .records import RecordsManager
-
+def log_metadata_diff(md, logger=logger):
     old_metarecords = RecordsManager()
     md.feed_metadata(old_metarecords, warn_dropped_keys=False)
 
@@ -27,30 +29,28 @@ def log_metadata_diff(md):
         old_dump = yaml.dump(old_record).splitlines()
         new_dump = yaml.dump(new_record).splitlines()
         if old_record is None:
-            cleanlogger.info(
-                '<BOLD><GREEN>{}<NOCOLOUR> metarecord added<RESET>'
+            header = ( '<BOLD><GREEN>{}<NOCOLOUR> metarecord added<RESET>'
                 .format(inpath) )
             old_dump = []
         elif new_record is None:
-            cleanlogger.info(
-                '<BOLD><RED>{}<NOCOLOUR> metarecord removed<RESET>'
+            header = ( '<BOLD><RED>{}<NOCOLOUR> metarecord removed<RESET>'
                 .format(inpath) )
             new_dump = []
         else:
-            cleanlogger.info(
-                '<BOLD><YELLOW>{}<NOCOLOUR> metarecord changed<RESET>'
+            header = ( '<BOLD><YELLOW>{}<NOCOLOUR> metarecord changed<RESET>'
                 .format(inpath) )
         delta = difflib.ndiff(a=old_dump, b=new_dump)
-        print_ndiff_delta(delta, fix_newlines=True)
+        lines = format_ndiff_delta(delta, fix_newlines=True)
+        logger.info('\n'.join(chain((header,), lines)))
 
-def print_delta(delta, *, line_formats, fix_newlines=False):
+def format_delta(delta, *, line_formats, fix_newlines=False):
     for line in delta:
         if fix_newlines and line.endswith('\n'):
             line = line[:-1]
         for prefix, fmt in line_formats.items():
             if line.startswith(prefix):
                 if fmt is not None:
-                    cleanlogger.info(fmt.format(line))
+                    yield fmt.format(line)
                 break
         else:
             raise RuntimeError(
@@ -58,26 +58,26 @@ def print_delta(delta, *, line_formats, fix_newlines=False):
                 .format(line) )
 
 NDIFF_LINE_FORMATS = OrderedDict((
+    ('  ', '{}'),
     ('- ', '<RED>{}<RESET>'),
     ('+ ', '<GREEN>{}<RESET>'),
     ('? ', '<MAGENTA>{}<RESET>'),
-    ('  ', '{}'),
 ))
 
-def print_ndiff_delta(delta, **kwargs):
-    return print_delta( delta,
+def format_ndiff_delta(delta, **kwargs):
+    return format_delta( delta,
         line_formats=NDIFF_LINE_FORMATS, **kwargs )
 
 UNIFIED_DIFF_LINE_FORMATS = OrderedDict((
+    (' ', '{}'),
     ('--- ', '<RED><BOLD>{}<RESET>'),
     ('+++ ', '<GREEN><BOLD>{}<RESET>'),
     ('-', '<RED>{}<RESET>'),
     ('+', '<GREEN>{}<RESET>'),
     ('@', '<MAGENTA>{}<RESET>'),
-    (' ', '{}'),
 ))
 
-def print_unified_diff_delta(delta, **kwargs):
-    return print_delta( delta,
+def format_unified_diff_delta(delta, **kwargs):
+    return format_delta( delta,
         line_formats=UNIFIED_DIFF_LINE_FORMATS, **kwargs )
 

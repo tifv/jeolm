@@ -17,14 +17,10 @@ import jeolm.completion
 from jeolm.target import Target, TargetError
 
 import logging
-logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
 if __name__ == '__main__':
-    handler = logging.StreamHandler()
-    handler.setLevel(logging.DEBUG)
-    from jeolm.fancify import FancifyingFormatter as Formatter
-    handler.setFormatter(Formatter("%(name)s: %(message)s"))
-    logger.addHandler(handler)
+    from jeolm import logger
+else:
+    logger = logging.getLogger(__name__)
 
 def mainloop(local):
     md = NotifiedMetadataManager(local=local)
@@ -34,7 +30,7 @@ def mainloop(local):
     md.feed_metadata(driver)
 
     def review_metadata():
-        with log_metadata_diff(md):
+        with log_metadata_diff(md, logger=logger):
             review_list = md.generate_review_list()
             assert isinstance(review_list, (list, tuple)), type(review_list)
             for review_path in review_list:
@@ -215,7 +211,7 @@ class NotifiedMetadataManager(jeolm.metadata.MetadataManager):
         process_IN_MOVE_SELF = process_self_destructive_event
 
 def main():
-    jeolm.setup_logging(verbose=False)
+    jeolm.setup_logging(verbose=True)
     try:
         local = jeolm.local.LocalManager(root=Path.cwd())
     except jeolm.local.RootNotFoundError:

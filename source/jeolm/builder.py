@@ -1,6 +1,7 @@
 from string import Template
 from collections import OrderedDict
 from functools import partial
+from itertools import chain
 from datetime import date
 
 import os
@@ -9,8 +10,12 @@ import hashlib
 import json
 import pickle
 import subprocess
+import threading
 
 from pathlib import Path, PurePosixPath
+
+import jeolm
+import jeolm.nodes
 
 from jeolm.nodes import (
     Node, DatedNode, FileNode, TextNode, ProductFileNode,
@@ -86,8 +91,8 @@ class Builder:
             name='ultimate',
             needs=( node
                 for build_format in self.build_formats
-                for node in self.exposed_nodes[build_format].values()
-            ) )
+                for node in self.exposed_nodes[build_format].values() )
+        )
 
     def build(self):
         if not hasattr(self, 'ultimate_node'):
@@ -403,7 +408,7 @@ class Builder:
             name='doc:{}:dump'.format(target),
             path=build_dir/'dump.tex',
             textfunc=partial(self.supply_filecontents, outrecord),
-            needs=(self.outnodes[target], build_dir_node) )
+            needs=(self.outnodes[target], build_dir_node,) )
         dump_node.extend_needs(
             self.get_source_node(inpath)
             for inpath in outrecord['sources'].values() )
@@ -495,7 +500,7 @@ class Builder:
         drv_node = FileNode(
             name='doc:{}:drv'.format(target),
             path=build_dir/'{}.drv'.format(package_name),
-            needs=(build_dir_node, dtx_node, ins_node) )
+            needs=(build_dir_node, dtx_node, ins_node,) )
         drv_node.add_subprocess_rule(
             ('latex', '-interaction=nonstopmode',
                 '-halt-on-error', '-file-line-error', 'driver.ins'),
@@ -601,6 +606,12 @@ class LaTeXNode(ProductFileNode):
     latex_command = 'latex'
     target_suffix = '.dvi'
 
+    _latex_additional_args = (
+        '-interaction=nonstopmode', '-halt-on-error', '-file-line-error', )
+
+    _latex_output_decode_kwargs = {
+        'encoding' : 'ascii', 'errors' : 'replace' }
+
     def __init__(self, source, path, *, cwd, **kwargs):
         super().__init__(source, path, **kwargs)
 
@@ -615,126 +626,232 @@ class LaTeXNode(ProductFileNode):
         assert path.suffix == self.target_suffix
         jobname = path.stem
 
-        rule_repr = (
+        self.add_rule(partial(
+            self._latex_rule, jobname, cwd=cwd
+        ))
+
+    def _latex_rule(self, jobname, *, cwd):
+        self._log(logging.INFO, (
             '<cwd=<BLUE>{cwd}<NOCOLOUR>> '
             '<GREEN>{node.latex_command} -jobname={jobname} '
                 '{node.source.path.name}<NOCOLOUR>'
             .format(
                 cwd=self.root_relative(cwd), jobname=jobname,
                 node=self )
-        )
+        ))
         callargs = (self.latex_command,
             '-jobname={}'.format(jobname),
-            '-interaction=nonstopmode', '-halt-on-error', '-file-line-error',
-            self.source.path.name )
-        @self.add_rule
-        def latex_rule():
-            source_path = self.source.path
-            self.log(logging.INFO, rule_repr)
+            ) + self._latex_additional_args + (
+            self.source.path.name, )
+        try:
+            output = subprocess.check_output(callargs, cwd=str(cwd),
+                universal_newlines=False )
+        except subprocess.CalledProcessError as exception:
+            self._log(logging.CRITICAL,
+                "<BOLD>{exc.cmd[0]} returned code {exc.returncode}, "
+                    "output:<RESET>\n{output}"
+                "<BOLD>(error occured while building "
+                    "<RED>{node.name}<NOCOLOUR>)<RESET>"
+                .format(
+                    node=self, exc=exception,
+                    output=exception.output.decode(
+                        **self._latex_output_decode_kwargs )
+                ) )
+            exception.reported = True
+            raise
+        latex_output = output.decode(**self._latex_output_decode_kwargs)
+        if self._latex_output_requests_rerun(latex_output):
+            print(latex_output)
             try:
-                output = subprocess.check_output(callargs, cwd=str(cwd),
-                    universal_newlines=False )
-            except subprocess.CalledProcessError as exception:
-                self.check_latex_log(
-                    exception.output, logpath=None, critical=True )
-                self.log(logging.CRITICAL,
-                    '{exc.cmd} returned code {exc.returncode}<RESET>'
-                    .format(node=self, exc=exception) )
-                exception.reported = True
-                raise
-            self.check_latex_log(
-                output, logpath=self.path.with_suffix('.log') )
+                self._turn_older_than_source()
+            except FileNotFoundError as exception:
+                raise jeolm.nodes.MissingTargetError(*exception.args) \
+                    from exception
+            else:
+                self.modified = True
+                self._log( logging.WARNING,
+                    "Next run will rebuild the target." )
+        else:
+            self.print_latex_log(
+                latex_output,
+                latex_log_path=self.path.with_suffix('.log') )
 
-    latex_decoding_kwargs = {'encoding' : 'cp1251', 'errors' : 'replace'}
+    @classmethod
+    def _latex_output_requests_rerun(cls, latex_output):
+        match = cls.latex_output_rerun_pattern.search(latex_output)
+        return match is not None
+    latex_output_rerun_pattern = re.compile(
+        r'[Rr]erun to (?#get something right)' )
 
-    def check_latex_log(self, output, logpath, critical=False):
+    def print_latex_log(self, latex_output, latex_log_path=None):
         """
         Print some of LaTeX output from its stdout and log.
 
-        Print output if it is interesting or critical is True.
-        Otherwise, print overfulls from log (if logpath is not None).
+        Print output if it is interesting.
+        Otherwise, print overfulls from latex log
+        (if latex_log_path is not None).
         """
-        output = output.decode(**self.latex_decoding_kwargs)
-        if critical:
-            print(output)
-        elif self.latex_output_need_rerun(output):
-            print(output)
-            try:
-                sourcestat = self.source.stat()
-                os.utime(
-                    str(self.path),
-                    ns=(sourcestat.st_atime_ns-1, sourcestat.st_mtime_ns-1) )
-                self.modified = True
-                self.log(logging.WARNING, 'Next run will rebuild the target.')
-            except FileNotFoundError:
-                pass
-        elif self.latex_output_is_alarming(output):
-            print(output)
-            self.log(logging.WARNING, 'Alarming LaTeX output detected.')
-        elif logpath is not None:
-            self.print_overfulls(logpath)
+        if self._latex_output_is_alarming(latex_output):
+            print(latex_output)
+            self._log(logging.WARNING, 'Alarming LaTeX output detected.')
+        elif latex_log_path is not None:
+            with latex_log_path.open(
+                **self._latex_output_decode_kwargs
+            ) as latex_log_file:
+                latex_log_text = latex_log_file.read()
+            self._print_overfulls_from_latex_log(latex_log_text)
 
+    @classmethod
+    def _latex_output_is_alarming(cls, latex_output):
+        match = cls.latex_output_alarming_pattern.search(latex_output)
+        return match is not None
     latex_output_alarming_pattern = re.compile(
-        r'(?m)^! |[Ee]rror|[Ww]arning|No pages of output.' )
+        r'[Ee]rror|[Ww]arning|No pages of output' )
+
+    def _print_overfulls_from_latex_log(self, latex_log_text):
+        page_numberer = self._find_page_numbers_in_latex_log(latex_log_text)
+        next(page_numberer) # initialize coroutine
+        file_namer = self._find_file_names_in_latex_log(latex_log_text)
+        next(file_namer) # initialize coroutine
+
+        matches = list(
+            self._latex_log_overfull_pattern.finditer(latex_log_text) )
+        if not matches:
+            return
+        header = "<BOLD>Overfulls and underfulls detected by LaTeX:<RESET>"
+        self._log( logging.INFO, '\n'.join(chain(
+            (header,),
+            (
+                self._format_overfull(match, page_numberer, file_namer)
+                for match in matches )
+        )))
+
+    _latex_log_overfull_pattern = re.compile(
+        r'(?m)^'
+        r'(?P<overfull_type>Overfull|Underfull) '
+        r'\\(?P<box_type>hbox|vbox) '
+        r'(?P<badness>\(\d+(?:\.\d+)?pt too wide|badness \d+\) |)'
+        r'(?P<rest>.*)$'
+    )
+    _latex_overfull_log_template = (
+        r'\g<overfull_type> '
+        r'\\\g<box_type> '
+        r'<YELLOW>\g<badness><NOCOLOUR>'
+        r'\g<rest>' )
+
     @classmethod
-    def latex_output_is_alarming(cls, output):
-        return cls.latex_output_alarming_pattern.search(output) is not None
+    def _format_overfull(cls, match, page_numberer, file_namer):
+        position = match.start()
+        page_number = page_numberer.send(position)
+        file_name = file_namer.send(position)
+        message = match.expand(cls._latex_overfull_log_template)
+        return (
+            "<CYAN>[{page_number}]<NOCOLOUR>"
+            ' '
+            "<MAGENTA>({file_name})<NOCOLOUR>"
+            '\n'
+            "{message}"
+        ).format(
+            page_number=page_number, file_name=file_name,
+            message=message
+        )
 
-    latex_output_rerun_pattern = re.compile(r'[Rr]erun to')
     @classmethod
-    def latex_output_need_rerun(cls, output):
-        return cls.latex_output_rerun_pattern.search(output) is not None
+    def _find_page_numbers_in_latex_log(cls, latex_log_text):
+        """
+        Coroutine, yields page number for sent text position.
 
-    latex_log_overfull_pattern = re.compile(
-        r'(?m)^(Overfull|Underfull)\s+\\hbox\s+\([^()]*?\)\s+'
-        r'in\s+paragraph\s+at\s+lines\s+\d+--\d+' )
-    latex_log_page_pattern = re.compile(r'\[(?P<number>(?:\d|\s)+)\]')
+        As with any generator, initial next() call required.
+        After that, sending position in latex_log_text will yield corresponding
+        page number.
+        """
 
-    def print_overfulls(self, logpath):
-        with logpath.open(**self.latex_decoding_kwargs) as f:
-            s = f.read()
+        page_mark_positions = [0]
+        last_page_number = 0
+        matches = cls._latex_log_page_number_pattern.finditer(
+            latex_log_text )
+        for match in matches:
+            page_number = int(match.group('page_number'))
+            if page_number != last_page_number + 1:
+                # Something got slightly wrong. Close your eyes
+                continue
+            page_mark_positions.append(match.end())
+            assert len(page_mark_positions) == page_number + 1
+            last_page_number = page_number
+        page_mark_positions.append(len(latex_log_text))
+        assert len(page_mark_positions) > 1
 
-        page_marks = {1 : 0}
-        last_page = 1
-        last_mark = 0
+        last_page_number = 0
+        last_position = page_mark_positions[last_page_number]
+        assert last_position == 0
+        next_position = page_mark_positions[last_page_number + 1]
+        page_number = None # "answer" variable
         while True:
-            for match in self.latex_log_page_pattern.finditer(s):
-                value = match.group('number').replace('\n', '')
-                if not value:
-                    continue
-                try:
-                    value = int(value)
-                except ValueError:
-                    logger.warning(
-                        "Error while parsing log file: '{}'".format(
-                            match.group(0)
-                                .encode('unicode_escape').decode('utf-8')
-                        ) )
-                    continue
-                else:
-                    if value == last_page + 1:
-                        break
-            else:
-                break
-            last_page += 1
-            last_mark = match.end()
-            page_marks[last_page] = last_mark
-        def current_page(pos):
-            page = max(
-                (
-                    (page, mark)
-                    for (page, mark) in page_marks.items()
-                    if mark <= pos
-                ), key=lambda v:v[1])[0]
-            if page == 1:
-                return '1--2'
-            else:
-                return page + 1
+            position = (yield page_number)
+            if position is None:
+                page_number = None
+                continue
+            if __debug__ and position < last_position:
+                raise RuntimeError("Sent position is not monotonic.")
+            if __debug__ and position >= len(latex_log_text):
+                raise RuntimeError("Sent position is out of range.")
+            while position >= next_position:
+                last_position = next_position
+                last_page_number += 1
+                next_position = page_mark_positions[last_page_number + 1]
+            page_number = last_page_number + 1
 
-        for match in self.latex_log_overfull_pattern.finditer(s):
-            print(
-                '[{}]'.format(current_page(match.start())),
-                match.group(0) )
+    _latex_log_page_number_pattern = re.compile(
+        r'\[(?P<page_number>\d+)\s*\]' )
+
+    @classmethod
+    def _find_file_names_in_latex_log(cls, latex_log_text):
+        """
+        Coroutine, yields input file name for sent text position.
+
+        As with any generator, initial next() call required.
+        After that, sending position in latex_log_text will yield corresponding
+        input file name.
+
+        Only local filenames are detected, e.g. starting with "./",
+        and return without a prefixing "./".
+        """
+
+        file_name_positions = [0]
+        file_names = [None]
+        matches = cls._latex_log_file_name_pattern.finditer(
+            latex_log_text )
+        for match in matches:
+            file_name_positions.append(match.end())
+            file_names.append(match.group('file_name'))
+        file_name_positions.append(len(latex_log_text))
+        assert len(file_name_positions) == len(file_names) + 1
+
+        last_index = 0
+        last_position = file_name_positions[last_index]
+        assert last_position == 0
+        next_position = file_name_positions[last_index + 1]
+        file_name = None # "answer" variable
+        while True:
+            position = (yield file_name)
+            if position is None:
+                file_name = None
+                continue
+            if __debug__ and position < last_position:
+                raise RuntimeError("Sent position is not monotonic.")
+            if __debug__ and position >= len(latex_log_text):
+                raise RuntimeError("Sent position is out of range.")
+            while position >= next_position:
+                last_position = next_position
+                last_index += 1
+                next_position = file_name_positions[last_index + 1]
+            file_name = file_names[last_index]
+
+    _latex_log_file_name_pattern = re.compile(
+        r'(?<=\(\./)' # "(./"
+        r'(?P<file_name>.+?)' # "<file name>"
+        r'(?=[\s)])' # ")" or "\n" or " "
+    )
 
 class Dumper(Builder):
     build_formats = ('dump', )

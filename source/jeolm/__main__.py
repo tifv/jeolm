@@ -9,8 +9,7 @@ import jeolm.target
 import jeolm.diffprint
 import jeolm.commands
 
-import logging
-logger = logging.getLogger(__name__)
+from jeolm import logger
 
 parser = argparse.ArgumentParser(prog='jeolm',
     description='Automated build system for course-like projects' )
@@ -29,7 +28,9 @@ def main():
     args = parser.parse_args()
     if 'command' not in args:
         return parser.print_help()
-    jeolm.setup_logging(verbose=args.verbose, colour=args.colour)
+    jeolm.setup_logging(
+        verbose=args.verbose, colour=args.colour,
+    )
     if args.command == 'init':
         # special case: no local expected
         return main_init(args)
@@ -82,7 +83,7 @@ def main_build(args, *, local):
     if args.review:
         sources = jeolm.commands.list_sources( args.targets,
             local=local, driver=driver, source_type='tex' )
-        with jeolm.diffprint.log_metadata_diff(md):
+        with jeolm.diffprint.log_metadata_diff(md, logger=logger):
             jeolm.commands.review( sources,
                 viewpoint=Path.cwd(), local=local,
                 md=md, recursive=False )
@@ -119,7 +120,7 @@ def main_review(args, *, local):
         logger.warn('No-op: no inpaths for review')
     md = MetadataManager(local=local)
     md.load_metadata_cache()
-    with jeolm.diffprint.log_metadata_diff(md):
+    with jeolm.diffprint.log_metadata_diff(md, logger=logger):
         jeolm.commands.review( args.inpaths,
             viewpoint=Path.cwd(), local=local,
             md=md, recursive=args.recursive )

@@ -153,6 +153,12 @@ def resolve_inpaths(paths, *, source_dir, viewpoint=None):
 
 @contextmanager
 def refrain_called_process_error():
+    """
+    Silence CalledProcessError, avoiding unnecessary traceback print.
+
+    Experiencing subprocess.CalledProcessError usually means error in
+    external application, so Python traceback is usually useless.
+    """
     try:
         yield
     except CalledProcessError as exception:
