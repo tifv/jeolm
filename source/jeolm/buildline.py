@@ -1,4 +1,5 @@
 import readline
+import subprocess
 import traceback
 
 from pathlib import Path, PurePosixPath
@@ -75,6 +76,10 @@ def mainloop(local):
                 [target], local=local, driver=driver,
                 force=None, delegate=True )
             builder.build()
+        except subprocess.CalledProcessError as exception:
+            if getattr(exception, 'reported', False):
+                continue
+            traceback.print_exc()
         except Exception:
             traceback.print_exc()
 
@@ -152,7 +157,7 @@ class NotifiedMetadataManager(jeolm.metadata.MetadataManager):
             for path, wd in mapping.items():
                 logger.debug("<GREEN>Start<NOCOLOUR> watching "
                     "path=<MAGENTA>{path}<NOCOLOUR> "
-                    "(wd=<BLUE>{wd}<NOCOLOUR>)"
+                    "(wd=<CYAN>{wd}<NOCOLOUR>)"
                     .format(path=path, wd=wd) )
                 assert path not in self.wd_by_path
                 assert wd not in self.path_by_wd

@@ -631,35 +631,14 @@ class LaTeXNode(ProductFileNode):
         ))
 
     def _latex_rule(self, jobname, *, cwd):
-        self._log(logging.INFO, (
-            '<cwd=<BLUE>{cwd}<NOCOLOUR>> '
-            '<GREEN>{node.latex_command} -jobname={jobname} '
-                '{node.source.path.name}<NOCOLOUR>'
-            .format(
-                cwd=self.root_relative(cwd), jobname=jobname,
-                node=self )
-        ))
         callargs = (self.latex_command,
             '-jobname={}'.format(jobname),
             ) + self._latex_additional_args + (
             self.source.path.name, )
-        try:
-            output = subprocess.check_output(callargs, cwd=str(cwd),
-                universal_newlines=False )
-        except subprocess.CalledProcessError as exception:
-            self._log(logging.CRITICAL,
-                "<BOLD>{exc.cmd[0]} returned code {exc.returncode}, "
-                    "output:<RESET>\n{output}"
-                "<BOLD>(error occured while building "
-                    "<RED>{node.name}<NOCOLOUR>)<RESET>"
-                .format(
-                    node=self, exc=exception,
-                    output=exception.output.decode(
-                        **self._latex_output_decode_kwargs )
-                ) )
-            exception.reported = True
-            raise
-        latex_output = output.decode(**self._latex_output_decode_kwargs)
+
+        latex_output = self._subprocess_output(
+            callargs, cwd=cwd )
+
         if self._latex_output_requests_rerun(latex_output):
             print(latex_output)
             try:
@@ -730,7 +709,7 @@ class LaTeXNode(ProductFileNode):
         r'(?m)^'
         r'(?P<overfull_type>Overfull|Underfull) '
         r'\\(?P<box_type>hbox|vbox) '
-        r'(?P<badness>\(\d+(?:\.\d+)?pt too wide|badness \d+\) |)'
+        r'(?P<badness>\((?:\d+(?:\.\d+)?pt too wide|badness \d+)\) |)'
         r'(?P<rest>.*)$'
     )
     _latex_overfull_log_template = (

@@ -341,30 +341,111 @@ class PathNode(DatedNode):
             self.modified = True
 
     def add_subprocess_rule(self, callargs, *, cwd, **kwargs):
-        if not isinstance(cwd, Path) or not cwd.is_absolute():
+        if not isinstance(cwd, Path):
+            raise ValueError(
+                "cwd must be a pathlib.Path object, not {cwd_type.__name__}"
+                .format(cwd_type=type(cwd)) )
+        if not cwd.is_absolute():
             raise ValueError("cwd must be an absolute Path")
         self.add_rule(partial(
             self._subprocess_rule, callargs, cwd=cwd, **kwargs
         ))
 
-    def _subprocess_rule(self, callargs, *, cwd, **kwargs):
-        assert isinstance(cwd, Path), type(cwd)
+    def _subprocess_rule( self,
+        callargs, *, cwd, stderr=subprocess.STDOUT,
+        log_output=True, log_error_output=True,
+        **kwargs
+    ):
+        """
+        Run external process.
+
+        Process output (see _subprocess_output method documentation)
+        is catched and done something with, depending on args.
+
+        Args:
+          callargs, cwd, stderr, **kwargs: passed to a function from
+            subprocess module.
+          log_output (bool, optional): If true, process output will be logged
+            (with accompanying messages).
+            If false, process output will instead be returned as string.
+            Defaults to True.
+          log_error_output (bool, optional):
+            see _subprocess_output() method documentation.
+
+        Returns:
+          None if log_output is true (default).
+          Process output (str) if log_output is false.
+
+        Raises:
+          subprocess.CalledProcessError: In case of error in called process.
+        """
+
+        output = self._subprocess_output(
+            callargs, cwd=cwd, stderr=stderr, **kwargs )
+        if not log_output:
+            return output
+        if not output:
+            return
+        self._log(INFO,
+            "Command {prog} output:<RESET>\n{output}"
+            "(output while building <MAGENTA>{node.name}<NOCOLOUR>)"
+            .format(node=self, prog=callargs[0], output=output)
+        )
+
+    def _subprocess_output( self,
+        callargs, *, cwd, stderr=subprocess.STDOUT,
+        log_error_output=True,
+        **kwargs
+    ):
+        """
+        Run external process.
+
+        Process output (the combined stdout and stderr of the spawned
+        process, decoded with default encoding and errors='replace')
+        is catched and done something with, depending on args.
+
+        Args:
+          callargs, cwd, stderr, **kwargs: passed to a function from
+            subprocess module.
+          log_error_output (bool, optional): If true, in case of process error
+            its output will be logged (with ERROR level).
+            If false, it will not be logged. Defaults to True.
+            In any case, received subprocess.CalledProcessError exception is
+            reraised.
+
+        Returns:
+          str: Process output.
+
+        Raises:
+          subprocess.CalledProcessError: In case of error in called process.
+        """
+
         self._log(INFO, (
-            '<cwd=<BLUE>{cwd}<NOCOLOUR>> <GREEN>{command}<NOCOLOUR>'
+            '<cwd=<CYAN>{cwd}<NOCOLOUR>> <GREEN>{command}<NOCOLOUR>'
             .format(
-                cwd=self.root_relative(cwd),
-                command=' '.join(callargs), )
+                cwd=self.root_relative(cwd), command=' '.join(callargs), )
         ))
+
         try:
-            subprocess.check_call(callargs, cwd=str(cwd), **kwargs)
+            encoded_output = subprocess.check_output(
+                callargs, cwd=str(cwd), stderr=stderr, **kwargs )
         except subprocess.CalledProcessError as exception:
-            self._log(CRITICAL,
-                'Command {exc.cmd[0]} returned code {exc.returncode}'
-                .format(exc=exception) )
-            # Stop jeolm.commands.refrain_called_process_error from reporting
-            # the error.
+            if not log_error_output:
+                raise
+            output = exception.output.decode(errors='replace')
+            self._log(ERROR,
+                "<BOLD>Command {exc.cmd[0]} returned code {exc.returncode}, "
+                    "output:<RESET>\n{output}"
+                "<BOLD>(error output while building "
+                    "<RED>{node.name}<NOCOLOUR>)<RESET>"
+                .format(node=self, exc=exception, output=output)
+            )
+            # Stop jeolm.commands.refrain_called_process_error
+            # (which most probably surrounds us) from reporting the error.
             exception.reported = True
             raise
+        else:
+            return encoded_output.decode(errors='replace')
 
     @property
     def relative_path(self):
@@ -511,7 +592,7 @@ class LinkNode(ProductNode):
                 source.path, self.path.parent )
 
         rule_repr = (
-            '<source=<BLUE>{node.source.name}<NOCOLOUR>> '
+            '<source=<CYAN>{node.source.name}<NOCOLOUR>> '
             '<GREEN>ln --symbolic {node.source_path} '
                 '{node.relative_path}<NOCOLOUR>'
             .format(node=self) )
