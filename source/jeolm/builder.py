@@ -15,9 +15,9 @@ import threading
 from pathlib import Path, PurePosixPath
 
 import jeolm
-import jeolm.nodes
+import jeolm.node
 
-from jeolm.nodes import (
+from jeolm.node import (
     Node, DatedNode, FileNode, TextNode, ProductFileNode,
     LinkNode, DirectoryNode )
 
@@ -665,7 +665,7 @@ class LaTeXNode(ProductFileNode):
             try:
                 self._turn_older_than_source()
             except FileNotFoundError as exception:
-                raise jeolm.nodes.MissingTargetError(*exception.args) \
+                raise jeolm.node.MissingTargetError(*exception.args) \
                     from exception
             else:
                 self.modified = True

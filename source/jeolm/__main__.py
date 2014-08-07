@@ -4,7 +4,7 @@ from pathlib import Path
 
 import jeolm
 import jeolm.local
-import jeolm.nodes
+import jeolm.node
 import jeolm.target
 import jeolm.diffprint
 import jeolm.commands
@@ -39,7 +39,7 @@ def main():
     except jeolm.local.RootNotFoundError:
         jeolm.local.report_missing_root()
         raise SystemExit
-    jeolm.nodes.PathNode.root = local.root
+    jeolm.node.PathNode.root = local.root
     main_function = globals()['main_' + args.command]
     return main_function(args, local=local)
 

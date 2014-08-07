@@ -5,7 +5,7 @@ from pathlib import Path, PurePosixPath
 import pyinotify
 
 import jeolm
-import jeolm.nodes
+import jeolm.node
 import jeolm.builder
 import jeolm.local
 import jeolm.metadata
@@ -217,7 +217,7 @@ def main():
     except jeolm.local.RootNotFoundError:
         jeolm.local.report_missing_root()
         raise SystemExit
-    jeolm.nodes.PathNode.root = local.root
+    jeolm.node.PathNode.root = local.root
     mainloop(local)
 
 if __name__ == '__main__':
