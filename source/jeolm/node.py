@@ -30,45 +30,53 @@ class Node:
     """
     Node represents target, or source, or whatever.
 
-    Attributes
-    ----------
-    name
-        str, some short-but-identifying name.  Shows up in log messages.
-    needs
-        list of Node instances, prerequisites of this node.  Should not be
-        populated directly, but rather with initialization and
-        node.extend_needs() method.
-    rules
-        list of functions, that are responsible for (re)building node and
-        setting node.modified attribute as appropriate.  Expected to be
-        populated with @node.add_rule decorator.
-    modified
-        bool, True if node was modified (causing any dependent nodes to be
-        rebuilt).  False by default, should be conditionally set to True by
-        build rules or node._run_rules() method.  Only node.needs_build()
-        method of depending node should be interested in reading this
-        attribute.
-    _forced
-        bool, setting it to True will cause node.needs_build() to
-        always return True.  Should be changed only by node.force()
-        method.
-    _updated
-        bool, True if self.update() has ever completed in either
-        concurrent or non-concurrent fashion.
-    _locked
-        bool, dependency cycle protection.  Should be read and written
-        only by node.update() method.
-    _future
-        concurrent.futures.Future or None
+    Attributes:
+      name (str): some short-but-identifying name.
+        Shows up in log messages.
+      needs (list of Node instances): prerequisites of this node.
+        Should not be populated directly, but rather with initialization
+        and node.extend_needs() method.
+      rules (list of callables): rules that are responsible for
+        (re)building node and setting `modified` attribute as appropriate.
+        Expected to be populated with node.add_rule() method
+        (which may serve as decorator).
+      modified (bool): if the node was modified.
+        If equal to True, this attribute will cause any dependent nodes
+        to be rebuilt. False by default, should be conditionally set to
+        True by build rules (see above) or node._run_rules() method.
+        Only node.needs_build() method of depending node should be
+        interested in reading this attribute.
+      _forced (bool): if the node was forced to rebuild.
+        Setting it to True will cause node.needs_build() to always return
+        True. Should be changed only by node.force() method.
+      _updated (bool): if the node was ever updated.
+        True if node.update() has ever completed in either concurrent or
+        non-concurrent fashion. (The former means that the future returned
+        by node.update() has completed.) Should be read and set only by
+        node.update() method.
+      _locked (bool): dependency cycle protection.
+        Should be read and set only by node.update() method.
+      _future (concurrent.futures.Future or None)
+        Should be read and set only by node.update() method.
     """
 
-    def __init__(self, *, name=None, needs=(), rules=()):
+    def __init__(self, *, name=None, needs=()):
+        """
+        Initialize Node instance.
+
+        After initialization, node is un-updated, un-forced, un-modified.
+
+        Args:
+          name (str, optional): see `name` attribute in class documentation.
+          needs (iterable of Node instances, optional): see `needs` attribute
+            in class documentation.
+        """
         if name is not None:
             self.name = str(name)
         else:
             self.name = 'id{}'.format(id(self))
         self.needs = list(needs)
-        self.rules = list(rules)
+        self.rules = list()
 
         self.modified = False
         self._forced = False
@@ -81,50 +89,61 @@ class Node:
         return hash(id(self))
 
     def update(self, *, executor=None):
+        if executor is None:
+            return self._update_nonconcurrent()
+        else:
+            return self._update_concurrent(executor=executor)
+
+    def _update_nonconcurrent(self):
         """
         Update the node, first recursively updating needs.
 
-        If executor is None, return None.
-        Otherwise, return a future.
+        Return None.
         """
 
-        if executor is not None and not isinstance(executor, futures.Executor):
+        with self._check_for_cycle():
+            if self._updated:
+                if self._future is not None:
+                    self._future.result()
+                return
+            for node in self.needs:
+                node.update()
+            self._update_self()
+            self._updated = True
+            return
+
+    def _update_concurrent(self, *, executor):
+        """
+        Issue a future that will update the node.
+
+        Collect the corresponding futures from needs (prerequisite nodes) and
+        create a future that will wait for them, and then update the node.
+
+        Return a future (concurrent.futures.Future instance).
+        """
+
+        if not isinstance(executor, futures.Executor):
             raise RuntimeError(type(executor))
 
         with self._check_for_cycle():
             if self._updated:
-                if executor is None:
-                    if self._future is not None:
-                        self._future.result()
-                    return
-                else:
-                    if self._future is None:
-                        self._future = self._one_shot_future(lambda: None)
-                    return self._future
-            if executor is not None:
-                needed_futures = [
-                    node.update(executor=executor)
-                    for node in self.needs ]
-            else:
-                for node in self.needs:
-                    node.update()
-            if executor is not None:
-                if not needed_futures: # no dependencies
-                    self._future = executor.submit(self._update_self)
-                else:
-                    def wait_for_needs_and_update_self():
-                        for future in needed_futures:
-                            future.result()
-                        return executor.submit(self._update_self).result()
-                    self._future = self._one_shot_future(
-                        wait_for_needs_and_update_self )
-            else:
-                self._update_self()
-            self._updated = True
-            if executor is not None:
+                if self._future is None:
+                    self._future = self._one_shot_future(lambda: None)
                 return self._future
+            needed_futures = [
+                node.update(executor=executor)
+                for node in self.needs ]
+            if not needed_futures: # no dependencies, easy case
+                self._future = executor.submit(self._update_self)
             else:
-                return
+                def wait_for_needs_and_update_self():
+                    for future in needed_futures:
+                        future.result()
+                    return executor.submit(self._update_self).result()
+                self._future = self._one_shot_future(
+                    wait_for_needs_and_update_self )
+            self._updated = True
+            return self._future
 
     @contextmanager
     def _check_for_cycle(self):
