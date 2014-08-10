@@ -570,29 +570,42 @@ class Builder:
 
     @classmethod
     def outrecord_hash(cls, outrecord):
-        return hashlib.md5(json.dumps(cls.sterilize(outrecord),
-            ensure_ascii=True, sort_keys=True,
-        ).encode('ascii')).hexdigest()
+        return hashlib.sha256(cls._sorted_repr(outrecord).encode()).hexdigest()
 
     @classmethod
-    def sterilize(cls, obj):
-        """Sterilize object for JSON dumping."""
-        sterilize = cls.sterilize
+    def _sorted_repr(cls, obj):
+        """
+        Sorted representation of dicts and sets, graceful with OrderedDict.
+
+        Allowed container types:
+          OrderedDict, list, dict (items in representation are sorted by keys,
+            only str keys are allowed).
+
+        Allowed non-container types:
+          str, int, float.
+        """
+        sorted_repr = cls._sorted_repr
+        if obj is None or isinstance(obj, (str, int, float)):
+            return repr(obj)
+        if isinstance(obj, (PurePosixPath, date)):
+            return repr(obj)
         if isinstance(obj, OrderedDict):
-            return OrderedDict(
-                (sterilize(k), sterilize(v)) for k, v in obj.items() )
-        elif isinstance(obj, dict):
-            return {sterilize(k) : sterilize(v) for k, v in obj.items()}
-        elif isinstance(obj, list):
-            return [sterilize(i) for i in obj]
-#        elif isinstance(obj, set):
-#            return {sterilize(i) : None for i in obj}
-        elif obj is None or isinstance(obj, (str, int, float)):
-            return obj
-        elif isinstance(obj, (PurePosixPath, date)):
-            return str(obj)
-        else:
-            raise TypeError(type(obj))
+            return 'OrderedDict([{}])'.format(', '.join(
+                '({}, {})'.format(sorted_repr(key), sorted_repr(value))
+                for key, value in obj.items()
+            ))
+        if isinstance(obj, list):
+            return '[{}]'.format(', '.join(
+                sorted_repr(item) for item in obj
+            ))
+        if isinstance(obj, dict):
+            assert all(isinstance(key, str) for key in obj.keys())
+            return '{{{}}}'.format(', '.join(
+                '{}: {}'.format(sorted_repr(key), sorted_repr(value))
+                for key, value in sorted(obj.items())
+            ))
+        raise TypeError(obj)
+
 
 class LaTeXNode(ProductFileNode):
     """
