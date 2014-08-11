@@ -23,8 +23,9 @@ Keys recognized in metarecords:
     - if false then raise error on figure_record stage
     - assumed false by default
     - set to true by metadata grabber on .asy, .svg and .eps files
-  $figure$type (one of 'asy', 'svg', 'eps')
-    - set by metadata grabber
+  $figure$type$asy, $figure$type$svg, $figure$type$eps (boolean)
+    - set to true by metadata grabber on respectively .asy, .svg and
+      .eps files
   $figure$asy$accessed (dict)
     - set by metadata grabber
   $package$able (boolean)
@@ -38,8 +39,8 @@ Keys recognized in metarecords:
       (with .sty extension added)
     - extracted by metadata grabber from \ProvidesPackage command in
       .sty or .dtx file
-    - in absence of \ProvidesPackage, borrowed by metadata grabber from
-      the filename
+    - in absence of \ProvidesPackage, borrowed by metadata grabber
+      from the filename
 
   $delegate[*]
     Values:
@@ -1131,12 +1132,18 @@ class Driver(RecordsManager, metaclass=DriverMetaclass):
 
         return figure_record
 
-    # { figure_type : figure_suffix for all figure types }
-    figure_suffixes = {
-        'asy' : '.asy',
-        'eps' : '.eps',
-        'svg' : '.svg',
-    }
+    _figure_type_suffixes = OrderedDict((
+        ('asy', '.asy'),
+        ('svg', '.svg'),
+        ('eps', '.eps'),
+    ))
+    # Asymptote figures are given priority over Scalable Vector Graphics files,
+    # which in turn have priority over Encapsulated PostScript.
+    _figure_type_keys = OrderedDict((
+        ('asy', '$figure$type$asy'),
+        ('svg', '$figure$type$svg'),
+        ('eps', '$figure$type$eps'),
+    ))
 
     def find_figure_type(self, figure_path):
         """
@@ -1150,8 +1157,13 @@ class Driver(RecordsManager, metaclass=DriverMetaclass):
         if not metarecord.get('$figure$able', False):
             raise DriverError("Figure '{}' not found".format(figure_path))
 
-        figure_type = metarecord['$figure$type']
-        figure_suffix = self.figure_suffixes[figure_type]
+        for figure_type, figure_type_key in self._figure_type_keys.items():
+            if metarecord.get(figure_type_key, False):
+                break
+        else:
+            raise RuntimeError(
+                "Found $figure$able key, but none of $figure$type$* keys." )
+        figure_suffix = self._figure_type_suffixes[figure_type]
         inpath = figure_path.as_inpath(suffix=figure_suffix)
         return figure_type, inpath
 

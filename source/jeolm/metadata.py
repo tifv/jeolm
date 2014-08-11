@@ -72,7 +72,7 @@ class MetadataManager(RecordsManager):
                 metapath = metainpath.with_suffix('')
             metadata = record.get('$metadata')
             if metadata is not None:
-                metarecords.absorb({metapath : metadata})
+                metarecords.absorb({metapath : metadata}, overwrite=False)
         if warn_dropped_keys:
             for metapath, metarecord in metarecords.items():
                 self.check_dropped_metarecord_keys(
@@ -271,7 +271,7 @@ class MetadataManager(RecordsManager):
             s = f.read()
         metadata = {
             '$figure$able' : True,
-            '$figure$type' : 'asy' }
+            '$figure$type$asy' : True }
         metadata.update(self.query_asy_content(inpath, s))
         return metadata
 
@@ -300,13 +300,13 @@ class MetadataManager(RecordsManager):
     def query_svg_file(self, inpath):
         metadata = {
             '$figure$able' : True,
-            '$figure$type' : 'svg' }
+            '$figure$type$svg' : True }
         return metadata
 
     def query_eps_file(self, inpath):
         metadata = {
             '$figure$able' : True,
-            '$figure$type' : 'eps' }
+            '$figure$type$eps' : True }
         return metadata
 
     dropped_keys = {
