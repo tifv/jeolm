@@ -734,7 +734,8 @@ class Driver(RecordsManager, metaclass=DriverMetaclass):
     def generate_special_outrecord(self, target, metarecord):
         special_type = metarecord['$build$special']
         if special_type not in {'standalone', 'latexdoc'}:
-            raise DriverError(special_type)
+            raise DriverError(
+                "Unknown type of special '{}'".format(special_type) )
         outrecord = {'type' : special_type}
         outrecord['outname'] = outrecord['buildname'] = \
             self.select_outname(target, metarecord, date=None)
@@ -754,17 +755,7 @@ class Driver(RecordsManager, metaclass=DriverMetaclass):
         date_set = set()
 
         outrecord = {'type' : 'regular'}
-        options_key, options = self.select_flagged_item(
-            metarecord, '$build$options', target.flags )
-        if options is not None:
-            with self.process_target_key(target, options_key):
-                if not isinstance(options, dict):
-                    raise DriverError(type(options))
-                if options.keys() & {
-                        'type', 'document', 'sources',
-                        'figure_paths', 'package_paths', }:
-                    raise DriverError("Bad options {}".format(outrecord) )
-                outrecord.update(options)
+        outrecord.update(self.find_build_options(target, metarecord))
         # We must exhaust generate_metabody() to fill date_set
         metabody = list(self.generate_metabody(
             target, metarecord, date_set=date_set ))
@@ -796,6 +787,22 @@ class Driver(RecordsManager, metaclass=DriverMetaclass):
                 outrecord,
                 metapreamble=metapreamble, metabody=metabody, )
         return outrecord
+
+    def find_build_options(self, target, metarecord):
+        options_key, options = self.select_flagged_item(
+            metarecord, '$build$options', target.flags )
+        if options is None:
+            return ()
+        with self.process_target_key(target, options_key):
+            if not isinstance(options, dict):
+                raise DriverError(
+                    "Build options must be a dictionary, not {}"
+                    .format(type(options).__name__) )
+            if options.keys() & {
+                    'type', 'document', 'sources',
+                    'figure_paths', 'package_paths', }:
+                raise DriverError("Bad options {}".format(options) )
+            return options
 
     def select_outname(self, target, metarecord, date=None):
         outname = '{target:outname}'.format(target=target)
@@ -889,38 +896,50 @@ class Driver(RecordsManager, metaclass=DriverMetaclass):
             return
         with self.process_target_key(target, matter_key):
             if not isinstance(matter, list):
-                raise DriverError(type(matter))
-            derive_target = partial( target.derive_from_string,
-                origin='matter {target}, key {key}'
-                    .format(target=target, key=matter_key)
-            )
+                raise DriverError(
+                    "Matter must be a list, not {}"
+                    .format(type(matter).__name__) )
             for item in matter:
-                if isinstance(item, str):
-                    yield derive_target(item)
-                    continue
-                if isinstance(item, list):
-                    if recursed:
-                        raise DriverError(
-                            "Matter allows two folding levels at most" )
-                    if not item:
-                        yield self.substitute_emptypage()
-                    else:
-                        yield from self.generate_matter_metabody(
-                            target, metarecord,
-                            matter_key=matter_key, matter=item,
-                            recursed=True )
-                        yield self.substitute_clearpage()
-                    continue
-                if not isinstance(item, dict):
-                    raise DriverError(type(item))
-                item = item.copy()
-                condition = item.pop('condition', [])
-                if not target.flags.check_condition(condition):
-                    continue
-                if item.keys() == {'delegate'}:
-                    yield derive_target(item['delegate'])
-                else:
-                    yield item
+                yield from self.generate_matter_item_metabody(
+                    target, metarecord,
+                    matter_key=matter_key, matter_item=item )
+
+    def generate_matter_item_metabody(self, target, metarecord,
+        *, matter_key, matter_item, recursed=False
+    ):
+        derive_target = partial( target.derive_from_string,
+            origin='matter {target}, key {key}'
+                .format(target=target, key=matter_key)
+        )
+        if isinstance(matter_item, str):
+            yield derive_target(matter_item)
+            return
+        if isinstance(matter_item, list):
+            if recursed:
+                raise DriverError(
+                    "Matter is allowed to have two folding levels at most" )
+            if not matter_item:
+                yield self.substitute_emptypage()
+            else:
+                for item in matter_item:
+                    yield from self.generate_matter_item_metabody(
+                        target, metarecord,
+                        matter_key=matter_key, matter_item=item,
+                        recursed=True )
+                yield self.substitute_clearpage()
+            return
+        if not isinstance(matter_item, dict):
+            raise DriverError(
+                "Matter item must be a string or a dictionary, not {}"
+                .format(type(matter_item).__name__) )
+        matter_item = matter_item.copy()
+        condition = matter_item.pop('condition', [])
+        if not target.flags.check_condition(condition):
+            return
+        if matter_item.keys() == {'delegate'}:
+            yield derive_target(matter_item['delegate'])
+        else:
+            yield matter_item
 
     @processing_target_aspect(aspect='auto metabody', wrap_generator=True)
     @classifying_items(aspect='metabody', default='verbatim')
@@ -997,34 +1016,41 @@ class Driver(RecordsManager, metaclass=DriverMetaclass):
         with self.process_target_key(target, style_key):
             if not isinstance(style, list):
                 raise DriverError(type(style))
-            derive_target = partial( target.derive_from_string,
-                origin='style {target}, key {key}'
-                    .format(target=target, key=style_key)
-            )
             for item in style:
-                if isinstance(item, str):
-                    yield derive_target(item)
-                    continue
-                if not isinstance(item, dict):
-                    raise DriverError(type(item))
-                item = item.copy()
-                condition = item.pop('condition', [])
-                if not target.flags.check_condition(condition):
-                    continue
-                if item.keys() == {'delegate'}:
-                    yield derive_target(item['delegate'])
-                else:
-                    yield item
+                yield from self.generate_style_item_metapreamble(
+                    target, metarecord,
+                    style_key=style_key, style_item=item )
+
+    def generate_style_item_metapreamble(self, target, metarecord,
+        *, style_key, style_item
+    ):
+        derive_target = partial( target.derive_from_string,
+            origin='style {target}, key {key}'
+                .format(target=target, key=style_key)
+        )
+        if isinstance(style_item, str):
+            yield derive_target(style_item)
+            return
+        if not isinstance(style_item, dict):
+            raise DriverError(
+                "Style item must be a string or a dictionary, not {}"
+                .format(type(style_item).__name__) )
+        style_item = style_item.copy()
+        condition = style_item.pop('condition', [])
+        if not target.flags.check_condition(condition):
+            return
+        if style_item.keys() == {'delegate'}:
+            yield derive_target(style_item['delegate'])
+        else:
+            yield style_item
 
     @processing_target_aspect(aspect='auto metapreamble', wrap_generator=True)
     @classifying_items(aspect='metapreamble', default='verbatim')
     def generate_auto_metapreamble(self, target, metarecord):
         if '$package$able' in metarecord:
             yield {'local_package' : target.path}
-        elif target.path != RecordPath():
-            yield target.path_derive('..')
         else:
-            raise DriverError(target.path)
+            yield target.path_derive('..')
 
     def digest_metabody(self, metabody, *,
         sources, figure_paths, required_packages
@@ -1099,7 +1125,9 @@ class Driver(RecordsManager, metaclass=DriverMetaclass):
             accessed_items = list(self.trace_asy_accessed(figure_path))
             accessed = figure_record['accessed_sources'] = dict(accessed_items)
             if len(accessed) != len(accessed_items):
-                raise DriverError(inpath, accessed_items)
+                raise DriverError(
+                    "Clash in accessed asy file names in figure {}"
+                    .format(figure_path), accessed_items )
 
         return figure_record
 
