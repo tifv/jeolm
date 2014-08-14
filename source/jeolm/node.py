@@ -378,7 +378,7 @@ class PathNode(DatedNode):
         """
         Run external process.
 
-        Process output (see _subprocess_output method documentation)
+        Process output (see node._subprocess_output() method documentation)
         is catched and done something with, depending on args.
 
         Args:
@@ -389,7 +389,7 @@ class PathNode(DatedNode):
             If false, process output will instead be returned as string.
             Defaults to True.
           log_error_output (bool, optional):
-            see _subprocess_output() method documentation.
+            see node._subprocess_output() method documentation.
 
         Returns:
           None if log_output is true (default).
@@ -501,9 +501,9 @@ class PathNode(DatedNode):
 
 class ProductNode(PathNode):
     """
-    ProductionNode has a source.
+    ProductNode has a source.
 
-    ProductionNode is a subclass of PathNode that introduces a notion of
+    ProductNode is a subclass of PathNode that introduces a notion of
     source, which is also a PathNode. The source is automatically
     prepended to node.needs list.
 
