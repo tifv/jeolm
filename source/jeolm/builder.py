@@ -13,7 +13,8 @@ import jeolm
 import jeolm.node
 import jeolm.latex_node
 
-from jeolm.node import FileNode, TextNode, LinkNode, DirectoryNode
+from jeolm.node import ( FileNode, SubprocessCommand, TextCommand,
+    LinkNode, DirectoryNode )
 
 import logging
 logger = logging.getLogger(__name__)
@@ -81,7 +82,7 @@ class Builder:
         self.prebuild_documents( outrecords,
             build_dir=self.local.build_dir/'documents' )
 
-        self.ultimate_node = jeolm.node.Node(
+        self.ultimate_node = jeolm.node.TargetNode(
             name='ultimate',
             needs=( node
                 for build_format in self.build_formats
@@ -193,17 +194,17 @@ class Builder:
             path=build_dir/'main.eps',
             needs=(main_asy_node, build_dir_node) )
         eps_node.extend_needs(other_asy_nodes)
-        eps_node.add_subprocess_rule(
+        eps_node.add_command(SubprocessCommand( eps_node,
             ('asy', '-outformat=eps', '-offscreen', 'main.asy'),
-            cwd=build_dir )
+            cwd=build_dir ))
         pdf_node = self.figure_nodes['pdf'][figure_path] = FileNode(
             name='fig:{}:pdf'.format(figure_path),
             path=build_dir/'main.pdf',
             needs=(main_asy_node, build_dir_node) )
         pdf_node.extend_needs(other_asy_nodes)
-        pdf_node.add_subprocess_rule(
+        pdf_node.add_command(SubprocessCommand( pdf_node,
             ('asy', '-outformat=pdf', '-offscreen', 'main.asy'),
-            cwd=build_dir )
+            cwd=build_dir ))
 
     def prebuild_svg_figure(self, figure_path, figure_record,
         *, build_dir, build_dir_node
@@ -217,16 +218,16 @@ class Builder:
             name='fig:{}:eps'.format(figure_path),
             path=build_dir/'main.eps',
             needs=(svg_node, build_dir_node) )
-        eps_node.add_subprocess_rule(
+        eps_node.add_command(SubprocessCommand( eps_node,
             ('inkscape', '--export-eps=main.eps', '-without-gui', 'main.svg'),
-            cwd=build_dir )
+            cwd=build_dir ))
         pdf_node = self.figure_nodes['pdf'][figure_path] = FileNode(
             name='fig:{}:pdf'.format(figure_path),
             path=build_dir/'main.pdf',
             needs=(svg_node, build_dir_node) )
-        pdf_node.add_subprocess_rule(
+        pdf_node.add_command(SubprocessCommand( pdf_node,
             ('inkscape', '--export-pdf=main.pdf', '-without-gui', 'main.svg'),
-            cwd=build_dir )
+            cwd=build_dir ))
 
     def prebuild_eps_figure(self, figure_path, figure_record,
         *, build_dir, build_dir_node
@@ -242,9 +243,9 @@ class Builder:
             name='fig:{}:pdf'.format(figure_path),
             path=build_dir/'main.pdf',
             needs=(eps_node, build_dir_node) )
-        pdf_node.add_subprocess_rule(
+        pdf_node.add_command(SubprocessCommand( pdf_node,
             ('inkscape', '--export-pdf=main.pdf', '-without-gui', 'main.eps'),
-            cwd=build_dir )
+            cwd=build_dir ))
 
     def prebuild_packages(self, package_records, build_dir):
         self.package_nodes = OrderedDict()
@@ -289,19 +290,22 @@ class Builder:
             source=source_node,
             path=build_dir/'{}.dtx'.format(package_name),
             needs=(build_dir_node,) )
-        ins_node = TextNode(
+        ins_node = FileNode(
             name='sty:{}:ins'.format(package_path),
             path=build_dir/'package.ins',
-            text=self.substitute_package_ins(package_name=package_name),
             needs=(build_dir_node,) )
+        ins_node.add_command(TextCommand( ins_node,
+            textfunc=partial(
+                self.substitute_package_ins, package_name=package_name )
+        ))
         sty_node = self.package_nodes[package_path] = FileNode(
             name='sty:{}:sty'.format(package_path),
             path=build_dir/'{}.sty'.format(package_name),
             needs=(build_dir_node, dtx_node, ins_node) )
-        sty_node.add_subprocess_rule(
+        sty_node.add_command(SubprocessCommand( sty_node,
             ('latex', '-interaction=nonstopmode',
                 '-halt-on-error', '-file-line-error', 'package.ins'),
-            cwd=build_dir )
+            cwd=build_dir ))
 
     def prebuild_sty_package(self, package_path, package_record,
         *, build_dir, build_dir_node
@@ -344,11 +348,12 @@ class Builder:
         """
         buildname = outrecord['buildname']
 
-        main_tex_node = TextNode(
+        main_tex_node = FileNode(
             name='doc:{}:autosource'.format(target),
             path=build_dir/'main.tex',
-            text=outrecord['document'],
             needs=(self.outnodes[target], build_dir_node) )
+        main_tex_node.add_command(TextCommand.from_text( main_tex_node,
+            text=outrecord['document'] ))
         if self.force == 'generate':
             main_tex_node.force()
 
@@ -398,11 +403,13 @@ class Builder:
     ):
         if outrecord['figure_paths']:
             logger.warning("Cannot properly dump a document with figures.")
-        dump_node = self.document_nodes['dump'][target] = TextNode(
+        dump_node = self.document_nodes['dump'][target] = FileNode(
             name='doc:{}:dump'.format(target),
             path=build_dir/'dump.tex',
-            textfunc=partial(self.supply_filecontents, outrecord),
             needs=(self.outnodes[target], build_dir_node,) )
+        dump_node.add_command(TextCommand( dump_node,
+            textfunc=partial(self.supply_filecontents, outrecord)
+        ))
         dump_node.extend_needs(
             self.get_source_node(inpath)
             for inpath in outrecord['sources'].values() )
@@ -484,21 +491,24 @@ class Builder:
             source=source_node,
             path=build_dir/'{}.dtx'.format(package_name),
             needs=(build_dir_node,) )
-        ins_node = TextNode(
+        ins_node = FileNode(
             name='doc:{}:ins'.format(target),
             path=build_dir/'driver.ins',
-            text=self.substitute_driver_ins(package_name=package_name),
             needs=(self.outnodes[target], build_dir_node,) )
+        ins_node.add_command(TextCommand( ins_node,
+            textfunc=partial(
+                self.substitute_driver_ins, package_name=package_name )
+        ))
         if self.force == 'generate':
             ins_node.force()
         drv_node = FileNode(
             name='doc:{}:drv'.format(target),
             path=build_dir/'{}.drv'.format(package_name),
             needs=(build_dir_node, dtx_node, ins_node,) )
-        drv_node.add_subprocess_rule(
+        drv_node.add_command(SubprocessCommand( drv_node,
             ('latex', '-interaction=nonstopmode',
                 '-halt-on-error', '-file-line-error', 'driver.ins'),
-            cwd=build_dir )
+            cwd=build_dir ))
         sty_node = LinkNode(
             name='doc:{}:sty'.format(target),
             source=self.package_nodes[target.path],
@@ -524,20 +534,20 @@ class Builder:
     ):
         pdf_node = self.document_nodes['pdf'][target] = FileNode(
             name='doc:{}:pdf'.format(target),
-            path=dvi_node.path.with_suffix('.pdf'),
+            path=build_dir/'main.pdf',
             needs=(dvi_node,) )
         pdf_node.extend_needs(figure_nodes)
-        pdf_node.add_subprocess_rule(
+        pdf_node.add_command(SubprocessCommand( pdf_node,
             ('dvipdf', dvi_node.path.name, pdf_node.path.name),
-            cwd=build_dir )
+            cwd=build_dir ))
         ps_node = self.document_nodes['ps'][target] = FileNode(
             name='doc:{}:ps'.format(target),
-            path=dvi_node.path.with_suffix('.ps'),
+            path=build_dir/'main.ps',
             needs=(dvi_node,) )
         ps_node.extend_needs(figure_nodes)
-        ps_node.add_subprocess_rule(
+        ps_node.add_command(SubprocessCommand( ps_node,
             ('dvips', dvi_node.path.name, '-o', ps_node.path.name),
-            cwd=build_dir )
+            cwd=build_dir ))
 
     def prebuild_document_exposed(self, target, outrecord):
         for build_format in self.build_formats:

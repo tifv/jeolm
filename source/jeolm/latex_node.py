@@ -5,7 +5,7 @@ import re
 
 from pathlib import Path
 
-from jeolm.node import ProductFileNode, MissingTargetError
+from jeolm.node import ProductFileNode, SubprocessCommand, MissingTargetError
 
 import logging
 logger = logging.getLogger(__name__)
@@ -19,14 +19,7 @@ class LaTeXNode(ProductFileNode):
     interesting in it.
     """
 
-    latex_command = 'latex'
     target_suffix = '.dvi'
-
-    _latex_additional_args = (
-        '-interaction=nonstopmode', '-halt-on-error', '-file-line-error', )
-
-    _latex_output_decode_kwargs = {
-        'encoding' : 'ascii', 'errors' : 'replace' }
 
     def __init__(self, source, path, *, cwd, **kwargs):
         super().__init__(source, path, **kwargs)
@@ -38,43 +31,55 @@ class LaTeXNode(ProductFileNode):
 
         # Ensure that both latex source and target are in the same directory
         # and this directory is cwd.
-        assert path.parent == cwd == source.path.parent
-        assert path.suffix == self.target_suffix
+        if not path.parent == cwd == source.path.parent:
+            raise RuntimeError
+        if not path.suffix == self.target_suffix:
+            raise RuntimeError
         jobname = path.stem
 
-        self.add_rule(partial(
-            self._latex_rule, jobname, cwd=cwd
+        self.add_command(_LaTeXCommand(self, source, jobname, cwd=cwd))
+
+class _LaTeXCommand(SubprocessCommand):
+
+    latex_command = 'latex'
+
+    _latex_additional_args = (
+        '-interaction=nonstopmode', '-halt-on-error', '-file-line-error', )
+
+    def __init__(self, node, source, jobname, *, cwd):
+        callargs = tuple(chain(
+            (self.latex_command,),
+            ('-jobname={}'.format(jobname),),
+            self._latex_additional_args,
+            (source.path.name,),
         ))
+        super().__init__(node, callargs, cwd=cwd)
+        self.source = source
 
-    def _latex_rule(self, jobname, *, cwd):
-        callargs = (self.latex_command,
-            '-jobname={}'.format(jobname),
-            ) + self._latex_additional_args + (
-            self.source.path.name, )
-
-        latex_output = self._subprocess_output(
-            callargs, cwd=cwd )
+    def __call__(self):
+        latex_output = self._subprocess_output()
 
         if self._latex_output_requests_rerun(latex_output):
             print(latex_output)
             try:
-                self._turn_older_than_source()
+                self.node._turn_older_than_source()
             except FileNotFoundError as exception:
                 raise MissingTargetError(*exception.args) \
                     from exception
             else:
-                self.modified = True
-                self._log( logging.WARNING,
+                self.node.modified = True
+                self.node._log( logging.WARNING,
                     "Next run will rebuild the target." )
         else:
             self.print_latex_log(
                 latex_output,
-                latex_log_path=self.path.with_suffix('.log') )
+                latex_log_path=self.node.path.with_suffix('.log') )
 
     @classmethod
     def _latex_output_requests_rerun(cls, latex_output):
         match = cls.latex_output_rerun_pattern.search(latex_output)
         return match is not None
+
     latex_output_rerun_pattern = re.compile(
         r'[Rr]erun to (?#get something right)' )
 
@@ -88,11 +93,9 @@ class LaTeXNode(ProductFileNode):
         """
         if self._latex_output_is_alarming(latex_output):
             print(latex_output)
-            self._log(logging.WARNING, 'Alarming LaTeX output detected.')
+            self.node._log(logging.WARNING, 'Alarming LaTeX output detected.')
         elif latex_log_path is not None:
-            with latex_log_path.open(
-                **self._latex_output_decode_kwargs
-            ) as latex_log_file:
+            with latex_log_path.open(errors='replace') as latex_log_file:
                 latex_log_text = latex_log_file.read()
             self._print_overfulls_from_latex_log(latex_log_text)
 
@@ -100,6 +103,7 @@ class LaTeXNode(ProductFileNode):
     def _latex_output_is_alarming(cls, latex_output):
         match = cls.latex_output_alarming_pattern.search(latex_output)
         return match is not None
+
     latex_output_alarming_pattern = re.compile(
         r'[Ee]rror|[Ww]arning|No pages of output' )
 
@@ -114,7 +118,7 @@ class LaTeXNode(ProductFileNode):
         if not matches:
             return
         header = "<BOLD>Overfulls and underfulls detected by LaTeX:<RESET>"
-        self._log( logging.INFO, '\n'.join(chain(
+        self.node._log( logging.INFO, '\n'.join(chain(
             (header,),
             (
                 self._format_overfull(match, page_numberer, file_namer)

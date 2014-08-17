@@ -23,7 +23,7 @@ class CycleError(RuntimeError):
     pass
 
 class MissingTargetError(FileNotFoundError):
-    """Missing target file after execution of build rules."""
+    """Missing target file after execution of build commands."""
     pass
 
 class Node:
@@ -36,14 +36,14 @@ class Node:
       needs (list of Node instances): prerequisites of this node.
         Should not be populated directly, but rather with initialization
         and node.extend_needs() method.
-      rules (list of callables): rules that are responsible for
+      commands (list of callables): commands that are responsible for
         (re)building node and setting `modified` attribute as appropriate.
-        Expected to be populated with node.add_rule() method
+        Expected to be populated with node.add_command() method
         (which may serve as decorator).
       modified (bool): if the node was modified.
         If equal to True, this attribute will cause any dependent nodes
         to be rebuilt. False by default, should be conditionally set to
-        True by build rules (see above) or node._run_rules() method.
+        True by build commands (see above) or node._run_commands() method.
         Only node.needs_build() method of depending node should be
         interested in reading this attribute.
       _forced (bool): if the node was forced to rebuild.
@@ -76,7 +76,7 @@ class Node:
         else:
             self.name = 'id{}'.format(id(self))
         self.needs = list(needs)
-        self.rules = list()
+        self.commands = list()
 
         self.modified = False
         self._forced = False
@@ -167,7 +167,7 @@ class Node:
 
     def _update_self(self):
         if self.needs_build():
-            self._run_rules()
+            self._run_commands()
 
     def needs_build(self):
         """
@@ -194,15 +194,27 @@ class Node:
     def force(self):
         self._forced = True
 
-    def add_rule(self, rule):
+    def add_command(self, command):
         """Decorator."""
-        self.rules.append(rule)
-        return rule
+        self.commands.append(command)
+        return command
 
-    def _run_rules(self):
+    def _run_commands(self):
         # Should be only called by self._update_self()
-        for rule in self.rules:
-            rule()
+        for command in self.commands:
+            command()
+
+    def iter_needs(self, _seen_needs=None):
+        """Yield this node and all needs, recursively."""
+        if _seen_needs is None:
+            _seen_needs = {self}
+        elif self in _seen_needs:
+            return
+        else:
+            _seen_needs.add(self)
+        yield self
+        for need in self.needs:
+            yield from need.iter_needs(_seen_needs=_seen_needs)
 
     def _log(self, level, message):
         """
@@ -229,6 +241,10 @@ class Node:
         return (
             "{node.__class__.__qualname__}(name='{node.name}')"
             .format(node=self) )
+
+class TargetNode(Node):
+    """Represent an abstract target."""
+    pass
 
 class DatedNode(Node):
     """
@@ -290,7 +306,7 @@ class PathNode(DatedNode):
     """
     PathNode represents filesystem path, existing or not.
 
-    It introduces path attribute and add_subprocess_rule() method.
+    It introduces `path` attribute.
 
     Attributes
     ----------
@@ -340,131 +356,24 @@ class PathNode(DatedNode):
             "name='{node.name}', path='{node.relative_path}')"
             .format(node=self) )
 
-    def _run_rules(self):
+    def _run_commands(self):
         prerun_mtime = self.mtime
         try:
-            super()._run_rules()
+            super()._run_commands()
         except:
             self.load_mtime()
             if self.mtime_less(prerun_mtime, self.mtime):
-                # Failed rule resulted in a file written.
+                # Failed command resulted in a file written.
                 # We have to clear it.
                 self._log(ERROR, 'deleting {}'.format(self.relative_path))
                 self.path.unlink()
             raise
         self.load_mtime()
         if self.mtime is None:
-            # Succeeded rule did not result in a file
+            # Succeeded commands did not result in a file
             raise MissingTargetError(repr(self))
         if prerun_mtime != self.mtime:
             self.modified = True
-
-    def add_subprocess_rule(self, callargs, *, cwd, **kwargs):
-        if not isinstance(cwd, Path):
-            raise ValueError(
-                "cwd must be a pathlib.Path object, not {cwd_type.__name__}"
-                .format(cwd_type=type(cwd)) )
-        if not cwd.is_absolute():
-            raise ValueError("cwd must be an absolute Path")
-        self.add_rule(partial(
-            self._subprocess_rule, callargs, cwd=cwd, **kwargs
-        ))
-
-    def _subprocess_rule( self,
-        callargs, *, cwd, stderr=subprocess.STDOUT,
-        log_output=True, log_error_output=True,
-        **kwargs
-    ):
-        """
-        Run external process.
-
-        Process output (see node._subprocess_output() method documentation)
-        is catched and done something with, depending on args.
-
-        Args:
-          callargs, cwd, stderr, **kwargs: passed to a function from
-            subprocess module.
-          log_output (bool, optional): If true, process output will be logged
-            (with accompanying messages).
-            If false, process output will instead be returned as string.
-            Defaults to True.
-          log_error_output (bool, optional):
-            see node._subprocess_output() method documentation.
-
-        Returns:
-          None if log_output is true (default).
-          Process output (str) if log_output is false.
-
-        Raises:
-          subprocess.CalledProcessError: In case of error in called process.
-        """
-
-        output = self._subprocess_output(
-            callargs, cwd=cwd, stderr=stderr, **kwargs )
-        if not log_output:
-            return output
-        if not output:
-            return
-        self._log(INFO,
-            "Command {prog} output:<RESET>\n{output}"
-            "(output while building <MAGENTA>{node.name}<NOCOLOUR>)"
-            .format(node=self, prog=callargs[0], output=output)
-        )
-
-    def _subprocess_output( self,
-        callargs, *, cwd, stderr=subprocess.STDOUT,
-        log_error_output=True,
-        **kwargs
-    ):
-        """
-        Run external process.
-
-        Process output (the combined stdout and stderr of the spawned
-        process, decoded with default encoding and errors='replace')
-        is catched and done something with, depending on args.
-
-        Args:
-          callargs, cwd, stderr, **kwargs: passed to a function from
-            subprocess module.
-          log_error_output (bool, optional): If true, in case of process error
-            its output will be logged (with ERROR level).
-            If false, it will not be logged. Defaults to True.
-            In any case, received subprocess.CalledProcessError exception is
-            reraised.
-
-        Returns:
-          str: Process output.
-
-        Raises:
-          subprocess.CalledProcessError: In case of error in called process.
-        """
-
-        self._log(INFO, (
-            '<cwd=<CYAN>{cwd}<NOCOLOUR>> <GREEN>{command}<NOCOLOUR>'
-            .format(
-                cwd=self.root_relative(cwd), command=' '.join(callargs), )
-        ))
-
-        try:
-            encoded_output = subprocess.check_output(
-                callargs, cwd=str(cwd), stderr=stderr, **kwargs )
-        except subprocess.CalledProcessError as exception:
-            if not log_error_output:
-                raise
-            output = exception.output.decode(errors='replace')
-            self._log(ERROR,
-                "<BOLD>Command {exc.cmd[0]} returned code {exc.returncode}, "
-                    "output:<RESET>\n{output}"
-                "<BOLD>(error output while building "
-                    "<RED>{node.name}<NOCOLOUR>)<RESET>"
-                .format(node=self, exc=exception, output=output)
-            )
-            # Stop jeolm.commands.refrain_called_process_error
-            # (which most probably surrounds us) from reporting the error.
-            exception.reported = True
-            raise
-        else:
-            return encoded_output.decode(errors='replace')
 
     @property
     def relative_path(self):
@@ -498,6 +407,94 @@ class PathNode(DatedNode):
             upstairs += 1
         return PurePosixPath(*
             ['..'] * upstairs + [path.relative_to(root)] )
+
+class SubprocessCommand:
+
+    def __init__(self, node, callargs, *, cwd, **kwargs):
+        self.node = node
+        self.callargs = callargs
+        if not isinstance(cwd, Path):
+            raise ValueError(
+                "cwd must be a pathlib.Path object, not {cwd_type.__name__}"
+                .format(cwd_type=type(cwd)) )
+        if not cwd.is_absolute():
+            raise ValueError("cwd must be an absolute Path")
+        self.cwd = cwd
+        kwargs.setdefault('stderr', subprocess.STDOUT)
+        self.kwargs = kwargs
+
+    def __call__(self):
+        """
+        Run external process.
+
+        Process output (see _subprocess_output() method documentation)
+        is catched and logged (with INFO level).
+
+        Returns None.
+
+        Raises:
+          subprocess.CalledProcessError: in case of error in the called
+            process.
+        """
+
+        output = self._subprocess_output()
+        if not output:
+            return
+        self.node._log(INFO,
+            "Command {prog} output:<RESET>\n{output}"
+            "(output while building <MAGENTA>{node.name}<NOCOLOUR>)"
+            .format(node=self.node, prog=self.callargs[0], output=output)
+        )
+
+    def _subprocess_output(self, log_error_output=True):
+        """
+        Run external process.
+
+        Process output (the combined stdout and stderr of the spawned
+        process, decoded with default encoding and errors='replace')
+        is catched and done something with, depending on args.
+
+        Args:
+          log_error_output (bool, optional): If True (default), in case of
+            process error its output will be logged (with ERROR level).
+            If False, it will not be logged. Defaults to True. In any case,
+            any received subprocess.CalledProcessError exception is reraised.
+
+        Returns:
+          Process output (str).
+
+        Raises:
+          subprocess.CalledProcessError: in case of error in the called
+            process.
+        """
+
+        self.node._log(INFO, (
+            '<cwd=<CYAN>{cwd}<NOCOLOUR>> <GREEN>{command}<NOCOLOUR>'
+            .format(
+                cwd=self.node.root_relative(self.cwd),
+                command=' '.join(self.callargs), )
+        ))
+
+        try:
+            encoded_output = subprocess.check_output(
+                self.callargs, cwd=str(self.cwd), **self.kwargs )
+        except subprocess.CalledProcessError as exception:
+            if not log_error_output:
+                raise
+            output = exception.output.decode(errors='replace')
+            self.node._log(ERROR,
+                "<BOLD>Command {exc.cmd[0]} returned code {exc.returncode}, "
+                    "output:<RESET>\n{output}"
+                "<BOLD>(error output while building "
+                    "<RED>{node.name}<NOCOLOUR>)<RESET>"
+                .format(node=self.node, exc=exception, output=output)
+            )
+            # Stop jeolm.commands.refrain_called_process_error
+            # (which most probably surrounds us) from reporting the error.
+            exception.reported = True
+            raise
+        else:
+            return encoded_output.decode(errors='replace')
 
 class ProductNode(PathNode):
     """
@@ -549,43 +546,33 @@ class FileNode(PathNode):
     def open(self, *args, **kwargs):
         return open(str(self.path), *args, **kwargs)
 
-    def _run_rules(self):
+    def _run_commands(self):
         # Written in blood
         if self.path.exists() and self.path.is_symlink():
             self.path.unlink()
-        super()._run_rules()
+        super()._run_commands()
 
-class TextNode(FileNode):
+class TextCommand:
     """
     Write some generated text to a file.
     """
-    def __init__(self, path, text=None, textfunc=None, **kwargs):
-        super().__init__(path, **kwargs)
-        if (text is None) + (textfunc is None) != 1:
-            raise ValueError(
-                "Exactly one of the 'text' and 'textfunc' arguments "
-                "must be supplied" )
-        if text is not None:
-            assert textfunc is None
-            if not isinstance(text, str):
-                raise TypeError(type(text))
-            textfunc = lambda: text
-        else:
-            assert textfunc is not None
+    def __init__(self, node, textfunc):
+        self.node = node
+        self.textfunc = textfunc
 
-        self.add_rule(partial(
-            self._write_text_rule, textfunc
-        ))
+    @classmethod
+    def from_text(cls, node, text):
+        return cls(node, textfunc=lambda: text)
 
-    def _write_text_rule(self, textfunc):
-        self._log(INFO, (
-            '<GREEN>Write generated text to {node.relative_path}<NOCOLOUR>'
-            .format(node=self)
-        ))
-        text = textfunc()
+    def __call__(self):
+        text = self.textfunc()
         if not isinstance(text, str):
             raise TypeError(type(text))
-        with self.open('w') as f:
+        self.node._log(INFO, (
+            '<GREEN>Write generated text to {node.relative_path}<NOCOLOUR>'
+            .format(node=self.node)
+        ))
+        with self.node.open('w') as f:
             f.write(text)
 
 class ProductFileNode(ProductNode, FileNode):
@@ -605,22 +592,23 @@ class LinkNode(ProductNode):
         super().__init__(source, path, **kwargs)
 
         if not relative:
-            self.source_path = source.path
+            self.link_target = str(source.path)
         else:
-            self.source_path = self.pure_relative(
-                source.path, self.path.parent )
+            self.link_target = str(self.pure_relative(
+                source.path, self.path.parent ))
 
-        rule_repr = (
-            '<source=<CYAN>{node.source.name}<NOCOLOUR>> '
-            '<GREEN>ln --symbolic {node.source_path} '
-                '{node.relative_path}<NOCOLOUR>'
-            .format(node=self) )
-        @self.add_rule
-        def link_rule():
+        @self.add_command
+        def link_command():
+            if not isinstance(self.link_target, str):
+                raise TypeError(type(self.link_target))
             if os.path.lexists(str(self.path)):
                 self.path.unlink()
-            self._log(INFO, rule_repr)
-            os.symlink(str(self.source_path), str(self.path))
+            self._log(INFO, (
+                '<source=<CYAN>{node.source.name}<NOCOLOUR>> '
+                '<GREEN>ln --symbolic {node.link_target} '
+                    '{node.relative_path}<NOCOLOUR>'
+                .format(node=self) ))
+            os.symlink(self.link_target, str(self.path))
             self.modified = True
 
     def load_mtime(self):
@@ -655,22 +643,21 @@ class LinkNode(ProductNode):
         return not (
             os.path.lexists(path) and
             os.path.islink(path) and
-            str(self.source_path) == os.readlink(path) )
+            self.link_target == os.readlink(path) )
 
 class DirectoryNode(PathNode):
     def __init__(self, path, *, parents=False, **kwargs):
         super().__init__(path, **kwargs)
-        rule_repr = (
-            '<GREEN>{command} {node.relative_path}<NOCOLOUR>'
-            .format(
-                node=self,
-                command='mkdir --parents' if parents else 'mkdir' )
-        )
-        @self.add_rule
-        def mkdir_rule():
+        @self.add_command
+        def mkdir_command():
             if os.path.lexists(str(path)):
                 path.unlink()
-            self._log(INFO, rule_repr)
+            self._log(INFO, (
+                '<GREEN>{command} {node.relative_path}<NOCOLOUR>'
+                .format(
+                    node=self,
+                    command='mkdir --parents' if parents else 'mkdir' )
+            ))
             # rwxr-xr-x
             path.mkdir(mode=0b111101101, parents=parents)
             self.modified = True
@@ -706,11 +693,11 @@ class DirectoryNode(PathNode):
             stat = self.stat()
         except FileNotFoundError:
             self.mtime = None
+            return
+        if S_ISDIR(stat.st_mode):
+            self.mtime = 0
         else:
-            if S_ISDIR(stat.st_mode):
-                self.mtime = 0
-            else:
-                raise NotADirectoryError(
-                    "Found something where a directory should be: {}"
-                    .format(self.relative_path) )
+            raise NotADirectoryError(
+                "Found something where a directory should be: {}"
+                .format(self.relative_path) )
 
