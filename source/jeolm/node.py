@@ -221,7 +221,7 @@ class Node:
         for need in self.needs:
             yield from need.iter_needs(_seen_needs=_seen_needs)
 
-    def _log(self, level, message):
+    def log(self, level, message):
         """
         Log a message specific for this node.
 
@@ -370,7 +370,7 @@ class PathNode(DatedNode):
             if self.mtime_less(prerun_mtime, self.mtime):
                 # Failed command resulted in a file written.
                 # We have to clear it.
-                self._log(ERROR, 'deleting {}'.format(self.relative_path))
+                self.log(ERROR, 'deleting {}'.format(self.relative_path))
                 self.path.unlink()
             raise
         self.load_mtime()
@@ -445,7 +445,7 @@ class SubprocessCommand:
         output = self._subprocess_output()
         if not output:
             return
-        self.node._log(INFO,
+        self.node.log(INFO,
             "Command {prog} output:<RESET>\n{output}"
             "(output while building <MAGENTA>{node.name}<NOCOLOUR>)"
             .format(node=self.node, prog=self.callargs[0], output=output)
@@ -473,7 +473,7 @@ class SubprocessCommand:
             process.
         """
 
-        self.node._log(INFO, (
+        self.node.log(INFO, (
             '<cwd=<CYAN>{cwd}<NOCOLOUR>> <GREEN>{command}<NOCOLOUR>'
             .format(
                 cwd=self.node.root_relative(self.cwd),
@@ -487,7 +487,7 @@ class SubprocessCommand:
             if not log_error_output:
                 raise
             output = exception.output.decode(errors='replace')
-            self.node._log(ERROR,
+            self.node.log(ERROR,
                 "<BOLD>Command {exc.cmd[0]} returned code {exc.returncode}, "
                     "output:<RESET>\n{output}"
                 "<BOLD>(error output while building "
@@ -573,7 +573,7 @@ class TextCommand:
         text = self.textfunc()
         if not isinstance(text, str):
             raise TypeError(type(text))
-        self.node._log(INFO, (
+        self.node.log(INFO, (
             '<GREEN>Write generated text to {node.relative_path}<NOCOLOUR>'
             .format(node=self.node)
         ))
@@ -608,7 +608,7 @@ class LinkNode(ProductNode):
                 raise TypeError(type(self.link_target))
             if os.path.lexists(str(self.path)):
                 self.path.unlink()
-            self._log(INFO, (
+            self.log(INFO, (
                 '<source=<CYAN>{node.source.name}<NOCOLOUR>> '
                 '<GREEN>ln --symbolic {node.link_target} '
                     '{node.relative_path}<NOCOLOUR>'
@@ -657,7 +657,7 @@ class DirectoryNode(PathNode):
         def mkdir_command():
             if os.path.lexists(str(path)):
                 path.unlink()
-            self._log(INFO, (
+            self.log(INFO, (
                 '<GREEN>{command} {node.relative_path}<NOCOLOUR>'
                 .format(
                     node=self,

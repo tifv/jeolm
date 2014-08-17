@@ -68,7 +68,7 @@ class _LaTeXCommand(SubprocessCommand):
                     from exception
             else:
                 self.node.modified = True
-                self.node._log( logging.WARNING,
+                self.node.log( logging.WARNING,
                     "Next run will rebuild the target." )
         else:
             self.print_latex_log(
@@ -93,7 +93,7 @@ class _LaTeXCommand(SubprocessCommand):
         """
         if self._latex_output_is_alarming(latex_output):
             print(latex_output)
-            self.node._log(logging.WARNING, 'Alarming LaTeX output detected.')
+            self.node.log(logging.WARNING, 'Alarming LaTeX output detected.')
         elif latex_log_path is not None:
             with latex_log_path.open(errors='replace') as latex_log_file:
                 latex_log_text = latex_log_file.read()
@@ -118,7 +118,7 @@ class _LaTeXCommand(SubprocessCommand):
         if not matches:
             return
         header = "<BOLD>Overfulls and underfulls detected by LaTeX:<RESET>"
-        self.node._log( logging.INFO, '\n'.join(chain(
+        self.node.log( logging.INFO, '\n'.join(chain(
             (header,),
             (
                 self._format_overfull(match, page_numberer, file_namer)
