@@ -3,7 +3,6 @@ Nodes, and dependency trees constructed of them.
 """
 
 from itertools import chain
-from functools import partial
 
 import os
 from stat import S_ISDIR
@@ -11,7 +10,7 @@ import subprocess
 import time
 from contextlib import contextmanager
 
-from concurrent import futures
+import threading
 
 from pathlib import Path, PurePosixPath
 
@@ -25,6 +24,23 @@ class CycleError(RuntimeError):
 class MissingTargetError(FileNotFoundError):
     """Missing target file after execution of build commands."""
     pass
+
+class _CatchingThread(threading.Thread):
+    def __init__(self, *, target=None):
+        super().__init__(target=target)
+        assert not hasattr(self, 'exception')
+        self.exception = None
+
+    def run(self):
+        try:
+            return super().run()
+        except Exception as exception:
+            self.exception = exception
+
+    def join(self):
+        super().join()
+        if self.exception is not None:
+            raise self.exception
 
 class Node:
     """
@@ -50,13 +66,10 @@ class Node:
         Setting it to True will cause node.needs_build() to always return
         True. Should be changed only by node.force() method.
       _updated (bool): if the node was ever updated.
-        True if node.update() has ever completed in either concurrent or
-        non-concurrent fashion. (The former means that the future returned
-        by node.update() has completed.) Should be read and set only by
-        node.update() method.
+        Should be read and set only by node.update() method.
       _locked (bool): dependency cycle protection.
         Should be read and set only by node.update() method.
-      _future (concurrent.futures.Future or None)
+      _thread (_CatchingThread or None)
         Should be read and set only by node.update() method.
     """
 
@@ -83,18 +96,12 @@ class Node:
 
         self._updated = False
         self._locked = False
-        self._future = None
+        self._thread = None
 
     def __hash__(self):
         return hash(id(self))
 
-    def update(self, *, executor=None):
-        if executor is None:
-            return self._update_nonconcurrent()
-        else:
-            return self._update_concurrent(executor=executor)
-
-    def _update_nonconcurrent(self):
+    def update(self):
         """
         Update the node, first recursively updating needs.
 
@@ -103,8 +110,9 @@ class Node:
 
         with self._check_for_cycle():
             if self._updated:
-                if self._future is not None:
-                    self._future.result()
+                if self._thread is not None:
+                    assert isinstance(self._thread, _CatchingThread)
+                    self._thread.join()
                 return
             for node in self.needs:
                 node.update()
@@ -112,38 +120,42 @@ class Node:
             self._updated = True
             return
 
-    def _update_concurrent(self, *, executor):
+    def update_start(self, *, semaphore):
         """
-        Issue a future that will update the node.
+        Create a thread that will update the node.
 
-        Collect the corresponding futures from needs (prerequisite nodes) and
-        create a future that will wait for them, and then update the node.
+        Collect the corresponding threads from needs (prerequisite nodes) and
+        create a thread that will update the node after waiting for
+        prerequisites.
 
-        Return a future (concurrent.futures.Future instance).
+        Provided semaphore limits the number of concurrently running build
+        commands.
+
+        Store thread in self._thread. Return None.
         """
 
-        if not isinstance(executor, futures.Executor):
-            raise RuntimeError(type(executor))
+        if not isinstance(semaphore, threading.BoundedSemaphore):
+            raise TypeError(type(semaphore))
 
         with self._check_for_cycle():
             if self._updated:
-                if self._future is None:
-                    self._future = self._one_shot_future(lambda: None)
-                return self._future
-            needed_futures = [
-                node.update(executor=executor)
-                for node in self.needs ]
-            if not needed_futures: # no dependencies, easy case
-                self._future = executor.submit(self._update_self)
-            else:
-                def wait_for_needs_and_update_self():
-                    for future in needed_futures:
-                        future.result()
-                    return executor.submit(self._update_self).result()
-                self._future = self._one_shot_future(
-                    wait_for_needs_and_update_self )
+                if self._thread is None:
+                    self._thread = _CatchingThread()
+                    self._thread.start()
+                return
+            for node in self.needs:
+                node.update_start(semaphore=semaphore)
+            def wait_and_update():
+                for need in self.needs:
+                    thread = need._thread
+                    assert thread is not None
+                    assert isinstance(thread, _CatchingThread)
+                    thread.join()
+                with semaphore:
+                    self._update_self()
+            thread = self._thread = _CatchingThread(target=wait_and_update)
+            thread.start()
             self._updated = True
-            return self._future
 
     @contextmanager
     def _check_for_cycle(self):
@@ -157,13 +169,6 @@ class Node:
             raise
         finally:
             self._locked = False
-
-    @staticmethod
-    def _one_shot_future(func, *args, **kwargs):
-        one_shot_executor = futures.ThreadPoolExecutor(max_workers=1)
-        future = one_shot_executor.submit(func, *args, **kwargs)
-        one_shot_executor.shutdown(wait=False)
-        return future
 
     def _update_self(self):
         if self.needs_build():

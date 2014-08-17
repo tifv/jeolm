@@ -95,14 +95,14 @@ def main_build(args, *, local):
         raise argparse.ArgumentTypeError(
             "Positive integral number of jobs is required." )
     elif args.jobs > 1:
-        from concurrent import futures
-        executor = futures.ThreadPoolExecutor(max_workers=args.jobs)
+        import threading
+        semaphore = threading.BoundedSemaphore(value=args.jobs)
     else:
-        executor = None
+        semaphore = None
 
     builder = Builder(args.targets, local=local, driver=driver,
         force=args.force, delegate=args.delegate,
-        executor=executor )
+        semaphore=semaphore )
     with jeolm.commands.refrain_called_process_error():
         builder.build()
 

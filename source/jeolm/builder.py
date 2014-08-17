@@ -23,7 +23,7 @@ class Builder:
     known_formats = ('pdf', 'ps', 'dump')
 
     def __init__(self, targets, *, local, driver,
-        force=None, delegate=True, executor=None
+        force=None, delegate=True, semaphore=None
     ):
         self.local = local
         self.driver = driver
@@ -33,7 +33,7 @@ class Builder:
         self.force = force
         self.delegate = delegate
 
-        self.executor = executor
+        self.semaphore = semaphore
 
     def prebuild(self, ultimate_node=None):
         outrecords_cache = self._load_outrecords_cache()
@@ -91,9 +91,9 @@ class Builder:
     def build(self):
         if not hasattr(self, 'ultimate_node'):
             self.prebuild()
-        self.ultimate_node.update(executor=self.executor)
-        if self.executor is not None:
-            self.ultimate_node.update()
+        if self.semaphore is not None:
+            self.ultimate_node.update_start(semaphore=self.semaphore)
+        self.ultimate_node.update()
 
 
     ##########
