@@ -4,7 +4,6 @@ from functools import partial
 from datetime import date
 
 import hashlib
-import json
 import pickle
 
 from pathlib import PurePosixPath
@@ -36,7 +35,7 @@ class Builder:
 
         self.executor = executor
 
-    def prebuild(self):
+    def prebuild(self, ultimate_node=None):
         outrecords_cache = self._load_outrecords_cache()
 
         targets = self.targets
@@ -82,12 +81,12 @@ class Builder:
         self.prebuild_documents( outrecords,
             build_dir=self.local.build_dir/'documents' )
 
-        self.ultimate_node = jeolm.node.TargetNode(
-            name='ultimate',
-            needs=( node
-                for build_format in self.build_formats
-                for node in self.exposed_nodes[build_format].values() )
-        )
+        if ultimate_node is None:
+            ultimate_node = jeolm.node.TargetNode(name='ultimate')
+        self.ultimate_node = ultimate_node
+        ultimate_node.extend_needs( node
+            for build_format in self.build_formats
+            for node in self.exposed_nodes[build_format].values() )
 
     def build(self):
         if not hasattr(self, 'ultimate_node'):
