@@ -8,7 +8,7 @@ complementary LaTeX package.
 
 * Python 3.3 or greater
 * PyYaml
-* pathlib (PEP 428)
+* pathlib (standalone pep428 branch, or included in Python 3.4.1 or later)
 * LaTeX
 * Asymptote (only used for figure generation)
-
+* Inkscape (only used for SVG images conversion)
