@@ -323,7 +323,7 @@ class PathNode(DatedNode):
 
     def __init__(self, path, **kwargs):
         if not isinstance(path, Path):
-            path = Path(path)
+            raise TypeError(type(path))
         if not path.is_absolute():
             raise ValueError(
                 "{cls.__qualname__} cannot be initialized "

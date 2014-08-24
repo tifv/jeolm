@@ -101,10 +101,9 @@ def main_build(args, *, local):
         semaphore = None
 
     builder = Builder(args.targets, local=local, driver=driver,
-        force=args.force, delegate=args.delegate,
-        semaphore=semaphore )
+        force=args.force, delegate=args.delegate )
     with jeolm.commands.refrain_called_process_error():
-        builder.build()
+        builder.build(semaphore=semaphore)
 
 review_parser = subparsers.add_parser('review',
     help='review given infiles' )
