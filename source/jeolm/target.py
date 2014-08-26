@@ -96,10 +96,9 @@ class FlagContainer(Container):
             as_frozenset = self._as_frozenset = self.reconstruct_as_frozenset()
             return as_frozenset
 
-    @property
-    def as_set(self):
-        raise NotImplementedError("you probably do not need this")
-        #return set(self.as_frozenset)
+    #@property
+    #def as_set(self):
+    #    return set(self.as_frozenset)
 
     def reconstruct_as_frozenset(self):
         # Useful for overriding
@@ -118,7 +117,7 @@ class FlagContainer(Container):
                 return not self.check_condition(value)
             elif key == 'or':
                 if not isinstance(value, list):
-                    raise FlagError("'or' conditioin value must be a list")
+                    raise FlagError("'or' condition value must be a list")
                 return any(self.check_condition(item) for item in value)
             else:
                 raise FlagError("Condition, if a dict, must have key 'not' or 'or'")
@@ -239,6 +238,7 @@ class ChildFlagContainer(FlagContainer):
             .format(self=self) )
 
 class PositiveFlagContainer(ChildFlagContainer):
+    __slots__ = []
     constructor_name = 'union'
 
     def _contains(self, flag, **kwargs):
@@ -253,6 +253,7 @@ class PositiveFlagContainer(ChildFlagContainer):
         return self.parent.as_frozenset.union(self.flags)
 
 class NegativeFlagContainer(ChildFlagContainer):
+    __slots__ = []
     constructor_name = 'difference'
 
     def _contains(self, flag,

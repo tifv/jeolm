@@ -15,8 +15,7 @@ import threading
 from pathlib import Path, PurePosixPath
 
 import logging
-from logging import DEBUG, INFO, WARNING, ERROR, CRITICAL
-logger = logging.getLogger(__name__)
+logger = logging.getLogger(__name__) # pylint: disable=invalid-name
 
 class CycleError(RuntimeError):
     pass
@@ -34,13 +33,13 @@ class _CatchingThread(threading.Thread):
     def run(self):
         try:
             return super().run()
-        except Exception as exception:
+        except Exception as exception: # pylint: disable=broad-except
             self.exception = exception
 
-    def join(self):
-        super().join()
+    def join(self, timeout=None):
+        super().join(timeout=timeout)
         if self.exception is not None:
-            raise self.exception
+            raise self.exception # pylint: disable=raising-bad-type
 
 class Node:
     """
@@ -62,14 +61,11 @@ class Node:
         True by build commands (see above) or node._run_commands() method.
         Only node.needs_build() method of depending node should be
         interested in reading this attribute.
-      _forced (bool): if the node was forced to rebuild.
-        Setting it to True will cause node.needs_build() to always return
-        True. Should be changed only by node.force() method.
+      thread (_CatchingThread or None)
+        Should be read and set only by node.update() method.
       _updated (bool): if the node was ever updated.
         Should be read and set only by node.update() method.
       _locked (bool): dependency cycle protection.
-        Should be read and set only by node.update() method.
-      _thread (_CatchingThread or None)
         Should be read and set only by node.update() method.
     """
 
@@ -92,11 +88,10 @@ class Node:
         self.commands = list()
 
         self.modified = False
-        self._forced = False
 
         self._updated = False
         self._locked = False
-        self._thread = None
+        self.thread = None
 
     def __hash__(self):
         return hash(id(self))
@@ -110,12 +105,12 @@ class Node:
 
         with self._check_for_cycle():
             if self._updated:
-                if self._thread is not None:
-                    assert isinstance(self._thread, _CatchingThread)
-                    self._thread.join()
+                if self.thread is not None:
+                    assert isinstance(self.thread, _CatchingThread)
+                    self.thread.join()
                 return
-            for node in self.needs:
-                node.update()
+            for need in self.needs:
+                need.update()
             self._update_self()
             self._updated = True
             return
@@ -131,7 +126,7 @@ class Node:
         Provided semaphore limits the number of concurrently running build
         commands.
 
-        Store thread in self._thread. Return None.
+        Store thread in self.thread. Return None.
         """
 
         if not isinstance(semaphore, threading.BoundedSemaphore):
@@ -139,21 +134,19 @@ class Node:
 
         with self._check_for_cycle():
             if self._updated:
-                if self._thread is None:
-                    self._thread = _CatchingThread()
-                    self._thread.start()
                 return
-            for node in self.needs:
-                node.update_start(semaphore=semaphore)
+            for need in self.needs:
+                need.update_start(semaphore=semaphore)
             def wait_and_update():
                 for need in self.needs:
-                    thread = need._thread
-                    assert thread is not None
+                    thread = need.thread
+                    if thread is None:
+                        continue
                     assert isinstance(thread, _CatchingThread)
                     thread.join()
                 with semaphore:
                     self._update_self()
-            thread = self._thread = _CatchingThread(target=wait_and_update)
+            thread = self.thread = _CatchingThread(target=wait_and_update)
             thread.start()
             self._updated = True
 
@@ -182,7 +175,7 @@ class Node:
         1) any of needed nodes are modified.
         (Subclasses may introduce different conditions)
         """
-        if self._forced or any(node.modified for node in self.needs):
+        if any(node.modified for node in self.needs):
             return True
         return False
 
@@ -197,11 +190,18 @@ class Node:
         self.needs.append(node)
 
     def force(self):
-        self._forced = True
+        force_node = Node(name='{}:force'.format(self.name))
+        self.needs.insert(0, force_node)
+        force_node.update()
+        force_node.modified = True
 
     def add_command(self, command):
         """Decorator."""
         self.commands.append(command)
+        try:
+            command.node = self
+        except AttributeError:
+            pass
         return command
 
     def _run_commands(self):
@@ -229,17 +229,13 @@ class Node:
         This function expects FancifyingFormatter to be used somewhere
         in logging facility.
         """
-        if level <= INFO:
-            colour = '<MAGENTA>'
-            bold = ''
-        elif level <= WARNING:
-            colour = '<YELLOW>'
-            bold = '<BOLD>'
+        if level <= logging.INFO:
+            bold, reset = '', ''
         else:
-            colour = '<RED>'
-            bold = '<BOLD>'
-        msg = '{bold}[{colour}{node.name}<NOCOLOUR>] {message}<RESET>'.format(
-            colour=colour, bold=bold, node=self, message=message )
+            bold, reset = '<BOLD>', '<RESET>'
+        msg = '{bold}[{name}] {message}{reset}'.format(
+            bold=bold, reset=reset,
+            name=self.fancified_repr(level), message=message )
         logger.log(level, msg)
 
     def __repr__(self):
@@ -247,9 +243,44 @@ class Node:
             "{node.__class__.__qualname__}(name='{node.name}')"
             .format(node=self) )
 
+    def fancified_repr(self, level):
+        if level <= logging.DEBUG:
+            colour = '<CYAN>'
+        if level <= logging.INFO:
+            colour = '<MAGENTA>'
+        elif level <= logging.WARNING:
+            colour = '<YELLOW>'
+        else:
+            colour = '<RED>'
+        return '{colour}{name}<RESET>'.format(colour=colour, name=self.name)
+
 class TargetNode(Node):
-    """Represent an abstract target."""
-    pass
+    """Represents an abstract target."""
+
+    # Override
+    def _run_commands(self):
+        if self.commands:
+            raise RuntimeError
+
+class SourceNode(Node):
+    """Represents a source."""
+
+    # Override
+    def _run_commands(self):
+        raise RuntimeError
+
+# Any callable can be a command, but this is a convenience class
+class Command:
+
+    def __init__(self):
+        self.node = None
+
+    def __call__(self):
+        if self.node is None:
+            raise RuntimeError
+
+    def log(self, level, message):
+        return self.node.log(level, message)
 
 class DatedNode(Node):
     """
@@ -296,7 +327,7 @@ class DatedNode(Node):
         """
         pass
 
-    def set_mtime_to_now(self):
+    def touch(self):
         self.mtime = int(time.time() * (10**9))
 
     @staticmethod
@@ -349,6 +380,11 @@ class PathNode(DatedNode):
         else:
             self.mtime = stat.st_mtime_ns # nanoseconds
 
+    def touch(self):
+        # Override, making use of os.utime default behavior.
+        os.utime(str(self.path))
+        self.load_mtime()
+
     def stat(self):
         """
         Return appropriate stat structure. Do not follow symlinks.
@@ -370,7 +406,8 @@ class PathNode(DatedNode):
             if self.mtime_less(prerun_mtime, self.mtime):
                 # Failed command resulted in a file written.
                 # We have to clear it.
-                self.log(ERROR, 'deleting {}'.format(self.relative_path))
+                self.log( logging.ERROR,
+                    'deleting {}'.format(self.relative_path) )
                 self.path.unlink()
             raise
         self.load_mtime()
@@ -379,6 +416,9 @@ class PathNode(DatedNode):
             raise MissingTargetError(repr(self))
         if prerun_mtime != self.mtime:
             self.modified = True
+
+    def add_subprocess_command(self, callargs, *, cwd, **kwargs):
+        return self.add_command(SubprocessCommand(callargs, cwd=cwd, **kwargs))
 
     @property
     def relative_path(self):
@@ -413,10 +453,10 @@ class PathNode(DatedNode):
         return PurePosixPath(*
             ['..'] * upstairs + [path.relative_to(root)] )
 
-class SubprocessCommand:
+class SubprocessCommand(Command):
 
-    def __init__(self, node, callargs, *, cwd, **kwargs):
-        self.node = node
+    def __init__(self, callargs, *, cwd, **kwargs):
+        super().__init__()
         self.callargs = callargs
         if not isinstance(cwd, Path):
             raise ValueError(
@@ -429,6 +469,10 @@ class SubprocessCommand:
         self.kwargs = kwargs
 
     def __call__(self):
+        super().__call__()
+        self._subprocess()
+
+    def _subprocess(self):
         """
         Run external process.
 
@@ -445,11 +489,7 @@ class SubprocessCommand:
         output = self._subprocess_output()
         if not output:
             return
-        self.node.log(INFO,
-            "Command {prog} output:<RESET>\n{output}"
-            "(output while building <MAGENTA>{node.name}<NOCOLOUR>)"
-            .format(node=self.node, prog=self.callargs[0], output=output)
-        )
+        self._log_output(output)
 
     def _subprocess_output(self, log_error_output=True):
         """
@@ -473,7 +513,7 @@ class SubprocessCommand:
             process.
         """
 
-        self.node.log(INFO, (
+        self.log(logging.INFO, (
             '<cwd=<CYAN>{cwd}<NOCOLOUR>> <GREEN>{command}<NOCOLOUR>'
             .format(
                 cwd=self.node.root_relative(self.cwd),
@@ -487,7 +527,7 @@ class SubprocessCommand:
             if not log_error_output:
                 raise
             output = exception.output.decode(errors='replace')
-            self.node.log(ERROR,
+            self.log(logging.ERROR,
                 "<BOLD>Command {exc.cmd[0]} returned code {exc.returncode}, "
                     "output:<RESET>\n{output}"
                 "<BOLD>(error output while building "
@@ -500,6 +540,15 @@ class SubprocessCommand:
             raise
         else:
             return encoded_output.decode(errors='replace')
+
+    def _log_output(self, output, level=logging.INFO):
+        self.log( level,
+            "Command {prog} output:<RESET>\n{output}"
+            "(output while building {node_name})"
+            .format(
+                node_name=self.node.fancified_repr(level),
+                prog=self.callargs[0], output=output )
+        )
 
 class ProductNode(PathNode):
     """
@@ -528,15 +577,6 @@ class ProductNode(PathNode):
                 "source={node.source!r}, path='{node.relative_path}')"
             .format(node=self) )
 
-    def _turn_older_than_source(self):
-        """Alter mtime to be just below source mtime."""
-        sourcestat = self.source.stat()
-        os.utime(
-            str(self.path),
-            ns=(sourcestat.st_atime_ns-1, sourcestat.st_mtime_ns-1)
-        )
-        self.load_mtime()
-
 class FileNode(PathNode):
     """
     FileNode represents a file, existing or not (yet).
@@ -557,28 +597,32 @@ class FileNode(PathNode):
             self.path.unlink()
         super()._run_commands()
 
-class TextCommand:
+class SourceFileNode(SourceNode, FileNode):
+    pass
+
+class TextCommand(Command):
     """
     Write some generated text to a file.
     """
-    def __init__(self, node, textfunc):
-        self.node = node
+    def __init__(self, textfunc):
+        super().__init__()
         self.textfunc = textfunc
 
     @classmethod
-    def from_text(cls, node, text):
-        return cls(node, textfunc=lambda: text)
+    def from_text(cls, text):
+        return cls(textfunc=lambda: text)
 
     def __call__(self):
+        super().__call__()
         text = self.textfunc()
         if not isinstance(text, str):
             raise TypeError(type(text))
-        self.node.log(INFO, (
+        self.log(logging.INFO, (
             '<GREEN>Write generated text to {node.relative_path}<NOCOLOUR>'
             .format(node=self.node)
         ))
-        with self.node.open('w') as f:
-            f.write(text)
+        with self.node.open('w') as text_file:
+            text_file.write(text)
 
 class ProductFileNode(ProductNode, FileNode):
     pass
@@ -602,19 +646,19 @@ class LinkNode(ProductNode):
             self.link_target = str(self.pure_relative(
                 source.path, self.path.parent ))
 
-        @self.add_command
         def link_command():
             if not isinstance(self.link_target, str):
                 raise TypeError(type(self.link_target))
             if os.path.lexists(str(self.path)):
                 self.path.unlink()
-            self.log(INFO, (
+            self.log(logging.INFO, (
                 '<source=<CYAN>{node.source.name}<NOCOLOUR>> '
                 '<GREEN>ln --symbolic {node.link_target} '
                     '{node.relative_path}<NOCOLOUR>'
                 .format(node=self) ))
             os.symlink(self.link_target, str(self.path))
             self.modified = True
+        self.add_command(link_command)
 
     def load_mtime(self):
         """
@@ -653,11 +697,10 @@ class LinkNode(ProductNode):
 class DirectoryNode(PathNode):
     def __init__(self, path, *, parents=False, **kwargs):
         super().__init__(path, **kwargs)
-        @self.add_command
         def mkdir_command():
             if os.path.lexists(str(path)):
                 path.unlink()
-            self.log(INFO, (
+            self.log(logging.INFO, (
                 '<GREEN>{command} {node.relative_path}<NOCOLOUR>'
                 .format(
                     node=self,
@@ -666,6 +709,7 @@ class DirectoryNode(PathNode):
             # rwxr-xr-x
             path.mkdir(mode=0b111101101, parents=parents)
             self.modified = True
+        self.add_command(mkdir_command)
 
     def needs_build(self):
         """

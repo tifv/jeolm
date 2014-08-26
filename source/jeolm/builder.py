@@ -9,18 +9,16 @@ import pickle
 
 from pathlib import PurePosixPath
 
-#import jeolm
-#import jeolm.node
-#import jeolm.latex_node
+import jeolm
+import jeolm.node
+import jeolm.latex_node
+import jeolm.records
+import jeolm.target
 
-from jeolm.node import ( TargetNode, DatedNode, FileNode,
-    SubprocessCommand, TextCommand,
-    LinkNode, DirectoryNode )
-from jeolm.latex_node import LaTeXNode
 from jeolm.records import RecordPath
 
 import logging
-logger = logging.getLogger(__name__)
+logger = logging.getLogger(__name__) # pylint: disable=invalid-name
 
 class Builder:
     build_formats = ('pdf', )
@@ -52,13 +50,13 @@ class Builder:
         self.source_node_factory = SourceNodeFactory(local=self.local)
         self.figure_node_factory = FigureNodeFactory(
             local=self.local, driver=self.driver,
-            build_dir_node=DirectoryNode(
+            build_dir_node=jeolm.node.DirectoryNode(
                 self.local.build_dir/'figures', parents=True ),
             source_node_factory=self.source_node_factory
         )
         self.package_node_factory = PackageNodeFactory(
             local=self.local, driver=self.driver,
-            build_dir_node=DirectoryNode(
+            build_dir_node=jeolm.node.DirectoryNode(
                 self.local.build_dir/'packages', parents=True ),
             source_node_factory=self.source_node_factory
         )
@@ -68,7 +66,7 @@ class Builder:
             build_dir=self.local.build_dir/'documents' )
 
         if ultimate_node is None:
-            ultimate_node = TargetNode(name='ultimate')
+            ultimate_node = jeolm.node.TargetNode(name='ultimate')
         self.ultimate_node = ultimate_node
         ultimate_node.extend_needs( node
             for build_format in self.build_formats
@@ -98,7 +96,7 @@ class Builder:
             recipe_node = self.recipe_node_factory(target)
             recipe = recipe_node.recipe
             build_subdir = build_dir / recipe['buildname']
-            build_dir_node = DirectoryNode(
+            build_dir_node = jeolm.node.DirectoryNode(
                 name='doc:{}:dir'.format(target),
                 path=build_subdir, parents=True, )
             document_type = recipe['type']
@@ -124,17 +122,17 @@ class Builder:
         """
         buildname = recipe['buildname']
 
-        main_tex_node = FileNode(
+        main_tex_node = jeolm.node.FileNode(
             name='doc:{}:autosource'.format(target),
             path=build_dir/'main.tex',
             needs=(recipe_node, build_dir_node) )
-        main_tex_node.add_command(TextCommand.from_text( main_tex_node,
+        main_tex_node.add_command(jeolm.node.TextCommand.from_text(
             text=recipe['document'] ))
         if self.force == 'generate':
             main_tex_node.force()
 
         package_nodes = [
-            LinkNode(
+            jeolm.node.LinkNode(
                 name='doc:{}:sty:{}'.format(target, alias_name),
                 source=self.package_node_factory(package_path),
                 path=(build_dir/alias_name).with_suffix('.sty'),
@@ -142,7 +140,7 @@ class Builder:
             for alias_name, package_path
             in recipe['package_paths'].items() ]
         figure_nodes = [
-            LinkNode(
+            jeolm.node.LinkNode(
                 name='doc:{}:fig:{}'.format(target, alias_name),
                 source=self.figure_node_factory(figure_path),
                 path=(build_dir/alias_name).with_suffix('.eps'),
@@ -150,14 +148,14 @@ class Builder:
             for alias_name, figure_path
             in recipe['figure_paths'].items() ]
         source_nodes = [
-            LinkNode(
+            jeolm.node.LinkNode(
                 name='doc:{}:source:{}'.format(target, alias),
                 source=self.source_node_factory(inpath),
                 path=build_dir/alias,
                 needs=(build_dir_node,) )
             for alias, inpath in recipe['sources'].items() ]
 
-        dvi_node = LaTeXNode(
+        dvi_node = jeolm.latex_node.LaTeXNode(
             name='doc:{}:dvi'.format(target),
             source=main_tex_node,
             path=(build_dir/buildname).with_suffix('.dvi'),
@@ -179,13 +177,13 @@ class Builder:
     ):
         if recipe['figure_paths']:
             logger.warning("Cannot properly dump a document with figures.")
-        dump_node = self.document_nodes['dump'][target] = FileNode(
+        dump_node = self.document_nodes['dump'][target] = jeolm.node.FileNode(
             name='doc:{}:dump'.format(target),
             path=build_dir/'dump.tex',
             needs=(recipe_node, build_dir_node,) )
-        dump_node.add_command(TextCommand( dump_node,
-            textfunc=partial(self.supply_filecontents, recipe)
-        ))
+        dump_node.add_command(jeolm.node.TextCommand(textfunc=partial(
+            self.supply_filecontents, recipe
+        )))
         dump_node.extend_needs(
             self.source_node_factory(inpath)
             for inpath in recipe['sources'].values() )
@@ -223,12 +221,12 @@ class Builder:
         buildname = recipe['buildname']
 
         source_node = self.source_node_factory(recipe['source'])
-        tex_node = LinkNode(
+        tex_node = jeolm.node.LinkNode(
             name='doc:{}:tex'.format(target),
             source=source_node,
             path=build_dir/'main.tex',
             needs=(build_dir_node,) )
-        dvi_node = LaTeXNode(
+        dvi_node = jeolm.latex_node.LaTeXNode(
             name='doc:{}:dvi'.format(target),
             source=tex_node,
             path=(build_dir/buildname).with_suffix('.dvi'),
@@ -263,36 +261,35 @@ class Builder:
         package_name = recipe['name']
 
         source_node = self.source_node_factory(recipe['source'])
-        dtx_node = LinkNode(
+        dtx_node = jeolm.node.LinkNode(
             name='doc:{}:dtx'.format(target),
             source=source_node,
             path=build_dir/'{}.dtx'.format(package_name),
             needs=(build_dir_node,) )
-        ins_node = FileNode(
+        ins_node = jeolm.node.FileNode(
             name='doc:{}:ins'.format(target),
             path=build_dir/'driver.ins',
             needs=(recipe_node, build_dir_node,) )
-        ins_node.add_command(TextCommand( ins_node,
-            textfunc=partial(
-                self._substitute_driver_ins, package_name=package_name )
-        ))
+        ins_node.add_command(jeolm.node.TextCommand(textfunc=partial(
+            self._substitute_driver_ins, package_name=package_name
+        )))
         if self.force == 'generate':
             ins_node.force()
-        drv_node = FileNode(
+        drv_node = jeolm.node.FileNode(
             name='doc:{}:drv'.format(target),
             path=build_dir/'{}.drv'.format(package_name),
             needs=(build_dir_node, dtx_node, ins_node,) )
-        drv_node.add_command(SubprocessCommand( drv_node,
+        drv_node.add_subprocess_command(
             ('latex', '-interaction=nonstopmode',
                 '-halt-on-error', '-file-line-error', 'driver.ins'),
-            cwd=build_dir ))
-        sty_node = LinkNode(
+            cwd=build_dir )
+        sty_node = jeolm.node.LinkNode(
             name='doc:{}:sty'.format(target),
             source=self.package_node_factory(target.path),
             path=(build_dir/package_name).with_suffix('.sty'),
             needs=(build_dir_node,) )
 
-        dvi_node = LaTeXNode(
+        dvi_node = jeolm.latex_node.LaTeXNode(
             name='doc:{}:dvi'.format(target),
             source=drv_node,
             path=(build_dir/buildname).with_suffix('.dvi'),
@@ -303,33 +300,34 @@ class Builder:
         self.prebuild_document_postdvi( target, dvi_node, [],
             build_dir=build_dir )
         if 'dump' in self.build_formats:
-            raise ValueError("LaTeX package documentation {} cannot be dumped."
+            raise ValueError(
+                "LaTeX package documentation {} cannot be dumped."
                 .format(target) )
 
     def prebuild_document_postdvi(self, target, dvi_node, figure_nodes,
         *, build_dir
     ):
-        pdf_node = self.document_nodes['pdf'][target] = FileNode(
+        pdf_node = self.document_nodes['pdf'][target] = jeolm.node.FileNode(
             name='doc:{}:pdf'.format(target),
             path=build_dir/'main.pdf',
             needs=(dvi_node,) )
         pdf_node.extend_needs(figure_nodes)
-        pdf_node.add_command(SubprocessCommand( pdf_node,
+        pdf_node.add_subprocess_command(
             ('dvipdf', dvi_node.path.name, pdf_node.path.name),
-            cwd=build_dir ))
-        ps_node = self.document_nodes['ps'][target] = FileNode(
+            cwd=build_dir )
+        ps_node = self.document_nodes['ps'][target] = jeolm.node.FileNode(
             name='doc:{}:ps'.format(target),
             path=build_dir/'main.ps',
             needs=(dvi_node,) )
         ps_node.extend_needs(figure_nodes)
-        ps_node.add_command(SubprocessCommand( ps_node,
+        ps_node.add_subprocess_command(
             ('dvips', dvi_node.path.name, '-o', ps_node.path.name),
-            cwd=build_dir ))
+            cwd=build_dir )
 
     def prebuild_document_exposed(self, target, recipe):
         for build_format in self.build_formats:
             document_node = self.document_nodes[build_format][target]
-            self.exposed_nodes[build_format][target] = LinkNode(
+            self.exposed_nodes[build_format][target] = jeolm.node.LinkNode(
                 name='doc:{}:exposed:{}'.format(target, build_format),
                 source=document_node,
                 path=(self.local.root/recipe['outname'])
@@ -358,7 +356,6 @@ class RecipeNodeFactory:
         except FileNotFoundError:
             return {}
         else:
-            assert isinstance(pickled_cache, dict), type(pickled_cache)
             return pickle.loads(pickled_cache)
 
     def dump_recipe_cache(self):
@@ -376,8 +373,16 @@ class RecipeNodeFactory:
 
 
     def __call__(self, target):
+        assert isinstance(target, jeolm.target.Target), type(target)
+        try:
+            return self.nodes[target]
+        except KeyError:
+            node = self.nodes[target] = self._prebuild_recipe(target)
+            return node
+
+    def _prebuild_recipe(self, target):
         recipe = self.driver.produce_outrecord(target)
-        recipe_node = DatedNode(
+        recipe_node = jeolm.node.DatedNode(
             name='document:{}:record'.format(target) )
         recipe_node.recipe = recipe
         recipe_hash = self.object_hash(recipe)
@@ -398,7 +403,7 @@ class RecipeNodeFactory:
             modified = False
 
         if modified:
-            recipe_node.set_mtime_to_now()
+            recipe_node.touch()
             self._cache[target_key] = {
                 'hash' : recipe_hash, 'mtime' : recipe_node.mtime }
             recipe_node.update()
@@ -470,7 +475,7 @@ class PackageNodeFactory:
     def _prebuild_package(self, metapath):
         package_record = self.driver.produce_package_record(metapath)
         build_subdir = self.build_dir_node.path / package_record['buildname']
-        build_subdir_node = DirectoryNode(
+        build_subdir_node = jeolm.node.DirectoryNode(
             name='package:{}:dir'.format(metapath),
             path=build_subdir, parents=False,
             needs=(self.build_dir_node,) )
@@ -504,26 +509,26 @@ class PackageNodeFactory:
         source_node = self.source_node_factory(
             package_record['source'] )
         package_name = package_record['name']
-        dtx_node = LinkNode(
+        dtx_node = jeolm.node.LinkNode(
             name='package:{}:dtx'.format(metapath),
             source=source_node,
             path=build_dir/'{}.dtx'.format(package_name),
             needs=(build_dir_node,) )
-        ins_node = FileNode(
+        ins_node = jeolm.node.FileNode(
             name='package:{}:ins'.format(metapath),
             path=build_dir/'package.ins',
             needs=(build_dir_node,) )
-        ins_node.add_command(TextCommand( ins_node,
-            textfunc=partial(self._substitute_ins, package_name=package_name)
-        ))
-        sty_node = FileNode(
+        ins_node.add_command(jeolm.node.TextCommand(textfunc=partial(
+            self._substitute_ins, package_name=package_name
+        )))
+        sty_node = jeolm.node.FileNode(
             name='package:{}:sty'.format(metapath),
             path=build_dir/'{}.sty'.format(package_name),
             needs=(build_dir_node, dtx_node, ins_node) )
-        sty_node.add_command(SubprocessCommand( sty_node,
+        sty_node.add_subprocess_command(
             ( 'latex', '-interaction=nonstopmode', '-halt-on-error',
                 ins_node.path.name ),
-            cwd=build_dir ))
+            cwd=build_dir )
         return sty_node
 
     def _prebuild_sty_package(self, metapath, package_record,
@@ -556,7 +561,7 @@ class FigureNodeFactory:
     def _prebuild_figure(self, metapath):
         figure_record = self.driver.produce_figure_record(metapath)
         build_subdir = self.build_dir_node.path / figure_record['buildname']
-        build_subdir_node = DirectoryNode(
+        build_subdir_node = jeolm.node.DirectoryNode(
             name='figure:{}:dir'.format(metapath),
             path=build_subdir, parents=False,
             needs=(self.build_dir_node,) )
@@ -576,15 +581,15 @@ class FigureNodeFactory:
             list(self._prebuild_asy_figure_sources( metapath, figure_record,
                 build_dir_node=build_dir_node ))
         assert main_asy_node.path.parent == build_dir
-        eps_node = FileNode(
+        eps_node = jeolm.node.FileNode(
             name='figure:{}:eps'.format(metapath),
             path=build_dir/'main.eps',
             needs=chain(asy_nodes, (build_dir_node,)) )
         assert main_asy_node is eps_node.needs[0], asy_nodes
-        eps_node.add_command(SubprocessCommand( eps_node,
+        eps_node.add_subprocess_command(
             ( 'asy', '-outformat=eps', '-offscreen',
                 main_asy_node.path.name ),
-            cwd=build_dir ))
+            cwd=build_dir )
         return eps_node
 
     def _prebuild_asy_figure_sources(self, metapath, figure_record,
@@ -592,14 +597,14 @@ class FigureNodeFactory:
     ):
         """Yield main asy source node and other source nodes."""
         build_dir = build_dir_node.path
-        main_asy_node = LinkNode(
+        main_asy_node = jeolm.node.LinkNode(
             name='figure:{}:asy:main'.format(metapath),
             source=self.source_node_factory(
                 figure_record['source'] ),
             path=build_dir/'main.asy',
             needs=(build_dir_node,) )
         other_asy_nodes = [
-            LinkNode(
+            jeolm.node.LinkNode(
                 name='figure:{}:asy:{}'.format(metapath, accessed_name),
                 source=self.source_node_factory(inpath),
                 path=build_dir/accessed_name,
@@ -613,19 +618,19 @@ class FigureNodeFactory:
         *, build_dir_node
     ):
         build_dir = build_dir_node.path
-        svg_node = LinkNode(
+        svg_node = jeolm.node.LinkNode(
             name='figure:{}:svg'.format(metapath),
             source=self.source_node_factory(
                 figure_record['source'] ),
             path=build_dir/'main.svg',
             needs=(build_dir_node,) )
-        eps_node = FileNode(
+        eps_node = jeolm.node.FileNode(
             name='fig:{}:eps'.format(metapath),
             path=build_dir/'main.eps',
             needs=(svg_node, build_dir_node) )
-        eps_node.add_command(SubprocessCommand( eps_node,
+        eps_node.add_subprocess_command(
             ('inkscape', '--export-eps=main.eps', '-without-gui', 'main.svg'),
-            cwd=build_dir ))
+            cwd=build_dir )
         return eps_node
 
     def _prebuild_eps_figure(self, metapath, figure_record, *, build_dir_node):
@@ -648,12 +653,12 @@ class SourceNodeFactory:
             return node
 
     def _prebuild_source(self, inpath):
-        node = FileNode(
+        source_node = jeolm.node.SourceFileNode(
             name='source:{}'.format(inpath),
             path=self.local.source_dir/inpath )
-        if not node.path.exists():
+        if not source_node.path.exists():
             logger.warning(
                 "Requested source node {} does not exist as file."
                 .format(inpath) )
-        return node
+        return source_node
 

@@ -1,14 +1,13 @@
-from functools import partial
 from itertools import chain
 
 import re
 
 from pathlib import Path
 
-from jeolm.node import ProductFileNode, SubprocessCommand, MissingTargetError
+from jeolm.node import ProductFileNode, SubprocessCommand
 
 import logging
-logger = logging.getLogger(__name__)
+logger = logging.getLogger(__name__) # pylint: disable=invalid-name
 
 class LaTeXNode(ProductFileNode):
     """
@@ -37,41 +36,42 @@ class LaTeXNode(ProductFileNode):
             raise RuntimeError
         jobname = path.stem
 
-        self.add_command(_LaTeXCommand(self, source, jobname, cwd=cwd))
+        self.add_command(_LaTeXCommand(source, jobname, cwd=cwd))
 
 class _LaTeXCommand(SubprocessCommand):
 
     latex_command = 'latex'
 
-    _latex_additional_args = (
-        '-interaction=nonstopmode', '-halt-on-error', '-file-line-error', )
+    _latex_additional_args = ('-interaction=nonstopmode', '-halt-on-error')
 
-    def __init__(self, node, source, jobname, *, cwd):
+    # No more than 5 LaTeX runs in a row.
+    max_latex_reruns = 4
+
+    def __init__(self, source, jobname, *, cwd):
         callargs = tuple(chain(
             (self.latex_command,),
             ('-jobname={}'.format(jobname),),
             self._latex_additional_args,
             (source.path.name,),
         ))
-        super().__init__(node, callargs, cwd=cwd)
+        super().__init__(callargs, cwd=cwd)
         self.source = source
 
-    def __call__(self):
+    # Override
+    def _subprocess(self, *, reruns=0):
         latex_output = self._subprocess_output()
+        self.node.modified = True
 
         if self._latex_output_requests_rerun(latex_output):
-            print(latex_output)
-            try:
-                self.node._turn_older_than_source()
-            except FileNotFoundError as exception:
-                raise MissingTargetError(*exception.args) \
-                    from exception
-            else:
-                self.node.modified = True
-                self.node.log( logging.WARNING,
-                    "Next run will rebuild the target." )
+            if reruns >= self.max_latex_reruns:
+                self._log_output(latex_output, level=logging.WARNING)
+                self.log( logging.WARNING,
+                    "LaTeX requests rerun too many times in a row." )
+            self.log( logging.WARNING,
+                "LaTeX requests rerun" + '…' * (reruns+1) )
+            return self._subprocess(reruns=reruns+1)
         else:
-            self.print_latex_log(
+            self._print_latex_log(
                 latex_output,
                 latex_log_path=self.node.path.with_suffix('.log') )
 
@@ -83,7 +83,7 @@ class _LaTeXCommand(SubprocessCommand):
     latex_output_rerun_pattern = re.compile(
         r'[Rr]erun to (?#get something right)' )
 
-    def print_latex_log(self, latex_output, latex_log_path=None):
+    def _print_latex_log(self, latex_output, latex_log_path=None):
         """
         Print some of LaTeX output from its stdout and log.
 
@@ -92,8 +92,7 @@ class _LaTeXCommand(SubprocessCommand):
         (if latex_log_path is not None).
         """
         if self._latex_output_is_alarming(latex_output):
-            print(latex_output)
-            self.node.log(logging.WARNING, 'Alarming LaTeX output detected.')
+            self._log_output(latex_output, level=logging.WARNING)
         elif latex_log_path is not None:
             with latex_log_path.open(errors='replace') as latex_log_file:
                 latex_log_text = latex_log_file.read()
@@ -118,10 +117,9 @@ class _LaTeXCommand(SubprocessCommand):
         if not matches:
             return
         header = "<BOLD>Overfulls and underfulls detected by LaTeX:<RESET>"
-        self.node.log( logging.INFO, '\n'.join(chain(
+        self.node.log( logging.WARNING, '\n'.join(chain(
             (header,),
-            (
-                self._format_overfull(match, page_numberer, file_namer)
+            ( self._format_overfull(match, page_numberer, file_namer)
                 for match in matches )
         )))
 
