@@ -6,9 +6,9 @@ from pathlib import Path, PurePosixPath
 import pyinotify
 
 import jeolm
-import jeolm.node
-import jeolm.builder
 import jeolm.local
+import jeolm.node
+import jeolm.node_factory
 import jeolm.metadata
 
 from jeolm.commands import review
@@ -23,7 +23,8 @@ if __name__ == '__main__':
 else:
     logger = logging.getLogger(__name__)
 
-def mainloop(local):
+
+def mainloop(local, text_node_factory):
     md = NotifiedMetadataManager(local=local)
     driver_class = local.driver_class
     md.review(PurePosixPath(), recursive=True)
@@ -72,16 +73,20 @@ def mainloop(local):
         if target is None:
             continue
         try:
-            builder = jeolm.builder.Builder(
-                [target], local=local, driver=driver,
-                force=None, delegate=True )
-            builder.build()
+            build(target, local, text_node_factory, driver)
         except subprocess.CalledProcessError as exception:
             if getattr(exception, 'reported', False):
                 continue
             traceback.print_exc()
-        except Exception:
+        except Exception: # pylint: disable=broad-except
             traceback.print_exc()
+
+def build(target, local, text_node_factory, driver):
+    target_node_factory = jeolm.node_factory.TargetNodeFactory(
+        local=local, driver=driver,
+        text_node_factory=text_node_factory )
+    target_node = target_node_factory([target], delegate=True)
+    target_node.update()
 
 
 class NotifiedMetadataManager(jeolm.metadata.MetadataManager):
@@ -215,6 +220,7 @@ class NotifiedMetadataManager(jeolm.metadata.MetadataManager):
         process_IN_DELETE_SELF = process_self_destructive_event
         process_IN_MOVE_SELF = process_self_destructive_event
 
+
 def main():
     jeolm.setup_logging(verbose=True)
     try:
@@ -223,7 +229,12 @@ def main():
         jeolm.local.report_missing_root()
         raise SystemExit
     jeolm.node.PathNode.root = local.root
-    mainloop(local)
+    text_node_factory = jeolm.node_factory.TextNodeFactory(local=local)
+    try:
+        mainloop(local, text_node_factory)
+    finally:
+        text_node_factory.close()
+
 
 if __name__ == '__main__':
     main()

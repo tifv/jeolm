@@ -96,13 +96,15 @@ class Node:
     def __hash__(self):
         return hash(id(self))
 
-    def update(self):
+    def update(self, *, semaphore=None):
         """
         Update the node, first recursively updating needs.
 
         Return None.
         """
 
+        if semaphore is not None:
+            self.update_start(semaphore=semaphore)
         with self._check_for_cycle():
             if self._updated:
                 if self.thread is not None:
@@ -179,12 +181,24 @@ class Node:
             return True
         return False
 
+    def append_needs(self, node):
+        """
+        Append a node to the needs list.
+
+        Args:
+          node (Node): a node to be appended to needs.
+
+        Returns None.
+        """
+        self._append_needs(node)
+
     def extend_needs(self, nodes):
         for node in nodes:
             self._append_needs(node)
-        return self
 
     def _append_needs(self, node):
+        if self._updated:
+            raise RuntimeError
         if not isinstance(node, Node):
             raise TypeError(node)
         self.needs.append(node)
@@ -315,7 +329,9 @@ class DatedNode(Node):
         if mtime is None:
             return True
         for node in self.needs:
-            if hasattr(node, 'mtime') and self.mtime_less(mtime, node.mtime):
+            if not isinstance(node, DatedNode):
+                continue
+            if self.mtime_less(mtime, node.mtime):
                 return True
         return super().needs_build()
 
@@ -600,7 +616,7 @@ class FileNode(PathNode):
 class SourceFileNode(SourceNode, FileNode):
     pass
 
-class TextCommand(Command):
+class WriteTextCommand(Command):
     """
     Write some generated text to a file.
     """

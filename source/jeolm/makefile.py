@@ -1,7 +1,7 @@
 from pathlib import Path
 
 from jeolm.node import ( Node, TargetNode, PathNode, LinkNode, DirectoryNode,
-    SubprocessCommand, TextCommand, )
+    SubprocessCommand, WriteTextCommand, )
 
 class Rule:
     def __new__(cls, node):
@@ -25,7 +25,7 @@ class Rule:
         command, = commands
         if isinstance(command, SubprocessCommand):
             return super(Rule, cls).__new__(SubprocessRule)
-        if isinstance(command, TextCommand):
+        if isinstance(command, WriteTextCommand):
             raise UnbuildableNode(node)
         raise RuntimeError("Unknown type of command.")
 
@@ -186,15 +186,20 @@ def generate_makefile(node, *, viewpoint, actions=frozenset(('list', 'write'))):
         with (viewpoint/"Makefile").open("w") as f:
             f.write('\n\n'.join(makefile_parts))
 
-def main():
+def main(name='main'):
     import sys
-    import jeolm.local, jeolm.commands, jeolm.builder, jeolm.target
+    import jeolm.local
+    import jeolm.target
+    import jeolm.commands
+    import jeolm.node_factory
     local = jeolm.local.LocalManager()
     driver = jeolm.commands.simple_load_driver(local=local)
+    text_node_factory = jeolm.node_factory.TextNodeFactory(local=local)
     targets = map(jeolm.target.Target.from_string, sys.argv[1:])
-    builder = jeolm.builder.Builder(targets, local=local, driver=driver)
-    builder.prebuild()
-    generate_makefile(builder.ultimate_node, viewpoint=local.root)
+    target_node_factory = jeolm.node_factory.TargetNodeFactory(
+        local=local, driver=driver, text_node_factory=text_node_factory )
+    target_node = target_node_factory(targets, delegate=True, name=name)
+    generate_makefile(target_node, viewpoint=local.root)
 
 if __name__ == '__main__':
     main()

@@ -4,9 +4,7 @@ from pathlib import Path
 
 import jeolm
 import jeolm.local
-import jeolm.node
 import jeolm.target
-import jeolm.diffprint
 import jeolm.commands
 
 from jeolm import logger
@@ -39,7 +37,6 @@ def main():
     except jeolm.local.RootNotFoundError:
         jeolm.local.report_missing_root()
         raise SystemExit
-    jeolm.node.PathNode.root = local.root
     main_function = globals()['main_' + args.command]
     return main_function(args, local=local)
 
@@ -48,20 +45,11 @@ build_parser = subparsers.add_parser('build',
 build_parser.add_argument('targets',
     nargs='*', metavar='TARGET', type=jeolm.target.Target.from_string)
 force_build_group = build_parser.add_mutually_exclusive_group()
-force_build_group.add_argument('-f', '--force-latex',
-    help='force recompilation on LaTeX stage',
-    action='store_const', dest='force', const='latex')
-force_build_group.add_argument('-F', '--force-generate',
-    help='force overwriting of generated LaTeX file',
-    action='store_const', dest='force', const='generate')
 build_parser.add_argument('-D', '--no-delegate',
     help='ignore the possibility of delegating targets',
     action='store_false', dest='delegate' )
 build_parser.add_argument('-r', '--review',
     help='review included infiles prior to build',
-    action='store_true', )
-build_parser.add_argument('--dump',
-    help='instead of building create standalone version of document',
     action='store_true', )
 build_parser.add_argument('-j', '--jobs',
     help='number of parallel jobs',
@@ -69,11 +57,11 @@ build_parser.add_argument('-j', '--jobs',
 build_parser.set_defaults(command='build', force=None)
 
 def main_build(args, *, local):
-    from jeolm.builder import Builder
-    if args.dump:
-        from jeolm.builder import Dumper as Builder
+    from jeolm.node import PathNode
     from jeolm.metadata import MetadataManager
+    from jeolm.node_factory import TargetNodeFactory, TextNodeFactory
 
+    PathNode.root = local.root
     if not args.targets:
         logger.warn('No-op: no targets for building')
     md = MetadataManager(local=local)
@@ -81,9 +69,10 @@ def main_build(args, *, local):
     driver = md.feed_metadata(local.driver_class())
 
     if args.review:
+        from jeolm.diffprint import log_metadata_diff
         sources = jeolm.commands.list_sources( args.targets,
             local=local, driver=driver, source_type='tex' )
-        with jeolm.diffprint.log_metadata_diff(md, logger=logger):
+        with log_metadata_diff(md, logger=logger):
             jeolm.commands.review( sources,
                 viewpoint=Path.cwd(), local=local,
                 md=md, recursive=False )
@@ -100,10 +89,16 @@ def main_build(args, *, local):
     else:
         semaphore = None
 
-    builder = Builder(args.targets, local=local, driver=driver,
-        force=args.force, delegate=args.delegate )
+    text_node_factory = jeolm.node_factory.TextNodeFactory(local=local)
+    target_node_factory = jeolm.node_factory.TargetNodeFactory(
+        local=local, driver=driver, text_node_factory=text_node_factory)
+    try:
+        target_node = target_node_factory(args.targets, delegate=args.delegate)
+    finally:
+        text_node_factory.close()
     with jeolm.commands.refrain_called_process_error():
-        builder.build(semaphore=semaphore)
+        target_node.update(semaphore=semaphore)
+
 
 review_parser = subparsers.add_parser('review',
     help='review given infiles' )
@@ -115,11 +110,12 @@ review_parser.set_defaults(command='review')
 
 def main_review(args, *, local):
     from jeolm.metadata import MetadataManager
+    from jeolm.diffprint import log_metadata_diff
     if not args.inpaths:
         logger.warn('No-op: no inpaths for review')
     md = MetadataManager(local=local)
     md.load_metadata_cache()
-    with jeolm.diffprint.log_metadata_diff(md, logger=logger):
+    with log_metadata_diff(md, logger=logger):
         jeolm.commands.review( args.inpaths,
             viewpoint=Path.cwd(), local=local,
             md=md, recursive=args.recursive )
@@ -163,7 +159,8 @@ def main_spell(args, *, local):
     if not args.targets:
         logger.warn('No-op: no targets for spell check')
     jeolm.commands.check_spelling( args.targets,
-        local=local, driver=jeolm.commands.simple_load_driver(local),
+        local=local,
+        driver=jeolm.commands.simple_load_driver(local),
         colour=args.colour )
 
 clean_parser = subparsers.add_parser('clean',
