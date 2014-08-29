@@ -8,7 +8,7 @@ from jeolm import yaml
 from jeolm.records import RecordsManager
 
 import logging
-logger = logging.getLogger(__name__)
+logger = logging.getLogger(__name__) # pylint: disable=invalid-name
 
 @contextmanager
 def log_metadata_diff(md, logger=logger):

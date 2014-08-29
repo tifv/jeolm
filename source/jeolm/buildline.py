@@ -21,7 +21,7 @@ import logging
 if __name__ == '__main__':
     from jeolm import logger
 else:
-    logger = logging.getLogger(__name__)
+    logger = logging.getLogger(__name__) # pylint: disable=invalid-name
 
 
 def mainloop(local, text_node_factory):
@@ -38,7 +38,7 @@ def mainloop(local, text_node_factory):
             for review_path in review_list:
                 try:
                     review([review_path], local=local, md=md, recursive=True)
-                except Exception as exc:
+                except Exception: # pylint: disable=broad-except
                     traceback.print_exc()
                     logger.error(
                         "<BOLD>Error occured while reviewing "
@@ -91,12 +91,14 @@ def build(target, local, text_node_factory, driver):
 
 class NotifiedMetadataManager(jeolm.metadata.MetadataManager):
 
+    # pylint: disable=no-member
     creative_mask = (
         pyinotify.IN_CREATE | pyinotify.IN_CLOSE_WRITE |
         pyinotify.IN_MOVED_TO )
     destructive_mask = pyinotify.IN_MOVED_FROM | pyinotify.IN_DELETE
     self_destructive_mask = pyinotify.IN_MOVE_SELF | pyinotify.IN_DELETE_SELF
     mask = creative_mask | destructive_mask | self_destructive_mask
+    # pylint: enable=no-member
 
     def __init__(self, *, local):
         self.review_set = set()

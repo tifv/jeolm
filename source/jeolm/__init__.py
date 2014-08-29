@@ -10,7 +10,7 @@ from pathlib import Path
 
 import logging
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger(__name__) # pylint: disable=invalid-name
 logger.setLevel(logging.DEBUG)
 logger.addHandler(logging.NullHandler())
 

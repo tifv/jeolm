@@ -13,7 +13,8 @@ from . import yaml
 from .records import RecordsManager, RecordPath
 
 import logging
-logger = logging.getLogger(__name__)
+logger = logging.getLogger(__name__) # pylint: disable=invalid-name
+
 
 class MetadataManager(RecordsManager):
     Dict = dict

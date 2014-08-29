@@ -1,7 +1,7 @@
 from .regular import Driver, DriverError
 
 import logging
-logger = logging.getLogger(__name__)
+logger = logging.getLogger(__name__) # pylint: disable=invalid-name
 
 class TestPaperDriver(Driver):
     @processing_target_aspect( aspect='source metabody [testpaper]',

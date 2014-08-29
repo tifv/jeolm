@@ -7,7 +7,7 @@ import shutil
 from pathlib import Path, PurePosixPath
 
 import logging
-logger = logging.getLogger(__name__)
+logger = logging.getLogger(__name__) # pylint: disable=invalid-name
 
 
 class RootNotFoundError(FileNotFoundError):

@@ -4,7 +4,7 @@ from collections import OrderedDict
 import enchant
 
 import logging
-logger = logging.getLogger(__name__)
+logger = logging.getLogger(__name__) # pylint: disable=invalid-name
 
 class TextPiece:
     __slots__ = ['s']

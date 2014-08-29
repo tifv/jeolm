@@ -7,7 +7,7 @@ from pathlib import Path, PurePosixPath
 from .utils import unique, dict_ordered_keys, dict_ordered_items
 
 import logging
-logger = logging.getLogger(__name__)
+logger = logging.getLogger(__name__) # pylint: disable=invalid-name
 
 class RecordError(Exception):
     pass

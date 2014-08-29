@@ -102,7 +102,7 @@ from ..records import ( RecordsManager, RecordPath,
 from ..target import Target, TargetError
 
 import logging
-logger = logging.getLogger(__name__)
+logger = logging.getLogger(__name__) # pylint: disable=invalid-name
 
 
 class Substitutioner(type):

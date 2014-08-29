@@ -52,15 +52,15 @@ class Rule:
                 order_only_needs.append(need)
             else:
                 normal_needs.append(need)
-        needs_repr_parts = [] # FIXME improve formatting (split into lines)
+        needs_repr_parts = []
         if normal_needs:
             needs_repr_parts.extend(
-                cls._represent_node(need, viewpoint=viewpoint)
+                cls.represent_node(need, viewpoint=viewpoint)
                 for need in normal_needs )
         if order_only_needs:
             needs_repr_parts.append('|')
             needs_repr_parts.extend(
-                cls._represent_node(need, viewpoint=viewpoint)
+                cls.represent_node(need, viewpoint=viewpoint)
                 for need in order_only_needs )
         return cls._format_needs(needs_repr_parts)
 
@@ -80,7 +80,7 @@ class Rule:
         return ''.join(parts)
 
     @classmethod
-    def _represent_node(cls, node, *, viewpoint):
+    def represent_node(cls, node, *, viewpoint):
         if isinstance(node, PathNode):
             node_s = str(node.path.relative_to(viewpoint))
         elif isinstance(node, TargetNode):
@@ -97,7 +97,7 @@ class TargetRule(Rule):
 
     def represent(self, *, viewpoint):
         return self._template.format(
-            target=self._represent_node(self.node, viewpoint=viewpoint),
+            target=self.represent_node(self.node, viewpoint=viewpoint),
             needs=self._represent_needs(self.node.needs, viewpoint=viewpoint) )
 
     @classmethod
@@ -114,7 +114,7 @@ class LinkRule(Rule):
 
     def represent(self, *, viewpoint):
         return self._template.format(
-            target=self._represent_node(self.node, viewpoint=viewpoint),
+            target=self.represent_node(self.node, viewpoint=viewpoint),
             needs=self._represent_needs(
                 self.node.needs,
                 viewpoint=viewpoint,
@@ -137,7 +137,7 @@ class DirectoryRule(Rule):
 
     def represent(self, *, viewpoint):
         return self._template.format(
-            target=self._represent_node(self.node, viewpoint=viewpoint),
+            target=self.represent_node(self.node, viewpoint=viewpoint),
             needs=self._represent_needs(self.node.needs, viewpoint=viewpoint) )
 
 class SubprocessRule(Rule):
@@ -149,7 +149,7 @@ class SubprocessRule(Rule):
     def represent(self, *, viewpoint):
         command, = self.node.commands
         return self._template.format(
-            target=self._represent_node(self.node, viewpoint=viewpoint),
+            target=self.represent_node(self.node, viewpoint=viewpoint),
             needs=self._represent_needs(self.node.needs, viewpoint=viewpoint),
             command=self._represent_command(command, viewpoint=viewpoint))
 
@@ -179,7 +179,7 @@ def generate_makefile(node, *, viewpoint, actions=frozenset(('list', 'write'))):
         except UnbuildableNode as exception:
             if 'list' in actions:
                 node, = exception.args
-                print(Rule._represent_node(node, viewpoint=viewpoint))
+                print(Rule.represent_node(node, viewpoint=viewpoint))
             continue
         makefile_parts.append(rule.represent(viewpoint=viewpoint))
     if 'write' in actions:
