@@ -1,5 +1,3 @@
-from itertools import chain
-from functools import partial
 from string import Template
 
 import hashlib
@@ -19,6 +17,7 @@ from jeolm.records import RecordPath
 
 import logging
 logger = logging.getLogger(__name__) # pylint: disable=invalid-name
+
 
 class TargetNodeFactory:
 
@@ -126,14 +125,12 @@ class DocumentNodeFactory:
             path=build_dir/'main.tex',
             needs=(build_dir_node,) )
         main_tex_node.append_needs(self.text_node_factory(
-            main_tex_node.path,
-            recipe['document']
-        ))
+            main_tex_node.path, recipe['document'] ))
         main_tex_node.add_command(jeolm.node.WriteTextCommand.from_text(
             text=recipe['document'] ))
 
         package_nodes = [
-            jeolm.node.LinkNode(
+            jeolm.node.LinkedFileNode(
                 name='document:{}:sty:{}'.format(target, alias_name),
                 source=self.package_node_factory(package_path),
                 path=(build_dir/alias_name).with_suffix('.sty'),
@@ -141,7 +138,7 @@ class DocumentNodeFactory:
             for alias_name, package_path
             in recipe['package_paths'].items() ]
         figure_nodes = [
-            jeolm.node.LinkNode(
+            jeolm.node.LinkedFileNode(
                 name='document:{}:fig:{}'.format(target, alias_name),
                 source=self.figure_node_factory(figure_path),
                 path=(build_dir/alias_name).with_suffix('.eps'),
@@ -149,7 +146,7 @@ class DocumentNodeFactory:
             for alias_name, figure_path
             in recipe['figure_paths'].items() ]
         source_nodes = [
-            jeolm.node.LinkNode(
+            jeolm.node.LinkedFileNode(
                 name='document:{}:in.tex:{}'.format(target, alias),
                 source=self.source_node_factory(inpath),
                 path=build_dir/alias,
@@ -159,8 +156,7 @@ class DocumentNodeFactory:
         dvi_node = jeolm.latex_node.LaTeXNode(
             name='document:{}:dvi'.format(target),
             source=main_tex_node,
-            path=(build_dir/buildname).with_suffix('.dvi'),
-            cwd=build_dir, )
+            path=(build_dir/buildname).with_suffix('.dvi') )
         dvi_node.extend_needs(package_nodes)
         dvi_node.extend_needs(figure_nodes)
         dvi_node.extend_needs(source_nodes)
@@ -173,7 +169,7 @@ class DocumentNodeFactory:
         buildname = recipe['buildname']
 
         source_node = self.source_node_factory(recipe['source'])
-        tex_node = jeolm.node.LinkNode(
+        tex_node = jeolm.node.LinkedFileNode(
             name='document:{}:tex'.format(target),
             source=source_node,
             path=build_dir/'main.tex',
@@ -181,8 +177,7 @@ class DocumentNodeFactory:
         dvi_node = jeolm.latex_node.LaTeXNode(
             name='document:{}:dvi'.format(target),
             source=tex_node,
-            path=(build_dir/buildname).with_suffix('.dvi'),
-            cwd=build_dir, )
+            path=(build_dir/buildname).with_suffix('.dvi') )
         return self._prebuild_pdf_document( target,
             dvi_node, [], build_dir=build_dir )
 
@@ -193,7 +188,7 @@ class DocumentNodeFactory:
         package_name = recipe['name']
 
         source_node = self.source_node_factory(recipe['source'])
-        dtx_node = jeolm.node.LinkNode(
+        dtx_node = jeolm.node.LinkedFileNode(
             name='document:{}:dtx'.format(target),
             source=source_node,
             path=build_dir/'{}.dtx'.format(package_name),
@@ -205,15 +200,16 @@ class DocumentNodeFactory:
         ins_text = self._substitute_driver_ins(package_name=package_name)
         ins_node.add_command(jeolm.node.WriteTextCommand.from_text(ins_text))
         ins_node.append_needs(self.text_node_factory(ins_node.path, ins_text))
-        drv_node = jeolm.node.FileNode(
+        drv_node = jeolm.node.ProductFileNode(
             name='document:{}:drv'.format(target),
+            source=dtx_node,
             path=build_dir/'{}.drv'.format(package_name),
-            needs=(build_dir_node, dtx_node, ins_node,) )
+            needs=(ins_node,) )
         drv_node.add_subprocess_command(
             ( 'latex', '-interaction=nonstopmode', '-halt-on-error',
                 ins_node.path.name ),
             cwd=build_dir )
-        sty_node = jeolm.node.LinkNode(
+        sty_node = jeolm.node.LinkedFileNode(
             name='document:{}:sty'.format(target),
             source=self.package_node_factory(target.path),
             path=(build_dir/package_name).with_suffix('.sty'),
@@ -223,7 +219,6 @@ class DocumentNodeFactory:
             name='document:{}:dvi'.format(target),
             source=drv_node,
             path=(build_dir/buildname).with_suffix('.dvi'),
-            cwd=build_dir,
             needs=(sty_node, dtx_node) )
         return self._prebuild_pdf_document( target,
             dvi_node, [], build_dir=build_dir )
@@ -246,10 +241,10 @@ class DocumentNodeFactory:
     def _prebuild_pdf_document(self, target,
         dvi_node, figure_nodes, *, build_dir
     ):
-        pdf_node = jeolm.node.FileNode(
+        pdf_node = jeolm.node.ProductFileNode(
             name='document:{}:pdf'.format(target),
-            path=build_dir/'main.pdf',
-            needs=(dvi_node,) )
+            source=dvi_node,
+            path=build_dir/'main.pdf', )
         pdf_node.extend_needs(figure_nodes)
         pdf_node.add_subprocess_command(
             ('dvipdf', dvi_node.path.name, pdf_node.path.name),
@@ -265,12 +260,13 @@ class DocumentNodeFactory:
         return pdf_node
 
     def _prebuild_exposed_document(self, target, recipe, document_node):
-        return jeolm.node.LinkNode(
+        return jeolm.node.LinkedFileNode(
             name='document:{}:exposed'.format(target),
             source=document_node,
             path=(self.local.root/recipe['outname']).with_suffix(
                 document_node.path.suffix )
         )
+
 
 class PackageNodeFactory:
     package_types = ('dtx', 'sty')
@@ -334,7 +330,7 @@ class PackageNodeFactory:
         source_node = self.source_node_factory(
             package_record['source'] )
         package_name = package_record['name']
-        dtx_node = jeolm.node.LinkNode(
+        dtx_node = jeolm.node.LinkedFileNode(
             name='package:{}:dtx'.format(metapath),
             source=source_node,
             path=build_dir/'{}.dtx'.format(package_name),
@@ -346,10 +342,11 @@ class PackageNodeFactory:
         ins_text = self._substitute_ins(package_name=package_name)
         ins_node.add_command(jeolm.node.WriteTextCommand.from_text(ins_text))
         ins_node.append_needs(self.text_node_factory(ins_node.path, ins_text))
-        sty_node = jeolm.node.FileNode(
+        sty_node = jeolm.node.ProductFileNode(
             name='package:{}:sty'.format(metapath),
+            source=dtx_node,
             path=build_dir/'{}.sty'.format(package_name),
-            needs=(build_dir_node, dtx_node, ins_node) )
+            needs=(ins_node,) )
         sty_node.add_subprocess_command(
             ( 'latex', '-interaction=nonstopmode', '-halt-on-error',
                 ins_node.path.name ),
@@ -407,15 +404,15 @@ class FigureNodeFactory:
         *, build_dir_node
     ):
         build_dir = build_dir_node.path
-        main_asy_node, *_other_asy_nodes = asy_nodes = \
+        main_asy_node, *other_asy_nodes = \
             list(self._prebuild_asy_figure_sources( metapath, figure_record,
                 build_dir_node=build_dir_node ))
         assert main_asy_node.path.parent == build_dir
-        eps_node = jeolm.node.FileNode(
+        eps_node = jeolm.node.ProductFileNode(
             name='figure:{}:eps'.format(metapath),
+            source=main_asy_node,
             path=build_dir/'main.eps',
-            needs=chain(asy_nodes, (build_dir_node,)) )
-        assert main_asy_node is eps_node.needs[0], asy_nodes
+            needs=other_asy_nodes )
         eps_node.add_subprocess_command(
             ( 'asy', '-outformat=eps', '-offscreen',
                 main_asy_node.path.name ),
@@ -427,14 +424,14 @@ class FigureNodeFactory:
     ):
         """Yield main asy source node and other source nodes."""
         build_dir = build_dir_node.path
-        main_asy_node = jeolm.node.LinkNode(
+        main_asy_node = jeolm.node.LinkedFileNode(
             name='figure:{}:asy:main'.format(metapath),
             source=self.source_node_factory(
                 figure_record['source'] ),
             path=build_dir/'main.asy',
             needs=(build_dir_node,) )
         other_asy_nodes = [
-            jeolm.node.LinkNode(
+            jeolm.node.LinkedFileNode(
                 name='figure:{}:asy:{}'.format(metapath, accessed_name),
                 source=self.source_node_factory(inpath),
                 path=build_dir/accessed_name,
@@ -448,18 +445,20 @@ class FigureNodeFactory:
         *, build_dir_node
     ):
         build_dir = build_dir_node.path
-        svg_node = jeolm.node.LinkNode(
+        svg_node = jeolm.node.LinkedFileNode(
             name='figure:{}:svg'.format(metapath),
             source=self.source_node_factory(
                 figure_record['source'] ),
             path=build_dir/'main.svg',
             needs=(build_dir_node,) )
-        eps_node = jeolm.node.FileNode(
+        eps_node = jeolm.node.ProductFileNode(
             name='fig:{}:eps'.format(metapath),
-            path=build_dir/'main.eps',
-            needs=(svg_node, build_dir_node) )
+            source=svg_node,
+            path=build_dir/'main.eps' )
         eps_node.add_subprocess_command(
-            ('inkscape', '--export-eps=main.eps', '-without-gui', 'main.svg'),
+            ('inkscape', '--without-gui',
+                '--export-eps={}'.format(eps_node.path.name),
+                svg_node.path.name ),
             cwd=build_dir )
         return eps_node
 

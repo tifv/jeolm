@@ -2,60 +2,31 @@ from itertools import chain
 
 import re
 
-from pathlib import Path
-
 from jeolm.node import ProductFileNode, SubprocessCommand
 
 import logging
 logger = logging.getLogger(__name__) # pylint: disable=invalid-name
 
-class LaTeXNode(ProductFileNode):
-    """
-    Represents a target of some latex command.
-
-    Aims at reasonable handling of latex output to stdin/log.
-    Completely suppresses latex output unless finds something
-    interesting in it.
-    """
-
-    target_suffix = '.dvi'
-
-    def __init__(self, source, path, *, cwd, **kwargs):
-        super().__init__(source, path, **kwargs)
-
-        if not isinstance(cwd, Path):
-            raise TypeError(type(cwd))
-        if not cwd.is_absolute():
-            raise ValueError(cwd)
-
-        # Ensure that both latex source and target are in the same directory
-        # and this directory is cwd.
-        if not path.parent == cwd == source.path.parent:
-            raise RuntimeError
-        if not path.suffix == self.target_suffix:
-            raise RuntimeError
-        jobname = path.stem
-
-        self.add_command(_LaTeXCommand(source, jobname, cwd=cwd))
+__all__ = ['LaTeXNode']
 
 class _LaTeXCommand(SubprocessCommand):
 
     latex_command = 'latex'
+    target_suffix = '.dvi'
 
     _latex_additional_args = ('-interaction=nonstopmode', '-halt-on-error')
 
     # No more than 5 LaTeX runs in a row.
-    max_latex_reruns = 4
+    _max_latex_reruns = 4
 
-    def __init__(self, source, jobname, *, cwd):
+    def __init__(self, source_name, jobname, *, cwd):
         callargs = tuple(chain(
             (self.latex_command,),
             ('-jobname={}'.format(jobname),),
             self._latex_additional_args,
-            (source.path.name,),
+            (source_name,),
         ))
         super().__init__(callargs, cwd=cwd)
-        self.source = source
 
     # Override
     def _subprocess(self, *, reruns=0):
@@ -63,7 +34,7 @@ class _LaTeXCommand(SubprocessCommand):
         self.node.modified = True
 
         if self._latex_output_requests_rerun(latex_output):
-            if reruns >= self.max_latex_reruns:
+            if reruns >= self._max_latex_reruns:
                 self._log_output(latex_output, level=logging.WARNING)
                 self.log( logging.WARNING,
                     "LaTeX requests rerun too many times in a row." )
@@ -211,7 +182,7 @@ class _LaTeXCommand(SubprocessCommand):
         input file name.
 
         Only local filenames are detected, e.g. starting with "./",
-        and return without a prefixing "./".
+        and yielded without a prefixing "./".
         """
 
         file_name_positions = [0]
@@ -249,4 +220,31 @@ class _LaTeXCommand(SubprocessCommand):
         r'(?P<file_name>.+?)' # "<file name>"
         r'(?=[\s)])' # ")" or "\n" or " "
     )
+
+class LaTeXNode(ProductFileNode):
+    """
+    Represents a target of some latex command.
+
+    Aims at reasonable handling of latex output to stdin/log.
+    Completely suppresses latex output unless finds something
+    interesting in it.
+    """
+
+    _Command = _LaTeXCommand
+
+    def __init__(self, source, path, *, name=None, needs=(), **kwargs):
+        super().__init__( source=source, path=path,
+            name=name, needs=needs, **kwargs )
+        assert path.is_absolute(), path
+
+        cwd = path.parent
+        if cwd != source.path.parent:
+            raise RuntimeError
+        jobname = path.stem
+
+        command = self._Command(source.path.name, jobname, cwd=cwd)
+        if path.suffix != command.target_suffix:
+            raise RuntimeError
+
+        self.add_command(command)
 

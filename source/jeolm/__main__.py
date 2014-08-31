@@ -45,6 +45,12 @@ build_parser = subparsers.add_parser('build',
 build_parser.add_argument('targets',
     nargs='*', metavar='TARGET', type=jeolm.target.Target.from_string)
 force_build_group = build_parser.add_mutually_exclusive_group()
+force_build_group.add_argument('-f', '--force-latex',
+    help='force recompilation on LaTeX stage',
+    action='store_const', dest='force', const='latex')
+force_build_group.add_argument('-F', '--force-generate',
+    help='force overwriting of generated LaTeX file',
+    action='store_const', dest='force', const='generate')
 build_parser.add_argument('-D', '--no-delegate',
     help='ignore the possibility of delegating targets',
     action='store_false', dest='delegate' )
@@ -89,13 +95,30 @@ def main_build(args, *, local):
     else:
         semaphore = None
 
-    text_node_factory = jeolm.node_factory.TextNodeFactory(local=local)
-    target_node_factory = jeolm.node_factory.TargetNodeFactory(
+    text_node_factory = TextNodeFactory(local=local)
+    target_node_factory = TargetNodeFactory(
         local=local, driver=driver, text_node_factory=text_node_factory)
     try:
         target_node = target_node_factory(args.targets, delegate=args.delegate)
     finally:
         text_node_factory.close()
+    if args.force is None:
+        pass
+    elif args.force == 'latex':
+        from jeolm.latex_node import LaTeXNode
+        for node in target_node.iter_needs():
+            if isinstance(node, LaTeXNode):
+                node.force()
+    elif args.force == 'generate':
+        from jeolm.latex_node import LaTeXNode
+        from jeolm.node import FileNode
+        for node in target_node.iter_needs():
+            if (isinstance(node, LaTeXNode) and
+                isinstance(node.source, FileNode)
+            ):
+                node.source.force()
+    else:
+        raise RuntimeError(args.force)
     with jeolm.commands.refrain_called_process_error():
         target_node.update(semaphore=semaphore)
 
