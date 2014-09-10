@@ -3,3 +3,5 @@ style:
   source/_style/core.yaml: style-core.yaml
 figure-style:
   source/_style/jeolm.asy: jeolm.asy
+gitignore:
+  .gitignore: gitignore

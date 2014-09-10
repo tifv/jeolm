@@ -237,7 +237,7 @@ class InitLocalManager(LocalManager):
             shutil.copyfile(str(source_path), str(destination_path))
 
     _resource_dir_path = Path(__file__).parent / 'resources'
-    _resource_manifest_path = _resource_dir_path / 'manifest.yaml'
+    _resource_manifest_path = _resource_dir_path / 'MANIFEST.yaml'
 
     @property
     def _resource_tables(self):
