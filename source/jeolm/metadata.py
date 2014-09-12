@@ -50,9 +50,6 @@ class MetadataManager(RecordsManager):
         with new_path.open('wb') as cache_file:
             cache_file.write(pickled_cache)
         new_path.rename(self._metadata_cache_path)
-        from jeolm.completion import CachingCompleter
-        completer = CachingCompleter(local=self.local)
-        completer.invalidate_target_list_cache()
 
     @property
     def _metadata_cache_path(self):

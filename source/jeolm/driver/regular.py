@@ -305,6 +305,17 @@ class Driver(RecordsManager, metaclass=DriverMetaclass):
                 list(self.generate_metapaths())
             yield from metapath_list
 
+    def metapath_is_targetable(self, metapath):
+        return self.getitem(metapath)['$target$able']
+
+    def list_targetable_children(self, metapath):
+        for name in self.getitem(metapath):
+            if name.startswith('$'):
+                continue
+            submetapath = metapath / name
+            if self.getitem(submetapath)['$target$able']:
+                yield submetapath
+
     @folding_driver_errors
     def produce_outrecord(self, target):
         """

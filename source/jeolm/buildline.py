@@ -13,8 +13,8 @@ import jeolm.metadata
 
 from jeolm.commands import review
 from jeolm.diffprint import log_metadata_diff
-import jeolm.completion
 
+from jeolm.records import RecordPath
 from jeolm.target import Target, TargetError
 
 import logging
@@ -48,7 +48,7 @@ def mainloop(local, text_node_factory):
             driver.clear()
             md.feed_metadata(driver)
 
-    completer = jeolm.completion.Completer(driver=driver).readline_completer
+    completer = Completer(driver=driver).readline_completer
     readline.set_completer(completer)
     readline.set_completer_delims('')
     readline.parse_and_bind('tab: complete')
@@ -221,6 +221,62 @@ class NotifiedMetadataManager(jeolm.metadata.MetadataManager):
 
         process_IN_DELETE_SELF = process_self_destructive_event
         process_IN_MOVE_SELF = process_self_destructive_event
+
+
+class Completer:
+
+    def __init__(self, driver):
+        super().__init__()
+
+        self.driver = driver
+
+        self._saved_text = None
+        self._saved_completion = None
+
+    def _is_target(self, path):
+        return path in self.driver and self.driver.metapath_is_targetable(path)
+
+    def _list_subtargets(self, path):
+        return self.driver.list_targetable_children(path)
+
+    def complete_target(self, uncompleted_arg):
+        """Return an iterator over completions."""
+        if ' ' in uncompleted_arg:
+            return
+
+        uncompleted_path = RecordPath(uncompleted_arg)
+
+        if uncompleted_path.name == '':
+            uncompleted_parent = RecordPath('/')
+            uncompleted_name = ''
+        elif uncompleted_arg.endswith('/'):
+            uncompleted_parent = uncompleted_path
+            uncompleted_name = ''
+            if self._is_target(uncompleted_parent):
+                yield str(uncompleted_parent) + '/'
+        else:
+            uncompleted_parent = uncompleted_path.parent
+            uncompleted_name = uncompleted_path.name
+
+        for path in self._list_subtargets(uncompleted_parent):
+            if uncompleted_parent != path.parent:
+                continue
+            name = path.name
+            if not name.startswith(uncompleted_name):
+                continue
+            yield str(uncompleted_parent/name) + '/'
+
+    def readline_completer(self, text, state):
+        try:
+            if self._saved_text != text:
+                self._saved_completion = list(self.complete_target(text))
+                self._saved_text = text
+            if state < len(self._saved_completion):
+                return self._saved_completion[state]
+            else:
+                return None
+        except Exception: # pylint: disable=broad-except
+            traceback.print_exc()
 
 
 def main():
