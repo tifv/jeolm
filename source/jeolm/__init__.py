@@ -32,10 +32,14 @@ def setup_logging(verbose=False, colour=True, concurrent=True):
         finishing_handler = logging.StreamHandler()
         listener = QueueListener(log_queue, finishing_handler)
         listener.start()
-        atexit.register(listener.stop)
+        def finish_logging():
+            listener.stop()
     else:
         handler = finishing_handler = logging.StreamHandler()
+        def finish_logging():
+            pass
     handler.setLevel(logging.INFO if not verbose else logging.DEBUG)
     finishing_handler.setFormatter(formatter)
     logger.addHandler(handler)
+    return finish_logging
 

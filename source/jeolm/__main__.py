@@ -26,7 +26,7 @@ def main():
     args = parser.parse_args()
     if 'command' not in args:
         return parser.print_help()
-    jeolm.setup_logging(
+    finish_logging = jeolm.setup_logging(
         verbose=args.verbose, colour=args.colour,
     )
     if args.command == 'init':
@@ -38,7 +38,10 @@ def main():
         jeolm.local.report_missing_root()
         raise SystemExit
     main_function = globals()['main_' + args.command]
-    return main_function(args, local=local)
+    try:
+        return main_function(args, local=local)
+    finally:
+        finish_logging()
 
 build_parser = subparsers.add_parser('build',
     help='build specified targets', )
