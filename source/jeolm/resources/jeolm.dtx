@@ -1,7 +1,9 @@
 % \iffalse
 %
 %<package|driver>\NeedsTeXFormat{LaTeX2e}[2009/09/24]
+%<*gobble>
 \ProvidesFile{jeolm.dtx}
+%</gobble>
 %<package>\ProvidesPackage{jeolm}
 %<driver>\ProvidesFile{jeolm.drv}
 %
@@ -129,8 +131,8 @@
 % Macro |\problemyx|\marg{problem number}\marg{mark} combines features of
 % |\problemy| and |\problemx|.
 %
-% \DescribeMacro{\sbp}
-% \DescribeMacro{\sbpx}
+% \DescribeMacro{\sp}
+% \DescribeMacro{\spx}
 % To indicate sub-problems, macro
 % |\subproblem| is used, with
 % |\subproblemx|\marg{mark} counterpart:
@@ -140,7 +142,7 @@
 % \quad
 % \subproblemx{*} for |\subproblemx{*}|.
 % \\
-% Macros |\sbp| and |\sbpx| are corresponding |\let| aliases for |\subproblem|
+% Macros |\sp| and |\spx| are corresponding |\let| aliases for |\subproblem|
 % and |\subproblemx|.
 %
 % \DescribeEnv{problems}
@@ -309,11 +311,11 @@
 \newcommand\jeolmheadertemplate[3]{%
     {\Large\vspace{4ex}}\par%
     \begingroup\small\sffamily%
-    \strut\hfill{\bfseries#1}\hfill\strut\nopagebreak\\%
-    \strut\hfill{\itshape#2}\qquad{#3}%
+        \strut\hfill{\bfseries#1}\hfill\strut\nopagebreak\\%
+        \strut\hfill{\itshape#2}\qquad{#3}%
         \ifx\jeolmdate\relax\else\qquad{\itshape\jeolmdate}\fi%
         \hfill\strut\nopagebreak\\%
-    \rule[1ex]{\textwidth}{0.5pt} %
+        \rule[1ex]{\textwidth}{0.5pt} %
     \endgroup%
     {\vspace{-1ex}\Large\vspace{-4ex}\vspace{-\parskip}}}
 \let\jeolmdate\relax
@@ -338,13 +340,13 @@
 % \end{macro}
 %
 % \begin{macro}{\subproblem}
-% \begin{macro}{\sbp}
+% \begin{macro}{\sp}
 % These macros boil down to |\subproblem@x|, which is defined later.
 %    \begin{macrocode}
 \newcommand\subproblem{\subproblemx{}}
 \newcommand\subproblemx[1]{\subproblem@x{#1}\subproblem@space}
-\let\sbp\subproblem
-\let\sbpx\subproblemx
+\let\sp\subproblem
+\let\spx\subproblemx
 %    \end{macrocode}
 % \end{macro}
 % \end{macro}
@@ -423,8 +425,10 @@
 \problem@space@length=1em
 \newcommand\problem@space{\hspace{\problem@space@length}\ignorespaces}
 \newcommand\problem@format[2]{\textbf{#1.\rlap{\!#2}}}
-\newcommand\subproblem@space{\hspace{1ex}\ignorespaces}
-\newcommand\subproblem@format[2]{{\bfseries(\rlap{#1#2)}\phantom{m#2)}}}
+\newlength\subproblem@space@length
+\subproblem@space@length=0.5em
+\newcommand\subproblem@space{\hspace{\subproblem@space@length}\ignorespaces}
+\newcommand\subproblem@format[2]{{\bfseries({\ttfamily#1}#2)}}
 %    \end{macrocode}
 % \end{macro}
 % \end{macro}
@@ -477,7 +481,7 @@
 % \begin{macro}{\theoremof}
 % \begin{macro}{\theoremnum}
 %    \begin{macrocode}
-\newcommand\theorem{\claim{Теорема}{}}
+\newcommand\theorem{\claim{Теорема}}
 \newcommand\theoremof[1]{\claim{Теорема #1}}
 \newcounter{theorem}
 \newcommand\theoremnum{\refstepcounter{theorem}\claim{Теорема \thetheorem}}
