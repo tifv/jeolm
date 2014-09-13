@@ -1,6 +1,6 @@
 from functools import partial
 import re
-from collections.abc import Container, Sequence, Mapping
+from collections.abc import Container
 import traceback
 
 from .record_path import RecordPath
@@ -30,8 +30,8 @@ class FlagContainer(Container):
         'flags', 'utilized_flags', 'children',
         'origin', '_as_frozenset' ]
 
-    def __new__(cls, iterable=(), *, origin=None):
-        self = super().__new__(cls)
+    def __init__(self, iterable=(), *, origin=None):
+        super().__init__()
         self.flags = flags = frozenset(iterable)
         if any(flag.startswith('-') for flag in flags):
             raise RuntimeError(flags)
@@ -39,8 +39,8 @@ class FlagContainer(Container):
         self.children = []
         self.origin = origin
         if origin is None:
-            self.origin = '\n' + ''.join(traceback.format_stack())
-        return self
+            self.origin = ( '(traceback):\n' +
+                ''.join(traceback.format_stack()) )
 
     def __hash__(self):
         return hash(self.as_frozenset)
@@ -120,7 +120,8 @@ class FlagContainer(Container):
                     raise FlagError("'or' condition value must be a list")
                 return any(self.check_condition(item) for item in value)
             else:
-                raise FlagError("Condition, if a dict, must have key 'not' or 'or'")
+                raise FlagError(
+                    "Condition, if a dict, must have key 'not' or 'or'" )
 
     def select_matching_value(self, flagset_mapping, default=None):
         issuperset = partial( self.issuperset,
@@ -228,10 +229,9 @@ class ChildFlagContainer(FlagContainer):
     __slots__ = ['parent']
     constructor_name = 'bastard'
 
-    def __new__(cls, iterable, parent, **kwargs):
-        instance = super().__new__(cls, iterable, **kwargs)
-        instance.parent = parent
-        return instance
+    def __init__(self, iterable, parent, **kwargs):
+        super().__init__(iterable, **kwargs)
+        self.parent = parent
 
     def __repr__(self):
         return ( '{self.parent!r}.{self.constructor_name}({self._flags_repr})'
@@ -280,15 +280,14 @@ class NegativeFlagContainer(ChildFlagContainer):
 class Target:
     __slots__ = ['path', 'flags']
 
-    def __new__(cls, path, flags, *, origin=None):
-        instance = super().__new__(cls)
-        instance.path = RecordPath(path)
+    def __init__(self, path, flags, *, origin=None):
+        super().__init__()
+        self.path = RecordPath(path)
         if not isinstance(flags, FlagContainer):
             flags = FlagContainer(flags, origin=origin)
         elif origin is not None:
             raise RuntimeError(origin)
-        instance.flags = flags
-        return instance
+        self.flags = flags
 
     flagged_pattern = re.compile(
         r'^(?P<key>[^\[\]]+)'
@@ -297,11 +296,11 @@ class Target:
         r'\])?$' )
 
     @classmethod
-    def from_string(cls, s, *, origin=None):
-        flagged_match = cls.flagged_pattern.match(s)
+    def from_string(cls, string, *, origin=None):
+        flagged_match = cls.flagged_pattern.match(string)
         if flagged_match is None:
             raise TargetError(
-                "Failed to parse target '{}'.".format(s) )
+                "Failed to parse target '{}'.".format(string) )
         path = RecordPath(flagged_match.group('key'))
         flags_s = flagged_match.group('flags')
         if flags_s is not None:
@@ -310,13 +309,13 @@ class Target:
             flags = frozenset()
         if any(flag.startswith('-') for flag in flags):
             raise TargetError(
-                "Target '{}' contains negative flags.".format(s) )
+                "Target '{}' contains negative flags.".format(string) )
         return cls(path, flags, origin=origin)
 
-    def derive_from_string(self, s, *, origin=None):
-        if not isinstance(s, str):
-            raise TargetError(type(s))
-        flagged_match = self.flagged_pattern.match(s)
+    def derive_from_string(self, string, *, origin=None):
+        if not isinstance(string, str):
+            raise TargetError(type(string))
+        flagged_match = self.flagged_pattern.match(string)
         subpath = RecordPath(self.path, flagged_match.group('key'))
         flags_s = flagged_match.group('flags')
         if flags_s is not None:
@@ -327,7 +326,7 @@ class Target:
         negative = {flag[1:] for flag in flags if flag.startswith('-')}
         if any(flag.startswith('-') for flag in negative):
             raise TargetError("Double-negative flag in string '{}'"
-                .format(s) )
+                .format(string) )
         subflags = self.flags.delta(
             union=positive, difference=negative, origin=origin )
         return self.__class__(subpath, subflags)
