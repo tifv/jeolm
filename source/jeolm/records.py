@@ -1,10 +1,9 @@
 import re
 from collections import OrderedDict
 
-import pathlib
-from pathlib import Path, PurePosixPath
-
 from .utils import unique, dict_ordered_keys, dict_ordered_items
+
+from .record_path import RecordPath
 
 import logging
 logger = logging.getLogger(__name__) # pylint: disable=invalid-name
@@ -14,38 +13,6 @@ class RecordError(Exception):
 
 class RecordNotFoundError(RecordError, LookupError):
     pass
-
-class _RecordPathFlavour(pathlib._PosixFlavour):
-    def parse_parts(self, parts):
-        drv, root, parsed = super().parse_parts(parts)
-        if root != '/':
-            root = '/'
-            parsed[0:0] = '/',
-        while '..' in parsed:
-            i = parsed.index('..')
-            j = max(i-1, 1)
-            del parsed[j:i+1]
-        assert parsed[0] == '/' and '..' not in parsed, parsed
-        return drv, root, parsed
-
-class RecordPath(pathlib.PurePosixPath):
-    _flavour = _RecordPathFlavour()
-
-    def as_inpath(self, *, suffix=None):
-        assert self.is_absolute(), repr(self)
-        inpath = pathlib.PurePosixPath(*self.parts[1:])
-        if suffix is not None:
-            inpath = inpath.with_suffix(suffix)
-        return inpath
-
-    def __truediv__(self, other):
-        return RecordPath(self, other)
-
-    def __format__(self, fmt):
-        if fmt == 'join':
-            assert self.parts[0] == '/', self
-            return '-'.join(self.parts[1:])
-        return super().__format__(fmt)
 
 class RecordsManager:
     Dict = OrderedDict
@@ -57,21 +24,25 @@ class RecordsManager:
     def clear_cache(self):
         self.cache = dict()
 
-    def absorb(self, data, *, overwrite=True):
+    def absorb(self, data, path=RecordPath(), *, overwrite=True):
+        if not isinstance(path, RecordPath):
+            raise TypeError(type(path))
+        for part in reversed(path.parts):
+            data = {part : data}
         self._absorb_into(data, RecordPath(), self.records, overwrite=overwrite)
         self.clear_cache()
 
     def delete(self, path):
         if not isinstance(path, RecordPath):
-            raise RuntimeError(type(path))
-        if path.name == '':
+            raise TypeError(type(path))
+        if path.is_root():
             raise RuntimeError("Deleting root is impossible")
         self._delete_record(path)
         self.clear_cache()
 
     def clear(self, path=RecordPath()):
         if not isinstance(path, RecordPath):
-            raise RuntimeError(type(path))
+            raise TypeError(type(path))
         self._clear_record(path)
         self.clear_cache()
 
@@ -94,22 +65,20 @@ class RecordsManager:
             raise RecordError("Only able to absorb a dict, found {!r}"
                 .format(type(data)) )
         for key, value in dict_ordered_items(data):
-            self._absorb_item_into(key, value, path, record, overwrite=overwrite)
+            self._absorb_item_into(
+                key, value, path, record, overwrite=overwrite )
 
     def _absorb_item_into(self, key, value, path, record, *, overwrite=True):
-        if isinstance(key, RecordPath):
-            if key == RecordPath():
-                return self._absorb_into( value, path, record,
-                    overwrite=overwrite )
-            return self._absorb_item_into(
-                key.parent, {key.name : value},
-                path, record,
-                overwrite=overwrite )
-        elif isinstance(key, str):
-            pass
-        else:
+        if not isinstance(key, str):
             raise RecordError("Only able to absorb string keys, found {!r}"
                 .format(type(key)) )
+        if '/' in key:
+            if key.startswith('/'):
+                raise ValueError(key)
+            data = value
+            for part in reversed(RecordPath(key).parts):
+                data = {part : data}
+            return self._absorb_into(data, path, record, overwrite=overwrite)
 
         if key.startswith('$'):
             if overwrite or key not in record:
@@ -120,8 +89,9 @@ class RecordsManager:
             child_record = record.get(key)
             if child_record is None:
                 child_record = self._create_record(
-                    path/key, parent_record=record, key=key)
-            self._absorb_into(value, path/key, child_record, overwrite=overwrite)
+                    path/key, parent_record=record, key=key )
+            self._absorb_into(
+                value, path/key, child_record, overwrite=overwrite )
 
     def _create_record(self, path, parent_record, key):
         record = parent_record[key] = self.Dict()
@@ -145,7 +115,7 @@ class RecordsManager:
 
     def getitem(self, path, *, original=False):
         if not isinstance(path, RecordPath):
-            raise RuntimeError(type(path))
+            raise TypeError(type(path))
         use_cache = not original
         if use_cache:
             try:
@@ -153,16 +123,17 @@ class RecordsManager:
             except KeyError:
                 pass
 
-        name = path.name
-        if name == '':
+        if path.is_root():
             record = self._get_root(original=original)
-        elif name.startswith('$'):
-            raise ValueError(path)
         else:
+            name = path.name
+            if name.startswith('$'):
+                raise ValueError(path)
             try:
                 # Recurse, making use of cache
                 parent_record = self.getitem(path.parent, original=original)
-                record = self._get_child(parent_record, name, original=original)
+                record = self._get_child(
+                    parent_record, name, original=original )
             except RecordNotFoundError as error:
                 if error.args == ():
                     raise RecordNotFoundError(
@@ -177,7 +148,7 @@ class RecordsManager:
         record = self.records
         if not original:
             record = record.copy()
-            self.derive_attributes({}, record, name=None)
+            self._derive_attributes({}, record, name=None)
         return record
 
     def _get_child(self, record, name, *, original=False):
@@ -188,10 +159,10 @@ class RecordsManager:
         assert isinstance(child_record, dict), child_record
         if not original:
             child_record = child_record.copy()
-            self.derive_attributes(record, child_record, name)
+            self._derive_attributes(record, child_record, name)
         return child_record
 
-    def derive_attributes(self, parent_record, child_record, name):
+    def _derive_attributes(self, parent_record, child_record, name):
         pass
 
     def items(self, path=RecordPath()):
@@ -205,13 +176,13 @@ class RecordsManager:
 
     def keys(self, path=RecordPath()):
         """Yield paths."""
-        for a_path, record in self.items(path=path):
-            yield a_path
+        for subpath, subrecord in self.items(path=path):
+            yield subpath
 
     def values(self, path=RecordPath()):
         """Yield paths."""
-        for a_path, record in self.items(path=path):
-            yield record
+        for subpath, subrecord in self.items(path=path):
+            yield subrecord
 
     def __contains__(self, path):
         try:

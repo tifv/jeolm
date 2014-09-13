@@ -14,7 +14,7 @@ import jeolm.metadata
 from jeolm.commands import review
 from jeolm.diffprint import log_metadata_diff
 
-from jeolm.records import RecordPath
+from jeolm.record_path import RecordPath
 from jeolm.target import Target, TargetError
 
 import logging
@@ -246,25 +246,24 @@ class Completer:
 
         uncompleted_path = RecordPath(uncompleted_arg)
 
-        if uncompleted_path.name == '':
-            uncompleted_parent = RecordPath('/')
+        if uncompleted_path.is_root():
+            uncompleted_parent = uncompleted_path
             uncompleted_name = ''
         elif uncompleted_arg.endswith('/'):
             uncompleted_parent = uncompleted_path
             uncompleted_name = ''
             if self._is_target(uncompleted_parent):
-                yield str(uncompleted_parent) + '/'
+                yield str(uncompleted_parent)
         else:
             uncompleted_parent = uncompleted_path.parent
             uncompleted_name = uncompleted_path.name
 
         for path in self._list_subtargets(uncompleted_parent):
-            if uncompleted_parent != path.parent:
-                continue
+            assert uncompleted_parent == path.parent, path
             name = path.name
             if not name.startswith(uncompleted_name):
                 continue
-            yield str(uncompleted_parent/name) + '/'
+            yield str(uncompleted_parent/name)
 
     def readline_completer(self, text, state):
         try:

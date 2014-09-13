@@ -96,8 +96,8 @@ import abc
 
 from pathlib import PurePosixPath
 
-from ..records import ( RecordsManager, RecordPath,
-    RecordError, RecordNotFoundError )
+from ..record_path import RecordPath
+from ..records import RecordsManager, RecordError, RecordNotFoundError
 
 from ..target import Target, TargetError
 
@@ -147,7 +147,7 @@ class Decorationer(type):
                     raise RuntimeError
                 if key in namespace:
                     # ignore this version of decorator, since it is coming
-                    # from the 'later' base.
+                    # from the later base.
                     continue
                 namespace[key] = value
         namespace['inclass_decorator'] = metacls.mark_inclass_decorator
@@ -210,6 +210,10 @@ class Driver(RecordsManager, metaclass=DriverMetaclass):
                 '\n'.join(driver_messages)
             ) from error
 
+    if __debug__:
+        def fold_driver_errors(cls):
+            yield
+
     @inclass_decorator
     def folding_driver_errors(method):
         """In-class decorator."""
@@ -218,6 +222,11 @@ class Driver(RecordsManager, metaclass=DriverMetaclass):
             with self.fold_driver_errors():
                 return method(self, *args, **kwargs)
         return wrapper
+
+    if __debug__:
+        @inclass_decorator
+        def folding_driver_errors(method):
+            return method
 
     @classmethod
     @contextmanager
@@ -312,6 +321,7 @@ class Driver(RecordsManager, metaclass=DriverMetaclass):
         for name in self.getitem(metapath):
             if name.startswith('$'):
                 continue
+            assert '/' not in name
             submetapath = metapath / name
             if self.getitem(submetapath)['$target$able']:
                 yield submetapath
@@ -454,18 +464,18 @@ class Driver(RecordsManager, metaclass=DriverMetaclass):
     ##########
     # Record extension
 
-    def derive_attributes(self, parent_record, child_record, name):
+    def _derive_attributes(self, parent_record, child_record, name):
         parent_path = parent_record.get('$path')
         if parent_path is None:
             path = RecordPath()
         else:
-            path = parent_path/name
+            path = parent_path / name
         child_record['$path'] = path
         child_record.setdefault('$target$able',
             parent_record.get('$target$able', True) )
         child_record.setdefault('$build$able',
             parent_record.get('$build$able', True) )
-        super().derive_attributes(parent_record, child_record, name)
+        super()._derive_attributes(parent_record, child_record, name)
 
     def _get_child(self, record, name, *, original, **kwargs):
         child_record = super()._get_child(
@@ -474,8 +484,9 @@ class Driver(RecordsManager, metaclass=DriverMetaclass):
             return child_record
         if '$include' in child_record:
             path = child_record['$path']
-            for name in child_record.pop('$include'):
-                included = self.getitem(path/name, original=True)
+            for include_name in child_record.pop('$include'):
+                included = self.getitem(
+                    RecordPath(path, include_name), original=True )
                 self._include_dict(child_record, included)
         return child_record
 
@@ -505,21 +516,19 @@ class Driver(RecordsManager, metaclass=DriverMetaclass):
             return method(self, target, metarecord=metarecord, **kwargs)
         return wrapper
 
+    # FIXME targetable subpaths of untargetable paths
+    # FIXME root must be included if targetable
     def generate_metapaths(self, path=None):
         """Yield metapaths."""
         if path is None:
             path = RecordPath()
-            root = True
-        else:
-            root = False
         record = self.getitem(path)
-        if not record.get('$target$able', True):
-            return
-        if not root:
+        if record.get('$target$able', True):
             yield path
         for key in record:
             if key.startswith('$'):
                 continue
+            assert '/' not in key
             yield from self.generate_metapaths(path=path/key)
 
     ##########
@@ -592,14 +601,17 @@ class Driver(RecordsManager, metaclass=DriverMetaclass):
             super().__init__()
 
     class SourceBodyItem(MetabodyItem):
-        __slots__ = ['inpath', 'alias', 'figure_map']
+        __slots__ = ['metapath', 'alias', 'figure_map']
 
-        def __init__(self, inpath):
-            if not isinstance(inpath, PurePosixPath) or \
-                    inpath.is_absolute():
-                raise RuntimeError(inpath)
-            self.inpath = inpath
+        def __init__(self, metapath):
+            if not isinstance(metapath, RecordPath):
+                raise RuntimeError(metapath)
+            self.metapath = metapath
             super().__init__()
+
+        @property
+        def inpath(self):
+            return self.metapath.as_inpath(suffix='.tex')
 
     class RequiredPackageBodyItem(MetabodyItem):
         __slots__ = ['package_name']
@@ -623,7 +635,7 @@ class Driver(RecordsManager, metaclass=DriverMetaclass):
         if item.keys() == {'verbatim'}:
             return cls.VerbatimBodyItem(verbatim=item['verbatim'])
         if item.keys() == {'source'}:
-            return cls.SourceBodyItem(inpath=item['source'])
+            return cls.SourceBodyItem(metapath=item['source'])
         if item.keys() == {'required_package'}:
             return cls.RequiredPackageBodyItem(
                 package_name=item['required_package'] )
@@ -734,7 +746,7 @@ class Driver(RecordsManager, metaclass=DriverMetaclass):
                 not metarecord.get('$build$able', True):
             raise DriverError( "Target {target} is not buildable"
                 .format(target=target) )
-        if target.path == RecordPath():
+        if target.path.is_root():
             raise DriverError("Direct building of '/' is prohibited." )
         if '$build$special' in metarecord:
             return self.generate_special_outrecord(target, metarecord)
@@ -971,7 +983,7 @@ class Driver(RecordsManager, metaclass=DriverMetaclass):
             return # recurse
         for required_package in metarecord.get('$required$packages', ()):
             yield {'required_package' : required_package}
-        yield {'source' : target.path.as_inpath(suffix='.tex')}
+        yield {'source' : target.path}
         if ( '$date' in metarecord and
             'multidate' in target.flags and
             'no-date' not in target.flags
@@ -1076,9 +1088,10 @@ class Driver(RecordsManager, metaclass=DriverMetaclass):
             assert isinstance(item, self.MetabodyItem), type(item)
             if isinstance(item, self.SourceBodyItem):
                 inpath = item.inpath
-                metarecord = self.getitem(RecordPath(inpath.with_suffix('')))
+                metarecord = self.getitem(item.metapath)
                 if not metarecord.get('$source$able', False):
-                    raise RecordNotFoundError(inpath)
+                    raise DriverError( "Path {path} is not sourceable"
+                        .format(path=item.metapath) )
                 alias = item.alias = self.select_alias(
                     inpath, suffix='.in.tex' )
                 self.check_and_set(sources, alias, inpath)
@@ -1162,6 +1175,8 @@ class Driver(RecordsManager, metaclass=DriverMetaclass):
         figure_type is one of 'asy', 'eps', 'svg'.
         """
         try:
+            assert figure_path.suffix == '', figure_path
+            assert figure_path.parent.suffix == '', figure_path
             metarecord = self.getitem(figure_path)
         except RecordNotFoundError as error:
             raise DriverError('Figure not found') from error
@@ -1189,7 +1204,7 @@ class Driver(RecordsManager, metaclass=DriverMetaclass):
             inpath = PurePosixPath(accessed_path_s)
             yield alias_name, inpath
             yield from self.trace_asy_accessed(
-                RecordPath(inpath.with_suffix('')),
+                RecordPath.from_inpath(inpath.with_suffix('')),
                 seen_paths=seen_paths )
 
     ##########

@@ -3,7 +3,7 @@ import re
 from collections.abc import Container, Sequence, Mapping
 import traceback
 
-from .records import RecordPath
+from .record_path import RecordPath
 
 class TargetError(Exception):
     pass
@@ -317,7 +317,7 @@ class Target:
         if not isinstance(s, str):
             raise TargetError(type(s))
         flagged_match = self.flagged_pattern.match(s)
-        subpath = self.path / flagged_match.group('key')
+        subpath = RecordPath(self.path, flagged_match.group('key'))
         flags_s = flagged_match.group('flags')
         if flags_s is not None:
             flags = frozenset(flags_s.split(','))

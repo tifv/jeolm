@@ -13,7 +13,7 @@ import jeolm.latex_node
 import jeolm.records
 import jeolm.target
 
-from jeolm.records import RecordPath
+from jeolm.record_path import RecordPath
 
 import logging
 logger = logging.getLogger(__name__) # pylint: disable=invalid-name
@@ -97,7 +97,9 @@ class DocumentNodeFactory:
 
     def _prebuild_document(self, target):
         recipe = self.driver.produce_outrecord(target)
-        build_subdir = self.build_dir_node.path / recipe['buildname']
+        buildname = recipe['buildname']
+        assert '/' not in buildname
+        build_subdir = self.build_dir_node.path / buildname
         build_subdir_node = jeolm.node.DirectoryNode(
             name='document:{}:dir'.format(target),
             path=build_subdir, parents=False,
@@ -260,10 +262,12 @@ class DocumentNodeFactory:
         return pdf_node
 
     def _prebuild_exposed_document(self, target, recipe, document_node):
+        outname = recipe['outname']
+        assert '/' not in outname
         return jeolm.node.LinkedFileNode(
             name='document:{}:exposed'.format(target),
             source=document_node,
-            path=(self.local.root/recipe['outname']).with_suffix(
+            path=(self.local.root/outname).with_suffix(
                 document_node.path.suffix )
         )
 
@@ -293,7 +297,9 @@ class PackageNodeFactory:
 
     def _prebuild_package(self, metapath):
         package_record = self.driver.produce_package_record(metapath)
-        build_subdir = self.build_dir_node.path / package_record['buildname']
+        buildname = package_record['buildname']
+        assert '/' not in buildname
+        build_subdir = self.build_dir_node.path / buildname
         build_subdir_node = jeolm.node.DirectoryNode(
             name='package:{}:dir'.format(metapath),
             path=build_subdir, parents=False,
@@ -353,10 +359,14 @@ class PackageNodeFactory:
             cwd=build_dir )
         return sty_node
 
+    # pylint: disable=unused-argument,unused-variable
+
     def _prebuild_sty_package(self, metapath, package_record,
         *, build_dir_node
     ):
         return self.source_node_factory(package_record['source'])
+
+    # pylint: enable=unused-argument,unused-variable
 
 
 class FigureNodeFactory:
@@ -383,7 +393,9 @@ class FigureNodeFactory:
 
     def _prebuild_figure(self, metapath):
         figure_record = self.driver.produce_figure_record(metapath)
-        build_subdir = self.build_dir_node.path / figure_record['buildname']
+        buildname = figure_record['buildname']
+        assert '/' not in buildname
+        build_subdir = self.build_dir_node.path / buildname
         build_subdir_node = jeolm.node.DirectoryNode(
             name='figure:{}:dir'.format(metapath),
             path=build_subdir, parents=False,
@@ -462,8 +474,12 @@ class FigureNodeFactory:
             cwd=build_dir )
         return eps_node
 
+    # pylint: disable=unused-argument,unused-variable
+
     def _prebuild_eps_figure(self, metapath, figure_record, *, build_dir_node):
         return self.source_node_factory(figure_record['source'])
+
+    # pylint: enable=unused-argument,unused-variable
 
 
 class SourceNodeFactory:

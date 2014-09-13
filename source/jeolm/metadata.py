@@ -10,7 +10,8 @@ from pathlib import PurePosixPath
 from .utils import unique
 
 from . import yaml
-from .records import RecordsManager, RecordPath
+from .record_path import RecordPath
+from .records import RecordsManager
 
 import logging
 logger = logging.getLogger(__name__) # pylint: disable=invalid-name
@@ -21,10 +22,10 @@ class MetadataManager(RecordsManager):
 
     source_types = {
         ''      : 'directory',
-        '.tex'  : 'latex',
-        '.dtx'  : 'latex documented style',
-        '.sty'  : 'latex style',
-        '.asy'  : 'asymptote image',
+        '.tex'  : 'LaTeX source',
+        '.dtx'  : 'LaTeX documented style',
+        '.sty'  : 'LaTeX style',
+        '.asy'  : 'Asymptote image',
         '.svg'  : 'SVG image',
         '.eps'  : 'EPS image',
         '.yaml' : 'metadata in YAML',
@@ -59,18 +60,15 @@ class MetadataManager(RecordsManager):
 
     def feed_metadata(self, metarecords, *, warn_dropped_keys=True):
         for metainpath, record in self.items():
-            if metainpath.suffix == '':
+            if metainpath.is_root() or metainpath.suffix == '':
                 assert '$metadata' not in record
                 continue
             elif metainpath.suffix == '.yaml':
                 metapath = metainpath.parent
             else:
-                if len(metainpath.suffixes) > 1:
-                    raise ValueError(metainpath)
                 metapath = metainpath.with_suffix('')
             metadata = record.get('$metadata')
-            if metadata is not None:
-                metarecords.absorb({metapath : metadata}, overwrite=False)
+            metarecords.absorb(metadata, metapath, overwrite=False)
         if warn_dropped_keys:
             for metapath, metarecord in metarecords.items():
                 self.check_dropped_metarecord_keys(
@@ -82,12 +80,12 @@ class MetadataManager(RecordsManager):
         if not isinstance(inpath, PurePosixPath):
             raise RuntimeError(type(inpath))
         path = self.local.source_dir/inpath
-        metainpath = RecordPath(inpath)
+        metainpath = RecordPath.from_inpath(inpath)
 
         exists = path.exists()
         recorded = metainpath in self
         if not exists:
-            assert metainpath.name # non-empty path
+            assert not metainpath.is_root()
             if recorded:
                 self.delete(metainpath)
             else:
@@ -108,19 +106,16 @@ class MetadataManager(RecordsManager):
                 "Reviewed directory has suffix: {}".format(inpath) )
         assert is_dir == (suffix == ''), (is_dir, suffix)
         if is_dir and recorded and recursive:
-            if __debug__ and metainpath == RecordPath('/'):
-                assert self.getitem(metainpath, original=True) is self.records
-                logger.debug('All metadata cleared.')
             self.clear(metainpath)
         if is_dir:
             if recursive:
-                self.review_subpaths(inpath)
-            self.absorb({metainpath : None})
+                self._review_subpaths(inpath)
+            self.absorb(None, metainpath)
             return
-        metadata = self.query_file(inpath)
-        self.absorb({metainpath : {'$metadata' : metadata}}, overwrite=True)
+        metadata = self._query_file(inpath)
+        self.absorb({'$metadata' : metadata}, metainpath, overwrite=True)
 
-    def review_subpaths(self, inpath):
+    def _review_subpaths(self, inpath):
         for subname in os.listdir(str(self.local.source_dir/inpath)):
             if subname.startswith('.'):
                 continue
@@ -145,25 +140,25 @@ class MetadataManager(RecordsManager):
                 continue
             self.review(subinpath, recursive=True)
 
-    def query_file(self, inpath):
+    def _query_file(self, inpath):
         filetype = inpath.suffix[1:]
-        query_method = getattr(self, 'query_{}_file'.format(filetype))
+        query_method = getattr(self, '_query_{}_file'.format(filetype))
         return query_method(inpath)
 
-    def query_yaml_file(self, inpath):
-        with (self.local.source_dir/inpath).open('r') as f:
-            metadata = yaml.load(f)
+    def _query_yaml_file(self, inpath):
+        with (self.local.source_dir/inpath).open('r') as yaml_file:
+            metadata = yaml.load(yaml_file)
         if not isinstance(metadata, dict):
             raise TypeError(
                 "Metadata in {} is of type {}, expected dictionary"
                 .format(inpath, type(metadata)) )
         return metadata
 
-    def query_tex_file(self, inpath):
-        with (self.local.source_dir/inpath).open('r') as f:
-            s = f.read()
+    def _query_tex_file(self, inpath):
+        with (self.local.source_dir/inpath).open('r') as tex_file:
+            tex_content = tex_file.read()
         metadata = {}
-        metadata.update(self.query_tex_content(inpath, s))
+        metadata.update(self._query_tex_content(inpath, tex_content))
         if '$build$special' not in metadata:
             metadata.setdefault('$source$able', True)
         elif metadata['$build$special'] == 'standalone':
@@ -174,25 +169,25 @@ class MetadataManager(RecordsManager):
                 .format(inpath) )
         return metadata
 
-    def query_tex_content(self, inpath, s):
+    def _query_tex_content(self, inpath, tex_content):
         metadata = OrderedDict()
-        metadata.update(self.query_tex_figures(inpath, s))
-        metadata.update(self.query_tex_sections(inpath, s))
-        metadata.update(self.query_tex_metadata(inpath, s))
+        metadata.update(self._query_tex_figures(inpath, tex_content))
+        metadata.update(self._query_tex_sections(inpath, tex_content))
+        metadata.update(self._query_tex_metadata(inpath, tex_content))
         return metadata
 
-    def query_tex_figures(self, inpath, s):
-        if self.tex_includegraphics_pattern.search(s) is not None:
+    def _query_tex_figures(self, inpath, tex_content):
+        if self.tex_includegraphics_pattern.search(tex_content) is not None:
             logger.warning("<BOLD><MAGENTA>{}<NOCOLOUR>: "
                 "<YELLOW>\\includegraphics<NOCOLOUR> command found<RESET>"
                 .format(inpath) )
         figures = unique(
             match.group('figure')
-            for match in self.tex_figure_pattern.finditer(s) )
-        metapath = RecordPath(inpath.with_suffix(''))
+            for match in self.tex_figure_pattern.finditer(tex_content) )
+        metapath = RecordPath.from_inpath(inpath.with_suffix(''))
         if figures:
             return {'$source$figures' : OrderedDict(
-                (figure, str((metapath / figure).as_inpath()))
+                (figure, str(RecordPath(metapath, figure).as_inpath()))
                 for figure in figures
             )}
         else:
@@ -203,18 +198,18 @@ class MetadataManager(RecordsManager):
     tex_includegraphics_pattern = re.compile(
         r'\\includegraphics')
 
-    def query_tex_sections(self, inpath, s):
+    def _query_tex_sections(self, inpath, tex_content):
         sections = [
             match.group('section')
-            for match in self.tex_section_pattern.finditer(s) ]
+            for match in self.tex_section_pattern.finditer(tex_content) ]
         return {'$source$sections' : sections} if sections else {}
 
     tex_section_pattern = re.compile(
         r'\\section\*?\{(?P<section>[^\{\}]*?)\}' )
 
-    def query_tex_metadata(self, inpath, s):
+    def _query_tex_metadata(self, inpath, tex_content):
         metadata = OrderedDict()
-        for match in self.tex_metadata_pattern.finditer(s):
+        for match in self.tex_metadata_pattern.finditer(tex_content):
             piece = match.group(0).splitlines()
             assert all(line.startswith('% ') for line in piece)
             piece = '\n'.join(line[2:] for line in piece)
@@ -233,27 +228,27 @@ class MetadataManager(RecordsManager):
         r'% \$[\w\$\-\[\],\{\}]+:.*'
         r'(?:\n% [ \-#].+)*')
 
-    def query_dtx_file(self, inpath):
-        with (self.local.source_dir/inpath).open('r') as f:
-            s = f.read()
+    def _query_dtx_file(self, inpath):
+        with (self.local.source_dir/inpath).open('r') as dtx_file:
+            dtx_content = dtx_file.read()
         metadata = {
             '$package$able' : True,
             '$package$type' : 'dtx',
             '$build$special' : 'latexdoc' }
-        metadata.update(self.query_package_content(inpath, s))
+        metadata.update(self._query_package_content(inpath, dtx_content))
         return metadata
 
-    def query_sty_file(self, inpath):
-        with (self.local.source_dir/inpath).open('r') as f:
-            s = f.read()
+    def _query_sty_file(self, inpath):
+        with (self.local.source_dir/inpath).open('r') as sty_file:
+            sty_content = sty_file.read()
         metadata = {
             '$package$able' : True,
             '$package$type' : 'sty' }
-        metadata.update(self.query_package_content(inpath, s))
+        metadata.update(self._query_package_content(inpath, sty_content))
         return metadata
 
-    def query_package_content(self, inpath, s):
-        match = self.package_name_pattern.search(s)
+    def _query_package_content(self, inpath, package_content):
+        match = self.package_name_pattern.search(package_content)
         if match is not None:
             package_name = match.group('package_name')
         else:
@@ -264,26 +259,26 @@ class MetadataManager(RecordsManager):
         r'\\ProvidesPackage\{(?P<package_name>[\w-]+)\}'
     )
 
-    def query_asy_file(self, inpath):
-        with (self.local.source_dir/inpath).open('r') as f:
-            s = f.read()
+    def _query_asy_file(self, inpath):
+        with (self.local.source_dir/inpath).open('r') as asy_file:
+            asy_content = asy_file.read()
         metadata = {
             '$figure$able' : True,
             '$figure$type$asy' : True }
-        metadata.update(self.query_asy_content(inpath, s))
+        metadata.update(self._query_asy_content(inpath, asy_content))
         return metadata
 
-    def query_asy_content(self, inpath, s):
-        metadata = self.query_asy_accessed(inpath, s)
+    def _query_asy_content(self, inpath, asy_content):
+        metadata = self._query_asy_accessed(inpath, asy_content)
         return metadata or {}
 
-    def query_asy_accessed(self, inpath, s):
-        metapath = RecordPath(inpath.with_suffix(''))
+    def _query_asy_accessed(self, inpath, asy_content):
+        metapath = RecordPath.from_inpath(inpath.with_suffix(''))
         accessed = OrderedDict()
-        for match in self.asy_access_pattern.finditer(s):
+        for match in self.asy_access_pattern.finditer(asy_content):
             alias_name = match.group('alias_name')
-            accessed_path_s = str((
-                metapath / match.group('accessed_path')
+            accessed_path_s = str(RecordPath(
+                metapath, match.group('accessed_path')
             ).as_inpath())
             accessed[alias_name] = accessed_path_s
         if accessed:
@@ -295,20 +290,23 @@ class MetadataManager(RecordsManager):
         r'(?m)^// access (?P<accessed_path>[-._a-zA-Z0-9/]*?\.asy) '
         r'as (?P<alias_name>[-a-zA-Z0-9]*?\.asy)$' )
 
-    def query_svg_file(self, inpath):
+    # pylint: disable=no-self-use,unused-argument
+
+    def _query_svg_file(self, inpath):
         metadata = {
             '$figure$able' : True,
             '$figure$type$svg' : True }
         return metadata
 
-    def query_eps_file(self, inpath):
+    def _query_eps_file(self, inpath):
         metadata = {
             '$figure$able' : True,
             '$figure$type$eps' : True }
         return metadata
 
+    # pylint: enable=no-self-use,unused-argument
+
     dropped_keys = {
-        '$required$packages' : ('$latex$packages', ),
         '$matter' : ('$fluid',),
         '$build$matter' : ('$manner', '$rigid', ),
         '$build$style' : ('$manner$style', '$manner$options',
