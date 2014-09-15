@@ -135,7 +135,7 @@ class RecordPath:
     def with_suffix(self, suffix):
         if '/' in suffix:
             raise ValueError(suffix)
-        if suffix and not suffix.startswith('.'):
+        if suffix and (not suffix.startswith('.') or suffix == '.'):
             raise ValueError(suffix)
         name = self.name
         return type(self)(
@@ -148,23 +148,10 @@ class RecordPath:
         if self.parts:
             yield from self.parent.ancestry
 
-#    def is_subpath(self, other):
-#        if len(other.parts) >= len(self.parts):
-#            return False
-#        return all(
-#            other_part == part
-#            for other_part, part in zip(other.parts, self.parts) )
-
     def as_inpath(self, *, suffix=None):
         if suffix is not None:
             self = self.with_suffix(suffix)
         return PurePosixPath(*self.parts)
-
-    def __format__(self, fmt):
-        if fmt == 'join':
-            return '-'.join(self.parts)
-        else:
-            return str(self)
 
     def __repr__(self):
         return '{cls.__qualname__}({parts})'.format(

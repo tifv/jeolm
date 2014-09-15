@@ -92,8 +92,9 @@ class DocumentNodeFactory:
         try:
             return self.nodes[target]
         except KeyError:
-            node = self.nodes[target] = self._prebuild_document(target)
-            return node
+            pass
+        node = self.nodes[target] = self._prebuild_document(target)
+        return node
 
     def _prebuild_document(self, target):
         recipe = self.driver.produce_outrecord(target)

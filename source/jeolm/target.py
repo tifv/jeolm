@@ -26,6 +26,9 @@ class UnutilizedFlagError(FlagError):
         super().__init__(message)
 
 class FlagContainer(Container):
+    """
+    An immutable set-like container, which tracks usage of its elements.
+    """
     __slots__ = [
         'flags', 'utilized_flags', 'children',
         'origin', '_as_frozenset' ]
@@ -85,7 +88,10 @@ class FlagContainer(Container):
         return {flag for flag in iterable if contains(flag)}
 
     def utilize(self, iterable):
-        if not self.issuperset(iterable): # implicit utilize
+        """
+        Ensure that iterable elements are present in container and utilized.
+        """
+        if not self.issuperset(iterable):
             raise RuntimeError(self, iterable)
 
     @property
@@ -147,11 +153,11 @@ class FlagContainer(Container):
         if not matched_items:
             return default
         if len(matched_items) > 1:
-            joined_flagsets = ', '.join(
-                "{!r}".format(flagset) for flagset in matched_items )
             raise FlagError(
                 "Multiple flag sets matched, ambiguity unresolved: {}"
-                .format(joined_flagsets) )
+                .format(', '.join(
+                    "{!r}".format(flagset) for flagset in matched_items
+                )) )
         (matched_flagset, matched_value), = matched_items.items()
         self.utilize(matched_flagset)
         return matched_value
@@ -186,14 +192,20 @@ class FlagContainer(Container):
             .union(union, origin=origin) )
 
     def bastard(self, iterable, *, origin=None):
+        """
+        This child that will just override all the flags.
+
+        Useful in case where flag usage tracking is still needed on
+        a completely new set of flags.
+        """
         iterable = list(iterable)
         if iterable:
             return self.child(iterable, ChildFlagContainer, origin=origin)
         else:
             return self
 
-    def child(self, iterable, ChildFlagContainer, *, origin=None):
-        child = ChildFlagContainer(iterable, parent=self, origin=origin)
+    def child(self, iterable, child_class, *, origin=None):
+        child = child_class(iterable, parent=self, origin=origin)
         self.children.append(child)
         return child
 
@@ -208,7 +220,7 @@ class FlagContainer(Container):
             child.check_unutilized_flags()
 
     def __format__(self, fmt):
-        if fmt == 'flags':
+        if fmt == 'optional':
             sorted_flags = sorted(self.as_frozenset)
             if not sorted_flags:
                 return ''
@@ -259,11 +271,11 @@ class NegativeFlagContainer(ChildFlagContainer):
     def _contains(self, flag,
         *, utilize_present=True, utilize_missing=True
     ):
-        if super()._contains(flag,
+        if super()._contains( flag,
             utilize_present=utilize_missing, utilize_missing=utilize_present
         ):
             return False
-        elif self.parent._contains(flag,
+        elif self.parent._contains( flag,
             utilize_present=utilize_present, utilize_missing=utilize_missing
         ):
             return True
@@ -367,14 +379,8 @@ class Target:
                 .format(target=self)
             ) from error
 
-    def __format__(self, fmt):
-        if fmt == 'outname':
-            return '{self.path:join}{self.flags:flags}'.format(self=self)
-        else:
-            return super().__format__(fmt)
-
     def __str__(self):
-        return '{self.path!s}{self.flags:flags}'.format(self=self)
+        return '{self.path!s}{self.flags:optional}'.format(self=self)
 
     def __repr__(self):
         return ( '{self.__class__.__qualname__}'

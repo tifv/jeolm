@@ -829,10 +829,11 @@ class Driver(RecordsManager, metaclass=DriverMetaclass):
             return options
 
     def select_outname(self, target, metarecord, date=None):
-        outname = '{target:outname}'.format(target=target)
+        outname_pieces = []
         if isinstance(date, datetime.date):
-            date_prefix = '{0.year:04}-{0.month:02}-{0.day:02}'.format(date)
-            outname = date_prefix + '-' + outname
+            outname_pieces.append(date.isoformat())
+        outname_pieces.extend(target.path.parts)
+        outname = '-'.join(outname_pieces) + '{:optional}'.format(target.flags)
         assert '/' not in outname, repr(outname)
         return outname
 
@@ -1142,7 +1143,7 @@ class Driver(RecordsManager, metaclass=DriverMetaclass):
         assert not inpath.is_absolute(), inpath
 
         figure_record = dict()
-        figure_record['buildname'] = figure_path.__format__('join')
+        figure_record['buildname'] = '-'.join(figure_path.parts)
         figure_record['source'] = inpath
         figure_record['type'] = figure_type
 
@@ -1218,7 +1219,7 @@ class Driver(RecordsManager, metaclass=DriverMetaclass):
         assert not inpath.is_absolute(), inpath
 
         package_record = dict()
-        package_record['buildname'] = package_path.__format__('join')
+        package_record['buildname'] = '-'.join(package_path.parts)
         package_record['source'] = inpath
         package_record['type'] = package_type
         package_record['name'] = package_name
