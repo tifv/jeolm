@@ -211,22 +211,36 @@ class Driver(RecordsManager, metaclass=DriverMetaclass):
             ) from error
 
     if __debug__:
+        @classmethod
+        @contextmanager
         def fold_driver_errors(cls):
             yield
 
     @inclass_decorator
-    def folding_driver_errors(method):
-        """In-class decorator."""
-        @wraps(method)
-        def wrapper(self, *args, **kwargs):
-            with self.fold_driver_errors():
-                return method(self, *args, **kwargs)
-        return wrapper
+    def folding_driver_errors(*, wrap_generator=False):
+        """In-class decorator factory."""
+        def decorator(method):
+            if not wrap_generator:
+                @wraps(method)
+                def wrapper(self, *args, **kwargs):
+                    with self.fold_driver_errors():
+                        return method(self, *args, **kwargs)
+            else:
+                @wraps(method)
+                def wrapper(self, *args, **kwargs):
+                    with self.fold_driver_errors():
+                        yield from method(self, *args, **kwargs)
+            return wrapper
+        return decorator
 
     if __debug__:
         @inclass_decorator
-        def folding_driver_errors(method):
-            return method
+        def folding_driver_errors(*, wrap_generator=False):
+            """In-class decorator factory."""
+            def decorator(method):
+                return method
+            return decorator
+
 
     @classmethod
     @contextmanager
@@ -285,7 +299,7 @@ class Driver(RecordsManager, metaclass=DriverMetaclass):
     class NoDelegators(Exception):
         pass
 
-    @folding_driver_errors
+    @folding_driver_errors(wrap_generator=True)
     def list_delegated_targets(self, *targets, recursively=True):
         if not recursively and len(targets) != 1:
             raise RuntimeError
@@ -306,6 +320,7 @@ class Driver(RecordsManager, metaclass=DriverMetaclass):
             else:
                 yield from delegators
 
+    @folding_driver_errors(wrap_generator=True)
     def list_metapaths(self):
         if self.metapath_list_cache is not None:
             yield from self.metapath_list_cache
@@ -314,9 +329,11 @@ class Driver(RecordsManager, metaclass=DriverMetaclass):
                 list(self.generate_metapaths())
             yield from metapath_list
 
+    @folding_driver_errors(wrap_generator=False)
     def metapath_is_targetable(self, metapath):
         return self.getitem(metapath)['$target$able']
 
+    @folding_driver_errors(wrap_generator=False)
     def list_targetable_children(self, metapath):
         for name in self.getitem(metapath):
             if name.startswith('$'):
@@ -326,7 +343,7 @@ class Driver(RecordsManager, metaclass=DriverMetaclass):
             if self.getitem(submetapath)['$target$able']:
                 yield submetapath
 
-    @folding_driver_errors
+    @folding_driver_errors(wrap_generator=False)
     def produce_outrecord(self, target):
         """
         Return outrecord.
@@ -382,7 +399,7 @@ class Driver(RecordsManager, metaclass=DriverMetaclass):
             keys >= {'name'}
         return outrecord
 
-    @folding_driver_errors
+    @folding_driver_errors(wrap_generator=False)
     def produce_figure_record(self, figure_path):
         """
         Return figure_record.
@@ -415,7 +432,7 @@ class Driver(RecordsManager, metaclass=DriverMetaclass):
             keys >= {'accessed_sources'}
         return figure_record
 
-    @folding_driver_errors
+    @folding_driver_errors(wrap_generator=False)
     def produce_package_record(self, package_path):
         """
         Return package_record.
@@ -441,6 +458,7 @@ class Driver(RecordsManager, metaclass=DriverMetaclass):
         assert package_record['type'] in {'dtx', 'sty'}
         return package_record
 
+    @folding_driver_errors(wrap_generator=True)
     def list_inpaths(self, *targets, inpath_type='tex'):
         if inpath_type not in {'tex', 'asy'}:
             raise RuntimeError(inpath_type)
