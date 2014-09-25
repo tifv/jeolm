@@ -294,54 +294,93 @@ class Target:
 
     def __init__(self, path, flags, *, origin=None):
         super().__init__()
-        self.path = RecordPath(path)
+        if not isinstance(path, RecordPath):
+            raise TypeError(type(path))
+        self.path = path
         if not isinstance(flags, FlagContainer):
             flags = FlagContainer(flags, origin=origin)
         elif origin is not None:
             raise RuntimeError(origin)
         self.flags = flags
 
-    flagged_pattern = re.compile(
-        r'^(?P<key>[^\[\]]+)'
+    _pattern = re.compile(
+        r'^(?P<path>[^\[\]]+)'
         r'(?:\['
-            r'(?P<flags>.+)'
+            r'(?P<flags>[^\[\]]*)'
         r'\])?$' )
 
     @classmethod
     def from_string(cls, string, *, origin=None):
-        flagged_match = cls.flagged_pattern.match(string)
-        if flagged_match is None:
-            raise TargetError(
-                "Failed to parse target '{}'.".format(string) )
-        path = RecordPath(flagged_match.group('key'))
-        flags_s = flagged_match.group('flags')
-        if flags_s is not None:
-            flags = frozenset(flags_s.split(','))
-        else:
-            flags = frozenset()
+        if not isinstance(string, str):
+            raise TargetError(type(string))
+        match = cls._pattern.match(string)
+        if match is None:
+            raise TargetError( "Failed to parse target '{}'."
+                .format(string) )
+        return cls._from_match(match, origin=origin)
+
+    @classmethod
+    def _from_match(cls, match, *, origin=None):
+        path = RecordPath(match.group('path'))
+        flags_group = match.group('flags')
+        try:
+            flags = cls._split_flags_group(flags_group)
+        except TargetError as error:
+            raise TargetError( "Error while parsing subtarget '{}' flags."
+                .format(match.group(0))) from error
         if any(flag.startswith('-') for flag in flags):
-            raise TargetError(
-                "Target '{}' contains negative flags.".format(string) )
+            raise TargetError( "Target '{}' contains a negative flag."
+                .format(match.group(0)) )
         return cls(path, flags, origin=origin)
 
     def derive_from_string(self, string, *, origin=None):
         if not isinstance(string, str):
             raise TargetError(type(string))
-        flagged_match = self.flagged_pattern.match(string)
-        subpath = RecordPath(self.path, flagged_match.group('key'))
-        flags_s = flagged_match.group('flags')
-        if flags_s is not None:
-            flags = frozenset(flags_s.split(','))
-        else:
-            flags = frozenset()
-        positive = {flag for flag in flags if not flag.startswith('-')}
-        negative = {flag[1:] for flag in flags if flag.startswith('-')}
-        if any(flag.startswith('-') for flag in negative):
-            raise TargetError("Double-negative flag in string '{}'"
+        match = self._pattern.match(string)
+        if match is None:
+            raise TargetError( "Failed to parse subtarget '{}'."
                 .format(string) )
+        return self._derive_from_match(match)
+
+    def _derive_from_match(self, match, *, origin=None):
+        subpath = RecordPath(self.path, match.group('path'))
+        flags_group = match.group('flags')
+        try:
+            flags = self._split_flags_group(flags_group)
+        except TargetError as error:
+            raise TargetError( "Error while parsing subtarget '{}' flags."
+                .format(match.group(0)) ) from error
+        positive = set()
+        negative = set()
+        for flag in flags:
+            if not flag.startswith('-'):
+                positive.add(flag)
+            else:
+                negative.add(flag[1:])
+        if any(flag.startswith('-') for flag in negative):
+            raise TargetError(
+                "Subtarget '{}' contains a double-negative flag."
+                .format(match.group(0)) )
         subflags = self.flags.delta(
             union=positive, difference=negative, origin=origin )
         return self.__class__(subpath, subflags)
+
+    @classmethod
+    def _split_flags_group(cls, flags_group):
+        if flags_group is None:
+            return frozenset()
+        flag_list = []
+        for piece in flags_group.split(','):
+            flag = piece.strip()
+            if not flag:
+                continue
+            elif ' ' in flag:
+                raise TargetError("Flag '{}' contains a space".format(piece))
+            flag_list.append(flag)
+        flags = frozenset(flag_list)
+        if len(flags) != len(flag_list):
+            raise TargetError("Duplicated flags detected.")
+        return flags
 
     def __hash__(self):
         return hash((self.path, self.flags))

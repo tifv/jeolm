@@ -6,12 +6,12 @@ from pathlib import Path, PurePosixPath
 import pyinotify
 
 import jeolm
+import jeolm.commands
 import jeolm.local
 import jeolm.node
 import jeolm.node_factory
 import jeolm.metadata
 
-from jeolm.commands import review
 from jeolm.diffprint import log_metadata_diff
 
 from jeolm.record_path import RecordPath
@@ -34,10 +34,12 @@ def mainloop(local, text_node_factory):
     def review_metadata():
         with log_metadata_diff(md, logger=logger):
             review_list = md.generate_review_list()
-            assert isinstance(review_list, (list, tuple)), type(review_list)
+            assert review_list is not None
+            assert not isinstance(review_list, str), review_list
             for review_path in review_list:
                 try:
-                    review([review_path], local=local, md=md, recursive=True)
+                    jeolm.commands.review( [review_path],
+                        local=local, md=md, recursive=True )
                 except Exception: # pylint: disable=broad-except
                     traceback.print_exc()
                     logger.error(
@@ -50,30 +52,38 @@ def mainloop(local, text_node_factory):
 
     completer = Completer(driver=driver).readline_completer
     readline.set_completer(completer)
-    readline.set_completer_delims('')
+    readline.set_completer_delims(';')
     readline.parse_and_bind('tab: complete')
 
-    target = None
+    targets = []
     while True:
         try:
-            target_s = input('jeolm> ')
+            targets_string = input('jeolm> ')
         except (KeyboardInterrupt, EOFError):
             print()
             md.dump_metadata_cache()
             raise SystemExit
         review_metadata()
-        if target_s == '':
+        if not targets_string:
             pass # use previous target
+        elif targets_string == 'clean':
+            targets = []
+            jeolm.commands.clean(root=local.root)
         else:
             try:
-                target = Target.from_string(target_s)
+                targets = []
+                for piece in targets_string.split(';'):
+                    target_string = piece.strip()
+                    if not target_string:
+                        continue
+                    targets.append(Target.from_string(target_string))
             except TargetError:
                 traceback.print_exc()
                 continue
-        if target is None:
+        if not targets:
             continue
         try:
-            build(target, local, text_node_factory, driver)
+            build(targets, local, text_node_factory, driver)
         except subprocess.CalledProcessError as exception:
             if getattr(exception, 'reported', False):
                 continue
@@ -81,11 +91,11 @@ def mainloop(local, text_node_factory):
         except Exception: # pylint: disable=broad-except
             traceback.print_exc()
 
-def build(target, local, text_node_factory, driver):
+def build(targets, local, text_node_factory, driver):
     target_node_factory = jeolm.node_factory.TargetNodeFactory(
         local=local, driver=driver,
         text_node_factory=text_node_factory )
-    target_node = target_node_factory([target], delegate=True)
+    target_node = target_node_factory(targets, delegate=True)
     target_node.update()
 
 
@@ -241,6 +251,13 @@ class Completer:
 
     def complete_target(self, uncompleted_arg):
         """Return an iterator over completions."""
+        if '[' in uncompleted_arg or ']' in uncompleted_arg:
+            return
+        if uncompleted_arg.startswith(' '):
+            prefix = ' '
+            uncompleted_arg = uncompleted_arg.lstrip()
+        else:
+            prefix = ''
         if ' ' in uncompleted_arg:
             return
 
@@ -253,7 +270,7 @@ class Completer:
             uncompleted_parent = uncompleted_path
             uncompleted_name = ''
             if self._is_target(uncompleted_parent):
-                yield str(uncompleted_parent)
+                yield prefix + str(uncompleted_parent)
         else:
             uncompleted_parent = uncompleted_path.parent
             uncompleted_name = uncompleted_path.name
@@ -263,7 +280,7 @@ class Completer:
             name = path.name
             if not name.startswith(uncompleted_name):
                 continue
-            yield str(uncompleted_parent/name)
+            yield prefix + str(uncompleted_parent/name)
 
     def readline_completer(self, text, state):
         try:
@@ -279,7 +296,7 @@ class Completer:
 
 
 def main():
-    jeolm.setup_logging(verbose=True)
+    jeolm.setup_logging(verbose=True, concurrent=False)
     try:
         local = jeolm.local.LocalManager(root=Path.cwd())
     except jeolm.local.RootNotFoundError:
