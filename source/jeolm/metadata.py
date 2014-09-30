@@ -157,7 +157,7 @@ class MetadataManager(RecordsManager):
     def _query_tex_file(self, inpath):
         with (self.local.source_dir/inpath).open('r') as tex_file:
             tex_content = tex_file.read()
-        metadata = {}
+        metadata = OrderedDict()
         metadata.update(self._query_tex_content(inpath, tex_content))
         if '$build$special' not in metadata:
             metadata.setdefault('$source$able', True)
@@ -210,22 +210,33 @@ class MetadataManager(RecordsManager):
     def _query_tex_metadata(self, inpath, tex_content):
         metadata = OrderedDict()
         for match in self.tex_metadata_pattern.finditer(tex_content):
-            piece = match.group(0).splitlines()
-            assert all(line.startswith('% ') for line in piece)
-            piece = '\n'.join(line[2:] for line in piece)
+            piece_lines = match.group(0).splitlines()
+            assert all(line.startswith('% ') for line in piece_lines)
+            piece_lines = [line[2:] for line in piece_lines]
+            if match.group('append') is not None:
+                assert len(match.group('append')) == 3
+                piece_lines[0] = piece_lines[0][3:]
+                append = True
+            else:
+                append = False
+            piece = '\n'.join(piece_lines)
             piece_io = io.StringIO(piece)
             piece_io.name = inpath
             piece = yaml.load(piece_io)
-            if not isinstance(piece, dict):
-                logger.warning("<BOLD><MAGENTA>{}<NOCOLOUR>: "
+            if not isinstance(piece, dict) or len(piece) != 1:
+                logger.error("<BOLD><MAGENTA>{}<NOCOLOUR>: "
                     "unrecognized metadata piece<RESET>"
                     .format(inpath) )
-                logger.warning(piece)
-            metadata.update(piece)
+                raise ValueError(piece)
+            (key, value), = piece.items()
+            if append:
+                metadata.setdefault(key, []).append(value)
+            else:
+                metadata[key] = value
         return metadata
 
     tex_metadata_pattern = re.compile('(?m)^'
-        r'% \$[\w\$\-\[\],\{\}]+:.*'
+        r'% (?P<append>>> )?\$[\w\$\-_\[\],\{\}]+:.*'
         r'(?:\n% [ \-#].+)*')
 
     def _query_dtx_file(self, inpath):

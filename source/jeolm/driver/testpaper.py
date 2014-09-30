@@ -1,3 +1,5 @@
+from collections import OrderedDict
+
 from .regular import Driver, DriverError
 
 import logging
@@ -19,7 +21,7 @@ class TestPaperDriver(Driver):
 #            yield self.substitute_interrobang_section()
 #            yield {'required_package' : 'textcomp'}
             yield from super_matter
-            yield from self.generate_test_postword(target, metarecord)
+            yield from self._generate_test_postword(target, metarecord)
 #            yield self.substitute_endgroup()
         else:
             yield from super_matter
@@ -32,8 +34,8 @@ class TestPaperDriver(Driver):
 
     @processing_target_aspect(aspect='test postword', wrap_generator=True)
     @classifying_items(aspect='metabody', default='verbatim')
-    def generate_test_postword(self, target, metarecord):
-        problem_scores = metarecord.get('$test$problem-scores')
+    def _generate_test_postword(self, target, metarecord):
+        problem_scores = self._get_problem_scores(metarecord)
         mark_limits = metarecord.get('$test$mark-limits')
         test_duration = metarecord.get('$test$duration')
         has_problem_scores = ( problem_scores is not None and
@@ -49,13 +51,13 @@ class TestPaperDriver(Driver):
         postword_items = []
         if has_problem_scores:
             postword_items.append(
-                self.constitute_problem_scores(problem_scores) )
+                self._constitute_problem_scores(problem_scores) )
         if has_mark_limits:
             postword_items.append(
-                self.constitute_mark_limits(mark_limits) )
+                self._constitute_mark_limits(mark_limits) )
         if has_test_duration:
             postword_items.append(
-                self.constitute_test_duration(test_duration) )
+                self._constitute_test_duration(test_duration) )
         need_newline = False
         for item in postword_items:
             if need_newline:
@@ -68,12 +70,16 @@ class TestPaperDriver(Driver):
     end_postword_template = r'\end{flushright}'
 
     @classmethod
-    def constitute_problem_scores(cls, problem_scores):
-        score_items, score_sum = cls.flatten_score_items(problem_scores)
+    def _get_problem_scores(cls, metarecord):
+        return metarecord.get('$test$problem-scores')
+
+    @classmethod
+    def _constitute_problem_scores(cls, problem_scores):
+        score_items, score_sum = cls._flatten_score_items(problem_scores)
         return r'\({} = {}\)%'.format(''.join(score_items), score_sum)
 
     @classmethod
-    def flatten_score_items(cls, problem_scores, recursed=False):
+    def _flatten_score_items(cls, problem_scores, recursed=False):
         if isinstance(problem_scores, int):
             return [str(problem_scores)], problem_scores
         elif isinstance(problem_scores, dict):
@@ -89,7 +95,7 @@ class TestPaperDriver(Driver):
                 if not first:
                     score_items.append('+')
                 first = False
-                subitems, subsum = cls.flatten_score_items(item, recursed=True)
+                subitems, subsum = cls._flatten_score_items(item, recursed=True)
                 score_items.extend(subitems)
                 score_sum += subsum
             if recursed:
@@ -101,14 +107,14 @@ class TestPaperDriver(Driver):
                 "found {}".format(type(problem_scores)) )
 
     @classmethod
-    def constitute_mark_limits(cls, mark_limits):
+    def _constitute_mark_limits(cls, mark_limits):
         return r'\({}\)%'.format(',\ '.join(
             r'{score} \mapsto \mathbf{{{mark}}}'.format(mark=mark, score=score)
             for mark, score in sorted(mark_limits.items())
         ))
 
     @classmethod
-    def constitute_test_duration(cls, test_duration):
+    def _constitute_test_duration(cls, test_duration):
         if isinstance(test_duration, (int, float)):
             return '{}m'.format(test_duration)
         elif isinstance(test_duration, list):
