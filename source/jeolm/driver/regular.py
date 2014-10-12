@@ -97,9 +97,12 @@ import abc
 from pathlib import PurePosixPath
 
 from ..record_path import RecordPath
-from ..records import RecordsManager, RecordError, RecordNotFoundError
+from ..target import Target
+from ..records import RecordsManager
 
-from ..target import Target, TargetError
+from ..flags import FlagError
+from ..target import TargetError
+from ..records import RecordError, RecordNotFoundError
 
 import logging
 logger = logging.getLogger(__name__) # pylint: disable=invalid-name
@@ -181,7 +184,7 @@ class DriverMetaclass(Substitutioner, Decorationer):
 
 class Driver(RecordsManager, metaclass=DriverMetaclass):
 
-    driver_errors = frozenset((DriverError, TargetError, RecordError))
+    driver_errors = frozenset((DriverError, TargetError, RecordError, FlagError))
 
     def clear_cache(self):
         super().clear_cache()

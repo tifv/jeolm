@@ -328,7 +328,7 @@ class MetadataManager(RecordsManager):
     }
 
     @classmethod
-    def check_dropped_metarecord_keys(cls, metarecord, origin='somewhere'):
+    def check_dropped_metarecord_keys(cls, metarecord, origin):
         for modern_key, dropped_keys in cls.dropped_keys.items():
             assert not isinstance(dropped_keys, str), dropped_keys
             for dropped_key in dropped_keys:

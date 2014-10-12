@@ -4,6 +4,7 @@ from collections import OrderedDict
 from .utils import unique, dict_ordered_keys, dict_ordered_items
 
 from .record_path import RecordPath
+from .flags import FlagContainer
 
 import logging
 logger = logging.getLogger(__name__) # pylint: disable=invalid-name
@@ -238,26 +239,24 @@ class RecordsManager:
     flagged_pattern = re.compile(
         r'^(?P<key>[^\[\]]+)'
         r'(?:\['
-            r'(?P<flags>.+)'
+            r'(?P<flags>[^\[\]]*)'
         r'\])?$' )
 
     @classmethod
     def select_flagged_item(cls, mapping, stemkey, flags):
         assert isinstance(stemkey, str), type(stemkey)
         assert stemkey.startswith('$'), stemkey
+        assert isinstance(flags, FlagContainer), type(flags)
 
         flagset_mapping = dict()
         for key, value in mapping.items():
-            flagged_match = cls.flagged_pattern.match(key)
-            if flagged_match is None:
+            match = cls.flagged_pattern.match(key)
+            if match is None:
                 continue
-            if flagged_match.group('key') != stemkey:
+            if match.group('key') != stemkey:
                 continue
-            flagset_s = flagged_match.group('flags')
-            if flagset_s is None:
-                flagset = frozenset()
-            else:
-                flagset = frozenset(flagset_s.split(','))
+            flags_group = match.group('flags')
+            flagset = flags.split_flags_group(flags_group)
             if flagset in flagset_mapping:
                 raise RecordError("Clashing keys '{}' and '{}'"
                     .format(key, flagset_mapping[flagset][0]) )
