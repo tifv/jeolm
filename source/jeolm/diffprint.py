@@ -26,8 +26,8 @@ def log_metadata_diff(md, logger=logger):
         assert old_record is not None or new_record is not None, inpath
         if old_record == new_record:
             continue
-        old_dump = yaml.dump(old_record).splitlines()
-        new_dump = yaml.dump(new_record).splitlines()
+        old_dump = yaml.dump(old_record, default_flow_style=False).splitlines()
+        new_dump = yaml.dump(new_record, default_flow_style=False).splitlines()
         if old_record is None:
             header = ( '<BOLD><GREEN>{}<NOCOLOUR> metarecord added<RESET>'
                 .format(inpath) )
