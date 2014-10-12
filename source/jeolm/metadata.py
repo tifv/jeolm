@@ -75,7 +75,7 @@ class MetadataManager(RecordsManager):
                     metarecord, origin=metapath )
         return metarecords
 
-    def review(self, inpath, *, recursive=False):
+    def review(self, inpath):
 
         if not isinstance(inpath, PurePosixPath):
             raise RuntimeError(type(inpath))
@@ -105,11 +105,10 @@ class MetadataManager(RecordsManager):
             raise ValueError(
                 "Reviewed directory has suffix: {}".format(inpath) )
         assert is_dir == (suffix == ''), (is_dir, suffix)
-        if is_dir and recorded and recursive:
+        if is_dir and recorded:
             self.clear(metainpath)
         if is_dir:
-            if recursive:
-                self._review_subpaths(inpath)
+            self._review_subpaths(inpath)
             self.absorb(None, metainpath)
             return
         metadata = self._query_file(inpath)
@@ -138,7 +137,7 @@ class MetadataManager(RecordsManager):
                     'file <YELLOW>{}<NOCOLOUR> has no suffix<RESET>'
                     .format(inpath, subname) )
                 continue
-            self.review(subinpath, recursive=True)
+            self.review(subinpath)
 
     def _query_file(self, inpath):
         filetype = inpath.suffix[1:]

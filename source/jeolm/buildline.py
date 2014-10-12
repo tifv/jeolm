@@ -27,7 +27,7 @@ else:
 def mainloop(local, text_node_factory):
     md = NotifiedMetadataManager(local=local)
     driver_class = local.driver_class
-    md.review(PurePosixPath(), recursive=True)
+    md.review(PurePosixPath())
     driver = driver_class()
     md.feed_metadata(driver)
 
@@ -38,8 +38,9 @@ def mainloop(local, text_node_factory):
             assert not isinstance(review_list, str), review_list
             for review_path in review_list:
                 try:
-                    jeolm.commands.review( [review_path],
-                        local=local, md=md, recursive=True )
+                    inpath, = jeolm.commands.resolve_inpaths(
+                        [review_path], source_dir=local.source_dir )
+                    md.review(inpath)
                 except Exception: # pylint: disable=broad-except
                     traceback.print_exc()
                     logger.error(

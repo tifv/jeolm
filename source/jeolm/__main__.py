@@ -83,8 +83,7 @@ def main_build(args, *, local):
             local=local, driver=driver, source_type='tex' )
         with log_metadata_diff(md, logger=logger):
             jeolm.commands.review( sources,
-                viewpoint=Path.cwd(), local=local,
-                md=md, recursive=False )
+                viewpoint=Path.cwd(), local=local, md=md )
         md.dump_metadata_cache()
         driver.clear()
         md.feed_metadata(driver)
@@ -130,8 +129,6 @@ review_parser = subparsers.add_parser('review',
     help='review given infiles' )
 review_parser.add_argument('inpaths',
     nargs='*', metavar='INPATH', )
-review_parser.add_argument('-r', '--recursive',
-    action='store_true', )
 review_parser.set_defaults(command='review')
 
 def main_review(args, *, local):
@@ -143,8 +140,7 @@ def main_review(args, *, local):
     md.load_metadata_cache()
     with log_metadata_diff(md, logger=logger):
         jeolm.commands.review( args.inpaths,
-            viewpoint=Path.cwd(), local=local,
-            md=md, recursive=args.recursive )
+            viewpoint=Path.cwd(), local=local, md=md )
     md.dump_metadata_cache()
 
 init_parser = subparsers.add_parser('init',

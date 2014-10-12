@@ -15,11 +15,11 @@ logger = logging.getLogger(__name__) # pylint: disable=invalid-name
 ##########
 # High-level subprograms
 
-def review(paths, *, local, md, viewpoint=None, recursive=False):
+def review(paths, *, local, md, viewpoint=None):
     inpaths = resolve_inpaths(paths,
         source_dir=local.source_dir, viewpoint=viewpoint )
     for inpath in inpaths:
-        md.review(inpath, recursive=recursive)
+        md.review(inpath)
 
 def print_source_list(targets, *, local, driver, viewpoint=None,
     source_type='tex'
