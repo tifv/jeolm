@@ -186,13 +186,11 @@ class Driver(RecordsManager, metaclass=DriverMetaclass):
 
     driver_errors = frozenset((DriverError, TargetError, RecordError, FlagError))
 
-    def clear_cache(self):
-        super().clear_cache()
-        self.outrecords_cache = dict()
-        self.figure_records_cache = dict()
-        self.package_records_cache = dict()
-        self.delegated_targets_cache = dict()
-        self.metapath_list_cache = None
+    def __init__(self):
+        super().__init__()
+        self._cache.update(
+            outrecords={}, figure_records={}, package_records={},
+            delegated_targets={} )
 
     ##########
     # Advanced error reporting
@@ -308,7 +306,8 @@ class Driver(RecordsManager, metaclass=DriverMetaclass):
             raise RuntimeError
         for target in targets:
             try:
-                delegators = self.delegated_targets_cache[target, recursively]
+                delegators = \
+                    self._cache['delegated_targets'][target, recursively]
             except KeyError:
                 if not recursively:
                     try:
@@ -317,7 +316,8 @@ class Driver(RecordsManager, metaclass=DriverMetaclass):
                         delegators = None
                 else:
                     delegators = list(self.generate_delegated_targets(target))
-                self.delegated_targets_cache[target, recursively] = delegators
+                self._cache['delegated_targets'][target, recursively] = \
+                    delegators
             if delegators is None:
                 raise self.NoDelegators
             else:
@@ -325,12 +325,9 @@ class Driver(RecordsManager, metaclass=DriverMetaclass):
 
     @folding_driver_errors(wrap_generator=True)
     def list_metapaths(self):
-        if self.metapath_list_cache is not None:
-            yield from self.metapath_list_cache
-        else:
-            metapath_list = self.metapath_list_cache = \
-                list(self.generate_metapaths())
-            yield from metapath_list
+        # Caching is not necessary since no use-case involves calling this
+        # method several times.
+        yield from self.generate_metapaths()
 
     @folding_driver_errors(wrap_generator=False)
     def metapath_is_targetable(self, metapath):
@@ -384,10 +381,10 @@ class Driver(RecordsManager, metaclass=DriverMetaclass):
             package name, as in ProvidesPackage.
         """
         try:
-            return self.outrecords_cache[target]
+            return self._cache['outrecords'][target]
         except KeyError:
             pass
-        outrecord = self.outrecords_cache[target] = \
+        outrecord = self._cache['outrecords'][target] = \
             self.generate_outrecord(target)
         keys = outrecord.keys()
         assert keys >= {'outname', 'type'}
@@ -423,10 +420,10 @@ class Driver(RecordsManager, metaclass=DriverMetaclass):
             and inpath has '.asy' extension
         """
         try:
-            return self.figure_records_cache[figure_path]
+            return self._cache['figure_records'][figure_path]
         except KeyError:
             pass
-        figure_record = self.figure_records_cache[figure_path] = \
+        figure_record = self._cache['figure_records'][figure_path] = \
             self.generate_figure_record(figure_path)
         keys = figure_record.keys()
         assert keys >= {'buildname', 'source', 'type'}
@@ -451,10 +448,10 @@ class Driver(RecordsManager, metaclass=DriverMetaclass):
             package name, as in ProvidesPackage.
         """
         try:
-            return self.package_records_cache[package_path]
+            return self._cache['package_records'][package_path]
         except KeyError:
             pass
-        package_record = self.package_records_cache[package_path] = \
+        package_record = self._cache['package_records'][package_path] = \
             self.generate_package_record(package_path)
         keys = package_record.keys()
         assert keys >= {'buildname', 'source', 'type', 'name'}
@@ -537,8 +534,6 @@ class Driver(RecordsManager, metaclass=DriverMetaclass):
             return method(self, target, metarecord=metarecord, **kwargs)
         return wrapper
 
-    # FIXME targetable subpaths of untargetable paths
-    # FIXME root must be included if targetable
     def generate_metapaths(self, path=None):
         """Yield metapaths."""
         if path is None:

@@ -20,10 +20,12 @@ class RecordsManager:
 
     def __init__(self):
         self.records = self.Dict()
-        self.clear_cache()
+        self._records_cache = {}
+        self._cache = {'records' : self._records_cache}
 
-    def clear_cache(self):
-        self.cache = dict()
+    def _clear_cache(self):
+        for cache_piece in self._cache.values():
+            cache_piece.clear()
 
     def absorb(self, data, path=RecordPath(), *, overwrite=True):
         if not isinstance(path, RecordPath):
@@ -31,7 +33,7 @@ class RecordsManager:
         for part in reversed(path.parts):
             data = {part : data}
         self._absorb_into(data, RecordPath(), self.records, overwrite=overwrite)
-        self.clear_cache()
+        self._clear_cache()
 
     def delete(self, path):
         if not isinstance(path, RecordPath):
@@ -39,13 +41,13 @@ class RecordsManager:
         if path.is_root():
             raise RuntimeError("Deleting root is impossible")
         self._delete_record(path)
-        self.clear_cache()
+        self._clear_cache()
 
     def clear(self, path=RecordPath()):
         if not isinstance(path, RecordPath):
             raise TypeError(type(path))
         self._clear_record(path)
-        self.clear_cache()
+        self._clear_cache()
 
     def reorder(self, path, sample):
         self.reorder_omap(self.getitem(path, original=True), sample)
@@ -120,7 +122,7 @@ class RecordsManager:
         use_cache = not original
         if use_cache:
             try:
-                return self.cache[path]
+                return self._records_cache[path]
             except KeyError:
                 pass
 
@@ -142,7 +144,7 @@ class RecordsManager:
                 raise
 
         if use_cache:
-            self.cache[path] = record
+            self._records_cache[path] = record
         return record
 
     def _get_root(self, original=False):
