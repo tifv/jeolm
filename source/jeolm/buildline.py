@@ -146,8 +146,8 @@ class NotifiedMetadataManager(jeolm.metadata.MetadataManager):
             path = Path(event.pathname)
             if event.dir and path.suffix != '':
                 continue
-            if (not event.dir and
-                cls.source_types.get(path.suffix) in {'directory', None}
+            if not event.dir and ( path.suffix == '' or
+                path.suffix not in cls.source_types
             ):
                 continue
             yield path
