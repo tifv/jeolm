@@ -107,6 +107,8 @@ class FlagContainer(Container):
         return self.flags
 
     def check_condition(self, condition):
+        if isinstance(condition, bool):
+            return condition
         if isinstance(condition, str):
             return condition in self
         elif isinstance(condition, list):

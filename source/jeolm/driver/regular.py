@@ -42,6 +42,9 @@ Keys recognized in metarecords:
     - in absence of \ProvidesPackage, borrowed by metadata grabber
       from the filename
 
+  $delegate$stop[*]
+    Value is condition.
+
   $delegate[*]
     Values:
     - <delegator>
@@ -298,6 +301,9 @@ class Driver(RecordsManager, metaclass=DriverMetaclass):
     # Interface methods and attributes
 
     class NoDelegators(Exception):
+        pass
+
+    class StopDelegation(NoDelegators):
         pass
 
     @folding_driver_errors(wrap_generator=True)
@@ -572,6 +578,11 @@ class Driver(RecordsManager, metaclass=DriverMetaclass):
         if not metarecord.get('$target$able', True):
             raise DriverError( "Target {target} is not targetable"
                 .format(target=target) )
+        delegate_stop_key, delegate_stop = self.select_flagged_item(
+            metarecord, '$delegate$stop', target.flags )
+        if delegate_stop_key is not None:
+            if target.flags.check_condition(delegate_stop):
+                raise self.StopDelegation
         delegate_key, delegators = self.select_flagged_item(
             metarecord, '$delegate', target.flags )
         if delegate_key is None:

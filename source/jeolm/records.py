@@ -253,9 +253,7 @@ class RecordsManager:
         flagset_mapping = dict()
         for key, value in mapping.items():
             match = cls.flagged_pattern.match(key)
-            if match is None:
-                continue
-            if match.group('key') != stemkey:
+            if match is None or match.group('key') != stemkey:
                 continue
             flags_group = match.group('flags')
             flagset = flags.split_flags_group(flags_group)
