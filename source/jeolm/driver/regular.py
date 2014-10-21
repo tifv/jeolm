@@ -489,30 +489,31 @@ class Driver(RecordsManager, metaclass=DriverMetaclass):
     # Record extension
 
     def _derive_attributes(self, parent_record, child_record, name):
-        parent_path = parent_record.get('$path')
-        if parent_path is None:
-            path = RecordPath()
-        else:
-            path = parent_path / name
-        child_record['$path'] = path
+        super()._derive_attributes(parent_record, child_record, name)
         child_record.setdefault('$target$able',
             parent_record.get('$target$able', True) )
         child_record.setdefault('$build$able',
             parent_record.get('$build$able', True) )
-        super()._derive_attributes(parent_record, child_record, name)
-
-    def _get_child(self, record, name, *, original, **kwargs):
-        child_record = super()._get_child(
-            record, name, original=original, **kwargs )
-        if original:
-            return child_record
         if '$include' in child_record:
             path = child_record['$path']
-            for include_name in child_record.pop('$include'):
-                included = self.getitem(
-                    RecordPath(path, include_name), original=True )
-                self._include_dict(child_record, included)
-        return child_record
+            already_included = set()
+            included_paths = [
+                RecordPath(path, include_name)
+                for include_name in reversed(child_record.pop('$include')) ]
+            while included_paths:
+                included_path = included_paths.pop()
+                if included_path in already_included:
+                    raise RecordError( "Double-inclusion of path {} in {}"
+                        .format(included_path, path) )
+                included_value = self.getitem(included_path, original=True)
+                if '$include' in included_value:
+                    included_value = included_value.copy()
+                    included_paths.extend(
+                        RecordPath(included_path, include_name)
+                        for include_name
+                        in reversed(included_value.pop('$include')) )
+                self._include_dict(child_record, included_value)
+                already_included.add(included_path)
 
     @classmethod
     def _include_dict(cls, dest_dict, source_dict):
@@ -524,10 +525,10 @@ class Driver(RecordsManager, metaclass=DriverMetaclass):
                 # No override
                 continue
             else:
+                dest_dict[key] = dest_value = dest_value.copy()
                 assert isinstance(dest_value, dict)
                 assert isinstance(source_value, dict)
-                dest_dict[key] = cls._include_dict(
-                    dest_value.copy(), source_value )
+                cls._include_dict(dest_value, source_value)
 
     @inclass_decorator
     def fetching_metarecord(method):

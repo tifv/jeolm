@@ -1,10 +1,6 @@
 import re
 from collections import OrderedDict
 
-from pathlib import PurePosixPath as PurePath
-
-from . import yaml
-
 def unique(*iterables):
     seen = set()
     unique = list()

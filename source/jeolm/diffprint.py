@@ -21,7 +21,8 @@ def log_metadata_diff(md, logger=logger):
     md.feed_metadata(new_metarecords)
 
     comparing_iterator = RecordsManager.compare_items(
-        old_metarecords, new_metarecords, wipe_subrecords=True )
+        old_metarecords, new_metarecords,
+        wipe_subrecords=True, original=True )
     for inpath, old_record, new_record in comparing_iterator:
         assert old_record is not None or new_record is not None, inpath
         if old_record == new_record:

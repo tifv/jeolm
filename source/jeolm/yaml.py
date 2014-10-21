@@ -6,7 +6,7 @@ original yaml.dump() and yaml.load().
 
 Features:
     collections.OrderedDict is serialized as !!omap
-    pathlib.PurePosixPath is serialized as !path
+    jeolm.record_path.RecordPath is serialized as !path
 
 Additionally, dump() enables unicode serializing by default.
 
@@ -14,12 +14,12 @@ Additionally, dump() enables unicode serializing by default.
 
 from collections import OrderedDict
 
-from pathlib import PurePosixPath
-
 import yaml as the_yaml
 from yaml.nodes import SequenceNode, MappingNode
 
 from yaml import load as original_load, dump as original_dump
+
+from jeolm.record_path import RecordPath
 
 class JeolmLoader(the_yaml.loader.SafeLoader):
     def construct_yaml_omap(self, node):
@@ -53,7 +53,7 @@ class JeolmLoader(the_yaml.loader.SafeLoader):
                 "found duplicate keys", node.start_mark )
 
     def construct_path(self, node):
-        return PurePosixPath(self.construct_scalar(node))
+        return RecordPath(self.construct_scalar(node))
 
 JeolmLoader.add_constructor(
         'tag:yaml.org,2002:omap',
@@ -68,7 +68,7 @@ class JeolmDumper(the_yaml.dumper.SafeDumper):
         value = [{key : value} for key, value in data.items()]
         return self.represent_sequence('tag:yaml.org,2002:omap', value)
 
-    def represent_PurePosixPath(self, data):
+    def represent_RecordPath(self, data):
         return self.represent_scalar('!path', str(data))
 
     def ignore_aliases(self, data):
@@ -77,8 +77,8 @@ class JeolmDumper(the_yaml.dumper.SafeDumper):
 JeolmDumper.add_representer(OrderedDict,
         JeolmDumper.represent_OrderedDict)
 
-JeolmDumper.add_representer(PurePosixPath,
-        JeolmDumper.represent_PurePosixPath)
+JeolmDumper.add_representer(RecordPath,
+        JeolmDumper.represent_RecordPath)
 
 def load(stream, Loader=JeolmLoader):
     return original_load(stream, Loader=Loader)

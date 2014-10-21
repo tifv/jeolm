@@ -166,7 +166,12 @@ class RecordsManager:
         return child_record
 
     def _derive_attributes(self, parent_record, child_record, name):
-        pass
+        parent_path = parent_record.get('$path')
+        if parent_path is None:
+            path = RecordPath()
+        else:
+            path = parent_path / name
+        child_record['$path'] = path
 
     def items(self, path=RecordPath()):
         """Yield (path, record) pairs."""
@@ -198,22 +203,22 @@ class RecordsManager:
     def __getitem__(self, path):
         return self.getitem(path)
 
-    def get(self, path, default=None):
+    def get(self, path, default=None, original=False):
         try:
-            return self.getitem(path)
+            return self.getitem(path, original=original)
         except RecordNotFoundError:
             return default
 
     @classmethod
     def compare_items(cls, records1, records2, path=RecordPath(),
-        *, wipe_subrecords=False
+        *, wipe_subrecords=False, original=False
     ):
         """
         Yield (path, record1, record2) triples.
         """
 
-        record1 = records1.get(path)
-        record2 = records2.get(path)
+        record1 = records1.get(path, original=original)
+        record2 = records2.get(path, original=original)
         if wipe_subrecords:
             record1 = cls._wipe_subrecords(record1)
             record2 = cls._wipe_subrecords(record2)
