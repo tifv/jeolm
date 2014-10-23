@@ -209,16 +209,16 @@ class MetadataManager(RecordsManager):
     def _query_tex_metadata(self, inpath, tex_content):
         metadata = OrderedDict()
         for match in self.tex_metadata_pattern.finditer(tex_content):
-            piece_lines = match.group(0).splitlines()
+            piece_lines = match.group(0).splitlines(keepends=True)
             assert all(line.startswith('% ') for line in piece_lines)
             piece_lines = [line[2:] for line in piece_lines]
-            if match.group('append') is not None:
-                assert len(match.group('append')) == 3
+            if match.group('extend') is not None:
+                assert len(match.group('extend')) == 3
                 piece_lines[0] = piece_lines[0][3:]
-                append = True
+                extend = True
             else:
-                append = False
-            piece = '\n'.join(piece_lines)
+                extend = False
+            piece = ''.join(piece_lines)
             piece_io = io.StringIO(piece)
             piece_io.name = inpath
             piece = yaml.load(piece_io)
@@ -228,15 +228,23 @@ class MetadataManager(RecordsManager):
                     .format(inpath) )
                 raise ValueError(piece)
             (key, value), = piece.items()
-            if append:
-                metadata.setdefault(key, []).append(value)
+            if extend:
+                if isinstance(value, list):
+                    metadata.setdefault(key, []).extend(value)
+                elif isinstance(value, dict):
+                    metadata.setdefault(key, {}).update(value)
+                else:
+                    logger.error("<BOLD><MAGENTA>{}<NOCOLOUR>: "
+                        "extending value may be only a list or a dict."
+                        .format(inpath) )
+                    raise TypeError(value)
             else:
                 metadata[key] = value
         return metadata
 
     tex_metadata_pattern = re.compile('(?m)^'
-        r'% (?P<append>>> )?\$[\w\$\-_\[\],\{\}]+:.*'
-        r'(?:\n% [ \-#].+)*')
+        r'% (?P<extend>>> )?\$[\w\$\-_\[\],\{\}]+:.*\n'
+        r'(?:% [ \-#].+\n)*')
 
     def _query_dtx_file(self, inpath):
         with (self.local.source_dir/inpath).open('r') as dtx_file:
