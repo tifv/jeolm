@@ -57,18 +57,16 @@ class LaTeXSpeller:
                 else:
                     yield IncorrectWord(text_piece.s)
 
-    prepare_text_pattern = re.compile('(?m)'
-        r'^% spell (?P<delimiter>.)(?P<from>.*?)(?P=delimiter)'
-        r' -> '
-        r'(?P=delimiter)(?P<to>.*?)(?P=delimiter)$' )
+    spell_pattern = re.compile('(?m)'
+        r'% spell (?P<words>.*)$')
 
     @classmethod
     def prepare_text(cls, text, *, lang):
         if lang == 'ru_RU':
             text = text.replace('ё', 'е')
-        for match in cls.prepare_text_pattern.finditer(text):
-            logger.debug(match.groupdict())
-            text = text.replace(match.group('from'), match.group('to'))
+        for match in cls.spell_pattern.finditer(text):
+            for word in match.group('words').split(' '):
+                text = text.replace(word, '')
         return text
 
 class LaTeXSlicer:
