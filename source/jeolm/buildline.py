@@ -70,6 +70,9 @@ def mainloop(local, text_node_factory):
         elif targets_string == 'clean':
             targets = []
             jeolm.commands.clean(root=local.root)
+        elif targets_string == 'dump':
+            targets = []
+            md.dump_metadata_cache()
         else:
             try:
                 targets = []
