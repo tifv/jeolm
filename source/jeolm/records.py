@@ -211,7 +211,7 @@ class RecordsManager:
 
     @classmethod
     def compare_items(cls, records1, records2, path=RecordPath(),
-        *, wipe_subrecords=False, original=False
+        *, original=False
     ):
         """
         Yield (path, record1, record2) triples.
@@ -219,9 +219,6 @@ class RecordsManager:
 
         record1 = records1.get(path, original=original)
         record2 = records2.get(path, original=original)
-        if wipe_subrecords:
-            record1 = cls._wipe_subrecords(record1)
-            record2 = cls._wipe_subrecords(record2)
         yield path, record1, record2
 
         keys = unique(
@@ -231,17 +228,7 @@ class RecordsManager:
             if key.startswith('$'):
                 continue
             yield from cls.compare_items(records1, records2, path/key,
-                wipe_subrecords=wipe_subrecords )
-
-    @classmethod
-    def _wipe_subrecords(cls, record):
-        if record is None:
-            return record
-        record = record.copy()
-        for key in record:
-            if not key.startswith('$'):
-                record[key] = cls.Dict()
-        return record
+                original=original )
 
     flagged_pattern = re.compile(
         r'^(?P<key>[^\[\]]+)'

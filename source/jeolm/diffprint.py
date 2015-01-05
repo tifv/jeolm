@@ -21,9 +21,13 @@ def log_metadata_diff(md, logger=logger):
     md.feed_metadata(new_metarecords)
 
     comparing_iterator = RecordsManager.compare_items(
-        old_metarecords, new_metarecords,
-        wipe_subrecords=True, original=True )
+        old_metarecords, new_metarecords, original=True )
     for inpath, old_record, new_record in comparing_iterator:
+        old_record = old_record.copy() if old_record is not None else None
+        new_record = new_record.copy() if new_record is not None else None
+        _wipe_subrecords(old_record)
+        _wipe_subrecords(new_record)
+        _wipe_equal_large_keys(old_record, new_record)
         assert old_record is not None or new_record is not None, inpath
         if old_record == new_record:
             continue
@@ -43,6 +47,30 @@ def log_metadata_diff(md, logger=logger):
         delta = difflib.ndiff(a=old_dump, b=new_dump)
         lines = format_ndiff_delta(delta, fix_newlines=True)
         logger.info('\n'.join(chain((header,), lines)))
+
+def _wipe_subrecords(record):
+    if record is None:
+        return
+    for key in record:
+        if key.startswith('$'):
+            continue
+        record[key] = yaml.large
+    return record
+
+def _wipe_equal_large_keys(record1, record2):
+    if record1 is None:
+        record1 = {}
+    if record2 is None:
+        record2 = {}
+    keys = set().union(record1, record2)
+    for key in keys:
+        if not key.startswith('$'):
+            continue
+        if not (record1.get(key) == record2.get(key) is not None):
+            continue
+        large_key = '$large' + key
+        if record1.get(large_key, False) and record2.get(large_key, False):
+            record1[key] = record2[key] = yaml.large
 
 def format_delta(delta, *, line_formats, fix_newlines=False):
     for line in delta:
