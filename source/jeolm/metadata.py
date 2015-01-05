@@ -235,7 +235,7 @@ class MetadataManager(RecordsManager):
                     metadata.setdefault(key, {}).update(value)
                 else:
                     logger.error("<BOLD><MAGENTA>{}<NOCOLOUR>: "
-                        "extending value may be only a list or a dict."
+                        "extending value may be only a list or a dict.<RESET>"
                         .format(inpath) )
                     raise TypeError(value)
             else:

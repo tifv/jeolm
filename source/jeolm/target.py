@@ -61,7 +61,7 @@ class Target:
             raise TargetError( "Failed to parse subtarget '{}'."
                 .format(string) )
         assert match.group(0) == string, string
-        return self._derive_from_match(match)
+        return self._derive_from_match(match, origin=origin)
 
     def _derive_from_match(self, match, *, origin=None):
         subpath = RecordPath(self.path, match.group('path'))
