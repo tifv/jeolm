@@ -118,7 +118,10 @@ def clean(root):
 ##########
 # Supplementary subprograms
 
-def simple_load_driver(local):
+def simple_load_driver(local=None):
+    if local is None:
+        from jeolm.local import LocalManager
+        local = LocalManager()
     from jeolm.metadata import MetadataManager
     md = MetadataManager(local=local)
     md.load_metadata_cache()
