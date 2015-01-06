@@ -21,17 +21,6 @@ from yaml import load as original_load, dump as original_dump
 
 from jeolm.record_path import RecordPath
 
-class Large:
-    def __new__(cls):
-        """Singleton constructor."""
-        try:
-            self = cls.large
-        except AttributeError:
-            self = cls.large = super().__new__(cls)
-        return self
-
-large = Large()
-
 class JeolmLoader(the_yaml.loader.SafeLoader):
     def construct_yaml_omap(self, node):
         omap = OrderedDict()
@@ -78,10 +67,6 @@ JeolmLoader.add_constructor(
         '!path',
         JeolmLoader.construct_path)
 
-JeolmLoader.add_constructor(
-        '!large',
-        JeolmLoader.construct_large)
-
 class JeolmDumper(the_yaml.dumper.SafeDumper):
     def represent_OrderedDict(self, data):
         value = [{key : value} for key, value in data.items()]
@@ -90,20 +75,14 @@ class JeolmDumper(the_yaml.dumper.SafeDumper):
     def represent_RecordPath(self, data):
         return self.represent_scalar('!path', str(data))
 
-    def represent_Large(self, data):
-        return self.represent_scalar('!large', '')
-
     def ignore_aliases(self, data):
         return True
 
-JeolmDumper.add_representer(OrderedDict,
-        JeolmDumper.represent_OrderedDict)
+JeolmDumper.add_representer( OrderedDict,
+        JeolmDumper.represent_OrderedDict )
 
-JeolmDumper.add_representer(RecordPath,
-        JeolmDumper.represent_RecordPath)
-
-JeolmDumper.add_representer(Large,
-        JeolmDumper.represent_Large)
+JeolmDumper.add_representer( RecordPath,
+        JeolmDumper.represent_RecordPath )
 
 def load(stream, Loader=JeolmLoader):
     return original_load(stream, Loader=Loader)

@@ -4,11 +4,33 @@ from itertools import chain
 
 import difflib
 
-from jeolm import yaml
+import jeolm.yaml
+
 from jeolm.records import RecordsManager
 
 import logging
 logger = logging.getLogger(__name__) # pylint: disable=invalid-name
+
+class _Large:
+    def __new__(cls):
+        """Singleton constructor."""
+        try:
+            self = cls.large
+        except AttributeError:
+            self = cls.large = super().__new__(cls)
+        return self
+
+_large = _Large()
+
+class _Dumper(jeolm.yaml.JeolmDumper):
+    def represent_Large(self, data):
+        return self.represent_scalar('!large', '')
+
+_Dumper.add_representer(_Large, _Dumper.represent_Large)
+
+def _dump(data, Dumper=_Dumper, default_flow_style=False, **kwargs):
+    return jeolm.yaml.dump( data,
+        Dumper=Dumper, default_flow_style=default_flow_style, **kwargs )
 
 @contextmanager
 def log_metadata_diff(md, logger=logger):
@@ -31,8 +53,8 @@ def log_metadata_diff(md, logger=logger):
         assert old_record is not None or new_record is not None, inpath
         if old_record == new_record:
             continue
-        old_dump = yaml.dump(old_record, default_flow_style=False).splitlines()
-        new_dump = yaml.dump(new_record, default_flow_style=False).splitlines()
+        old_dump = _dump(old_record).splitlines()
+        new_dump = _dump(new_record).splitlines()
         if old_record is None:
             header = ( '<BOLD><GREEN>{}<NOCOLOUR> metarecord added<RESET>'
                 .format(inpath) )
@@ -54,7 +76,7 @@ def _wipe_subrecords(record):
     for key in record:
         if key.startswith('$'):
             continue
-        record[key] = yaml.large
+        record[key] = _large
     return record
 
 def _wipe_equal_large_keys(record1, record2):
@@ -70,7 +92,10 @@ def _wipe_equal_large_keys(record1, record2):
             continue
         large_key = '$large' + key
         if record1.get(large_key, False) and record2.get(large_key, False):
-            record1[key] = record2[key] = yaml.large
+            record1[key] = record2[key] = _large
+            if record1[large_key] == record2[large_key]:
+                record1.pop(large_key)
+                record2.pop(large_key)
 
 def format_delta(delta, *, line_formats, fix_newlines=False):
     for line in delta:
