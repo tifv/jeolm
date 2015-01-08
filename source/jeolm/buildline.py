@@ -23,13 +23,13 @@ if __name__ == '__main__':
 else:
     logger = logging.getLogger(__name__) # pylint: disable=invalid-name
 
-
 def mainloop(local, text_node_factory):
     md = NotifiedMetadataManager(local=local)
     driver_class = local.driver_class
     md.review(PurePosixPath())
     driver = driver_class()
     md.feed_metadata(driver)
+    history_filename = str(local.build_dir/'buildline.history')
 
     def review_metadata():
         with log_metadata_diff(md, logger=logger):
@@ -55,14 +55,21 @@ def mainloop(local, text_node_factory):
     readline.set_completer(completer)
     readline.set_completer_delims(';')
     readline.parse_and_bind('tab: complete')
+    try:
+        readline.read_history_file(history_filename)
+    except FileNotFoundError:
+        pass
+    readline.set_history_length(1000)
 
     targets = []
     while True:
         try:
             targets_string = input('jeolm> ')
         except (KeyboardInterrupt, EOFError):
+            # Finish
             print()
             md.dump_metadata_cache()
+            readline.write_history_file(history_filename)
             raise SystemExit
         review_metadata()
         if not targets_string:
@@ -101,7 +108,6 @@ def build(targets, local, text_node_factory, driver):
         text_node_factory=text_node_factory )
     target_node = target_node_factory(targets, delegate=True)
     target_node.update()
-
 
 class NotifiedMetadataManager(jeolm.metadata.MetadataManager):
 
