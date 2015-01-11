@@ -16,6 +16,7 @@ from jeolm.diffprint import log_metadata_diff
 
 from jeolm.record_path import RecordPath
 from jeolm.target import Target, TargetError
+from jeolm.records import RecordNotFoundError
 
 import logging
 if __name__ == '__main__':
@@ -257,7 +258,10 @@ class Completer:
         return path in self.driver and self.driver.metapath_is_targetable(path)
 
     def _list_subtargets(self, path):
-        return self.driver.list_targetable_children(path)
+        try:
+            yield from self.driver.list_targetable_children(path)
+        except RecordNotFoundError:
+            pass
 
     def complete_target(self, uncompleted_arg):
         """Return an iterator over completions."""
