@@ -26,23 +26,6 @@ class MissingTargetError(FileNotFoundError):
     pass
 
 
-class _CatchingThread(threading.Thread):
-    def __init__(self, *, target=None):
-        super().__init__(target=target)
-        assert not hasattr(self, 'exception')
-        self.exception = None
-
-    def run(self):
-        try:
-            return super().run()
-        except Exception as exception: # pylint: disable=broad-except
-            self.exception = exception
-
-    def join(self, timeout=None):
-        super().join(timeout=timeout)
-        if self.exception is not None:
-            raise self.exception # pylint: disable=raising-bad-type
-
 
 class Node:
     """
@@ -55,14 +38,14 @@ class Node:
         needs (list of Node):
             prerequisites of this node.
             Should not be populated directly.
-        commands (list of callables):
-            commands that are responsible for (re)building the node and
+        command (callable):
+            command that is responsible for (re)building the node and
             setting node.modified attribute as appropriate.
-            Should not be populated directly.
+            Should not be set directly.
         modified (bool):
             if the node was modified. If equal to True, will cause any
             dependent nodes to be rebuilt.
-        thread (_CatchingThread or None):
+        thread (CatchingThread or None):
             if not None, thread responsible for updating the node.
     """
 
@@ -81,7 +64,7 @@ class Node:
         else:
             self.name = str(id(self))
         self.needs = list(needs)
-        self.commands = list()
+        self.command = None
 
         self.modified = False
 
@@ -114,7 +97,7 @@ class Node:
         with self._check_for_cycle():
             if self._updated:
                 if self.thread is not None:
-                    assert isinstance(self.thread, _CatchingThread)
+                    assert isinstance(self.thread, CatchingThread)
                     self.thread.join()
                 return
             for need in self.needs:
@@ -157,11 +140,11 @@ class Node:
                     thread = need.thread
                     if thread is None:
                         continue
-                    assert isinstance(thread, _CatchingThread)
+                    assert isinstance(thread, CatchingThread)
                     thread.join()
                 with semaphore:
                     self._update_self()
-            thread = self.thread = _CatchingThread(target=wait_and_update)
+            thread = self.thread = CatchingThread(target=wait_and_update)
             thread.start()
             self._updated = True
 
@@ -182,7 +165,7 @@ class Node:
         # Should be only called by node.update method or by thread created by
         # node.update_start method.
         if self._needs_build():
-            self._run_commands()
+            self._run_command()
 
     def _needs_build(self):
         """
@@ -238,33 +221,38 @@ class Node:
         force_node.update()
         force_node.modified = True
 
-    def add_command(self, command):
+    def set_command(self, command):
         """
-        Append command to the list of rebuild commands.
+        Set the argement as node.command attribute.
 
         May be used as decorator.
 
         Args:
             command (callable):
-                a command to be appended to the node.commands list.
+                a command to be assigned to the node.command attribute.
 
         Returns:
             command (the same object).
         """
-        self.commands.append(command)
+        self.command = command
         try:
             command.node = self
         except AttributeError:
             pass
         return command
 
-    def _run_commands(self):
+    def _run_command(self):
         # Should be only called by self._update_self()
-        for command in self.commands:
-            command()
+        if self.command is None:
+            raise ValueError(
+                "Node {node} cannot be rebuilt due to the lack of command"
+                .format(node=self) )
+        try:
+            self.command()
+        finally:
             try:
                 # Break reference cycle
-                command.node = None
+                self.command.node = None
             except AttributeError:
                 pass
 
@@ -311,7 +299,7 @@ class Node:
 
     def __repr__(self):
         return (
-            "{node.__class__.__qualname__}(name='{node.name}')"
+            "{node.__class__.__name__}(name='{node.name}')"
             .format(node=self) )
 
     def fancified_repr(self, level):
@@ -330,8 +318,8 @@ class TargetNode(Node):
     """Represents an abstract target."""
 
     # Override
-    def _run_commands(self):
-        if self.commands:
+    def _run_command(self):
+        if self.command is not None:
             raise RuntimeError
 
 
@@ -428,7 +416,7 @@ class PathNode(DatedNode):
             raise TypeError(type(path))
         if not path.is_absolute():
             raise ValueError(
-                "{cls.__qualname__} cannot be initialized "
+                "{cls.__name__} cannot be initialized "
                 "with relative path: '{path}'"
                 .format(cls=self.__class__, path=path) )
         if name is None:
@@ -467,22 +455,22 @@ class PathNode(DatedNode):
 
     def __repr__(self):
         return (
-            "{node.__class__.__qualname__}("
+            "{node.__class__.__name__}("
             "name='{node.name}', path='{node.relative_path}')"
             .format(node=self) )
 
-    def _run_commands(self):
+    def _run_command(self):
         prerun_mtime = self.mtime
-        super()._run_commands()
+        super()._run_command()
         self._load_mtime()
         if self.mtime is None:
-            # Succeeded commands did not result in a file
+            # Succeeded command did not result in a file
             raise MissingTargetError(repr(self))
         if mtime_less(prerun_mtime, self.mtime):
             self.modified = True
 
-    def add_subprocess_command(self, callargs, *, cwd, **kwargs):
-        return self.add_command(SubprocessCommand(
+    def set_subprocess_command(self, callargs, *, cwd, **kwargs):
+        return self.set_command(SubprocessCommand(
             callargs, cwd=cwd, **kwargs ))
 
     @property
@@ -530,7 +518,7 @@ class ProductNode(PathNode):
 
     def __repr__(self):
         return (
-            "{node.__class__.__qualname__}(name='{node.name}', "
+            "{node.__class__.__name__}(name='{node.name}', "
                 "source={node.source!r}, path='{node.relative_path}')"
             .format(node=self) )
 
@@ -558,23 +546,23 @@ class SourceFileNode(FollowingPathNode, FilelikeNode):
     """Represents a source file."""
 
     # Override.
-    def _run_commands(self):
+    def _run_command(self):
         raise RuntimeError
 
 
 class FileNode(FilelikeNode):
     """
-    Represents a file that can be recreated by build commands.
+    Represents a file that can be recreated by a build command.
     """
 
-    def _run_commands(self):
+    def _run_command(self):
         # Avoid writing to remnant symlink.
         if self.path.exists() and self.path.is_symlink():
             self.path.unlink()
             self._load_mtime()
         prerun_mtime = self.mtime
         try:
-            super()._run_commands()
+            super()._run_command()
         except MissingTargetError:
             raise
         except:
@@ -640,7 +628,7 @@ class LinkNode(ProductNode):
                 .format(node=self) ))
             os.symlink(self.link_target, str(self.path))
             self.modified = True
-        self.add_command(link_command)
+        self.set_command(link_command)
 
     def _load_mtime(self):
         """
@@ -716,7 +704,7 @@ class DirectoryNode(PathNode):
             # rwxr-xr-x
             path.mkdir(mode=0b111101101, parents=parents)
             self.modified = True
-        self.add_command(mkdir_command)
+        self.set_command(mkdir_command)
 
     def _load_mtime(self):
         """
@@ -772,7 +760,6 @@ class Command:
         if self.node is None:
             raise RuntimeError
         self._call()
-        self.node = None # break reference cycle
 
     def _call(self):
         pass
@@ -789,7 +776,7 @@ class SubprocessCommand(Command):
         if not isinstance(cwd, Path):
             raise ValueError(
                 "cwd must be a pathlib.Path instance, "
-                "not {cwd_type.__name__}"
+                "not {cwd_type}"
                 .format(cwd_type=type(cwd)) )
         if not cwd.is_absolute():
             raise ValueError("cwd must be an absolute Path")
@@ -909,8 +896,35 @@ class WriteTextCommand(Command):
 
 
 ####################
-# Supplementary routines
+# Supplementary classes and routines
 
+
+class CatchingThread(threading.Thread):
+    def __init__(self, *, target=None):
+        super().__init__(target=target)
+        assert not hasattr(self, 'exception')
+        self.exception = None
+
+    def run(self):
+        """
+        Extension.
+
+        Catch and save any exception occured.
+        """
+        try:
+            return super().run()
+        except Exception as exception: # pylint: disable=broad-except
+            self.exception = exception
+
+    def join(self, timeout=None):
+        """
+        Extension.
+
+        Raise any exception catched by run().
+        """
+        super().join(timeout=timeout)
+        if self.exception is not None:
+            raise self.exception # pylint: disable=raising-bad-type
 
 def mtime_less(mtime, other):
     if other is None:

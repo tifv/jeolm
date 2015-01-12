@@ -246,5 +246,5 @@ class LaTeXNode(ProductFileNode):
         if path.suffix != command.target_suffix:
             raise RuntimeError
 
-        self.add_command(command)
+        self.set_command(command)
 

@@ -129,7 +129,7 @@ class DocumentNodeFactory:
             needs=(build_dir_node,) )
         main_tex_node.append_needs(self.text_node_factory(
             main_tex_node.path, recipe['document'] ))
-        main_tex_node.add_command(jeolm.node.WriteTextCommand.from_text(
+        main_tex_node.set_command(jeolm.node.WriteTextCommand.from_text(
             text=recipe['document'] ))
 
         package_nodes = [
@@ -201,14 +201,14 @@ class DocumentNodeFactory:
             path=build_dir/'driver.ins',
             needs=(build_dir_node,) )
         ins_text = self._substitute_driver_ins(package_name=package_name)
-        ins_node.add_command(jeolm.node.WriteTextCommand.from_text(ins_text))
+        ins_node.set_command(jeolm.node.WriteTextCommand.from_text(ins_text))
         ins_node.append_needs(self.text_node_factory(ins_node.path, ins_text))
         drv_node = jeolm.node.ProductFileNode(
             name='document:{}:drv'.format(target),
             source=dtx_node,
             path=build_dir/'{}.drv'.format(package_name),
             needs=(ins_node,) )
-        drv_node.add_subprocess_command(
+        drv_node.set_subprocess_command(
             ( 'latex', '-interaction=nonstopmode', '-halt-on-error',
                 ins_node.path.name ),
             cwd=build_dir )
@@ -249,7 +249,7 @@ class DocumentNodeFactory:
             source=dvi_node,
             path=build_dir/'main.pdf', )
         pdf_node.extend_needs(figure_nodes)
-        pdf_node.add_subprocess_command(
+        pdf_node.set_subprocess_command(
             ('dvipdf', dvi_node.path.name, pdf_node.path.name),
             cwd=build_dir )
         #ps_node = jeolm.node.FileNode(
@@ -257,7 +257,7 @@ class DocumentNodeFactory:
         #    path=build_dir/'main.ps',
         #    needs=(dvi_node,) )
         #ps_node.extend_needs(figure_nodes)
-        #ps_node.add_subprocess_command(
+        #ps_node.set_subprocess_command(
         #    ('dvips', dvi_node.path.name, '-o', ps_node.path.name),
         #    cwd=build_dir )
         return pdf_node
@@ -347,14 +347,14 @@ class PackageNodeFactory:
             path=build_dir/'package.ins',
             needs=(build_dir_node,) )
         ins_text = self._substitute_ins(package_name=package_name)
-        ins_node.add_command(jeolm.node.WriteTextCommand.from_text(ins_text))
+        ins_node.set_command(jeolm.node.WriteTextCommand.from_text(ins_text))
         ins_node.append_needs(self.text_node_factory(ins_node.path, ins_text))
         sty_node = jeolm.node.ProductFileNode(
             name='package:{}:sty'.format(metapath),
             source=dtx_node,
             path=build_dir/'{}.sty'.format(package_name),
             needs=(ins_node,) )
-        sty_node.add_subprocess_command(
+        sty_node.set_subprocess_command(
             ( 'latex', '-interaction=nonstopmode', '-halt-on-error',
                 ins_node.path.name ),
             cwd=build_dir )
@@ -426,7 +426,7 @@ class FigureNodeFactory:
             source=main_asy_node,
             path=build_dir/'main.eps',
             needs=other_asy_nodes )
-        eps_node.add_subprocess_command(
+        eps_node.set_subprocess_command(
             ( 'asy', '-outformat=eps', '-offscreen',
                 main_asy_node.path.name ),
             cwd=build_dir )
@@ -468,7 +468,7 @@ class FigureNodeFactory:
             name='fig:{}:eps'.format(metapath),
             source=svg_node,
             path=build_dir/'main.eps' )
-        eps_node.add_subprocess_command(
+        eps_node.set_subprocess_command(
             ('inkscape', '--without-gui',
                 '--export-eps={}'.format(eps_node.path.name),
                 svg_node.path.name ),

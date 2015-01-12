@@ -31,12 +31,9 @@ class Rule:
         if not isinstance(node, FileNode):
             raise TypeError(type(node))
 
-        commands = node.commands
-        if len(commands) > 1:
-            raise RuntimeError("Cannot deal with more than one command.")
-        if not commands:
+        command = node.command
+        if command is None:
             raise RuntimeError("FileNode is expected to have a command.")
-        command, = commands
         if isinstance(command, SubprocessCommand):
             return super(Rule, cls).__new__(SubprocessRule)
         if isinstance(command, WriteTextCommand):
@@ -162,7 +159,7 @@ class SubprocessRule(Rule):
     )
 
     def represent(self, *, viewpoint):
-        command, = self.node.commands
+        command = self.node.command
         return self._template.format(
             target=self.represent_node(self.node, viewpoint=viewpoint),
             needs=self._represent_needs(self.node.needs, viewpoint=viewpoint),
