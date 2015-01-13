@@ -235,10 +235,6 @@ class Node:
             command (the same object).
         """
         self.command = command
-        try:
-            command.node = self
-        except AttributeError:
-            pass
         return command
 
     def _run_command(self):
@@ -247,14 +243,7 @@ class Node:
             raise ValueError(
                 "Node {node} cannot be rebuilt due to the lack of command"
                 .format(node=self) )
-        try:
-            self.command()
-        finally:
-            try:
-                # Break reference cycle
-                self.command.node = None
-            except AttributeError:
-                pass
+        self.command()
 
     def iter_needs(self, _seen_nodes=None, _reversed=False):
         """
@@ -753,12 +742,11 @@ class DirectoryNode(PathNode):
 class Command:
     """Convenience class for commands used with nodes."""
 
-    def __init__(self):
-        self.node = None
+    def __init__(self, node):
+        assert isinstance(node, Node), type(node)
+        self.node = node
 
     def __call__(self):
-        if self.node is None:
-            raise RuntimeError
         self._call()
 
     def _call(self):
@@ -770,8 +758,8 @@ class Command:
 
 class SubprocessCommand(Command):
 
-    def __init__(self, callargs, *, cwd, **kwargs):
-        super().__init__()
+    def __init__(self, node, callargs, *, cwd, **kwargs):
+        super().__init__(node)
         self.callargs = callargs
         if not isinstance(cwd, Path):
             raise ValueError(
@@ -873,13 +861,14 @@ class WriteTextCommand(Command):
     """
     Write some generated text to a file.
     """
-    def __init__(self, textfunc):
-        super().__init__()
+    def __init__(self, node, textfunc):
+        assert isinstance(node, FileNode), type(node)
+        super().__init__(node)
         self.textfunc = textfunc
 
     @classmethod
-    def from_text(cls, text):
-        return cls(textfunc=lambda: text)
+    def from_text(cls, node, text):
+        return cls(node, textfunc=lambda: text)
 
     def _call(self):
         super()._call()

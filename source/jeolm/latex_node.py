@@ -19,14 +19,14 @@ class _LaTeXCommand(SubprocessCommand):
     # No more than 5 LaTeX runs in a row.
     _max_latex_reruns = 4
 
-    def __init__(self, source_name, jobname, *, cwd):
+    def __init__(self, node, source_name, jobname, *, cwd):
         callargs = tuple(chain(
             (self.latex_command,),
             ('-jobname={}'.format(jobname),),
             self._latex_additional_args,
             (source_name,),
         ))
-        super().__init__(callargs, cwd=cwd)
+        super().__init__(node, callargs, cwd=cwd)
 
     # Override
     def _subprocess(self, *, reruns=0):
@@ -242,7 +242,7 @@ class LaTeXNode(ProductFileNode):
             raise RuntimeError
         jobname = path.stem
 
-        command = self._Command(source.path.name, jobname, cwd=cwd)
+        command = self._Command(self, source.path.name, jobname, cwd=cwd)
         if path.suffix != command.target_suffix:
             raise RuntimeError
 

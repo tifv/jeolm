@@ -130,7 +130,7 @@ class DocumentNodeFactory:
         main_tex_node.append_needs(self.text_node_factory(
             main_tex_node.path, recipe['document'] ))
         main_tex_node.set_command(jeolm.node.WriteTextCommand.from_text(
-            text=recipe['document'] ))
+            main_tex_node, text=recipe['document'] ))
 
         package_nodes = [
             jeolm.node.LinkedFileNode(
@@ -201,7 +201,8 @@ class DocumentNodeFactory:
             path=build_dir/'driver.ins',
             needs=(build_dir_node,) )
         ins_text = self._substitute_driver_ins(package_name=package_name)
-        ins_node.set_command(jeolm.node.WriteTextCommand.from_text(ins_text))
+        ins_node.set_command(jeolm.node.WriteTextCommand.from_text(
+            ins_node, ins_text ))
         ins_node.append_needs(self.text_node_factory(ins_node.path, ins_text))
         drv_node = jeolm.node.ProductFileNode(
             name='document:{}:drv'.format(target),
@@ -347,7 +348,8 @@ class PackageNodeFactory:
             path=build_dir/'package.ins',
             needs=(build_dir_node,) )
         ins_text = self._substitute_ins(package_name=package_name)
-        ins_node.set_command(jeolm.node.WriteTextCommand.from_text(ins_text))
+        ins_node.set_command(jeolm.node.WriteTextCommand.from_text(
+            ins_node, ins_text ))
         ins_node.append_needs(self.text_node_factory(ins_node.path, ins_text))
         sty_node = jeolm.node.ProductFileNode(
             name='package:{}:sty'.format(metapath),
