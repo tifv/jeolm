@@ -1,8 +1,11 @@
 from pathlib import Path
 
-from jeolm.node import ( Node, TargetNode, PathNode, LinkNode, DirectoryNode,
+from jeolm.node import ( Node, PathNode, BuildablePathNode,
+    LinkNode, DirectoryNode,
     SourceFileNode, FileNode,
-    SubprocessCommand, WriteTextCommand, )
+    SubprocessCommand, WriteTextCommand, MakeDirCommand)
+
+from jeolm.node_factory import TargetNode
 
 import logging
 if __name__ == '__main__':
@@ -26,8 +29,9 @@ class Rule:
         if isinstance(node, DirectoryNode):
             return super(Rule, cls).__new__(DirectoryRule)
 
-        if isinstance(node, SourceFileNode):
+        if not isinstance(node, BuildablePathNode):
             raise UnbuildableNode(node)
+
         if not isinstance(node, FileNode):
             raise TypeError(type(node))
 
@@ -143,14 +147,17 @@ class LinkRule(Rule):
 class DirectoryRule(Rule):
     _template = (
         '{target}:{needs}' '\n'
-        '\t' 'mkdir "$@"'
+        '\t' '{command} "$@"'
     )
 
     def represent(self, *, viewpoint):
-        # XXX parents
+        command = self.node.command
+        if not isinstance(command, MakeDirCommand):
+            raise TypeError(type(command))
         return self._template.format(
             target=self.represent_node(self.node, viewpoint=viewpoint),
-            needs=self._represent_needs(self.node.needs, viewpoint=viewpoint) )
+            needs=self._represent_needs(self.node.needs, viewpoint=viewpoint),
+            command='mkdir --parents' if command.parents else 'mkdir')
 
 class SubprocessRule(Rule):
     _template = (
@@ -193,7 +200,7 @@ def generate_makefile(node, *, viewpoint):
         except UnrepresentableNode:
             continue
         except UnbuildableNode as exception:
-            node, = exception.args
+            node, = exception.args # pylint: disable=unpacking-non-sequence
             if isinstance(node, SourceFileNode):
                 level, bold, reset = logging.DEBUG, '', ''
             else:

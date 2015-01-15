@@ -26,6 +26,65 @@ class MissingTargetError(FileNotFoundError):
     pass
 
 
+class CatchingThread(threading.Thread):
+    def __init__(self, *, target=None):
+        super().__init__(target=target)
+        assert not hasattr(self, 'exception')
+        self.exception = None
+
+    def run(self):
+        """
+        Extension.
+
+        Catch and save any exception occured (normal exception, i. e.
+        Exception instance).
+        """
+        try:
+            return super().run()
+        except Exception as exception: # pylint: disable=broad-except
+            self.exception = exception
+
+    def join(self, timeout=None):
+        """
+        Extension.
+
+        Raise any exception catched by run().
+        """
+        super().join(timeout=timeout)
+        if self.exception is not None:
+            raise self.exception # pylint: disable=raising-bad-type
+
+
+def mtime_less(mtime, other):
+    if other is None:
+        return False
+    if mtime is None:
+        return True
+    return mtime < other
+
+
+def pure_relative(path, root):
+    """
+    Compute relative PurePosixPath, with '..' parts.
+
+    Both arguments must be absolute PurePosixPath's and lack '..' parts.
+    """
+    if not path.is_absolute():
+        raise ValueError(path)
+    if not root.is_absolute():
+        raise ValueError(root)
+    if any('..' in p.parts for p in (path, root)):
+        raise ValueError(path, root)
+    upstairs = 0
+    while root not in path.parents:
+        parent = root.parent
+        assert parent != root
+        root = parent
+        upstairs += 1
+    return PurePosixPath(*
+        ['..'] * upstairs + [path.relative_to(root)] )
+
+
 
 class Node:
     """
@@ -38,10 +97,6 @@ class Node:
         needs (list of Node):
             prerequisites of this node.
             Should not be populated directly.
-        command (callable):
-            command that is responsible for (re)building the node and
-            setting node.modified attribute as appropriate.
-            Should not be set directly.
         modified (bool):
             if the node was modified. If equal to True, will cause any
             dependent nodes to be rebuilt.
@@ -64,7 +119,6 @@ class Node:
         else:
             self.name = str(id(self))
         self.needs = list(needs)
-        self.command = None
 
         self.modified = False
 
@@ -137,11 +191,11 @@ class Node:
                 need.update_start(semaphore=semaphore)
             def wait_and_update():
                 for need in self.needs:
-                    thread = need.thread
-                    if thread is None:
+                    subthread = need.thread
+                    if subthread is None:
                         continue
-                    assert isinstance(thread, CatchingThread)
-                    thread.join()
+                    assert isinstance(subthread, CatchingThread)
+                    subthread.join()
                 with semaphore:
                     self._update_self()
             thread = self.thread = CatchingThread(target=wait_and_update)
@@ -161,12 +215,12 @@ class Node:
         finally:
             self._locked = False
 
+    # Should be only called by node.update method or by thread created by
+    # node.update_start method.
     def _update_self(self):
-        # Should be only called by node.update method or by thread created by
-        # node.update_start method.
-        if self._needs_build():
-            self._run_command()
+        pass
 
+    # This will only get used by BuildableNode and subclasses.
     def _needs_build(self):
         """
         If the node needs to be (re)built.
@@ -211,39 +265,6 @@ class Node:
         if not isinstance(node, Node):
             raise TypeError(node)
         self.needs.append(node)
-
-    def force(self):
-        """
-        Make the node unconditionally need to be rebuilt.
-        """
-        force_node = Node(name='{}:force'.format(self.name))
-        self.needs.insert(0, force_node)
-        force_node.update()
-        force_node.modified = True
-
-    def set_command(self, command):
-        """
-        Set the argement as node.command attribute.
-
-        May be used as decorator.
-
-        Args:
-            command (callable):
-                a command to be assigned to the node.command attribute.
-
-        Returns:
-            command (the same object).
-        """
-        self.command = command
-        return command
-
-    def _run_command(self):
-        # Should be only called by self._update_self()
-        if self.command is None:
-            raise ValueError(
-                "Node {node} cannot be rebuilt due to the lack of command"
-                .format(node=self) )
-        self.command()
 
     def iter_needs(self, _seen_nodes=None, _reversed=False):
         """
@@ -303,13 +324,188 @@ class Node:
         return '{colour}{name}<NOCOLOUR>'.format(colour=colour, name=self.name)
 
 
-class TargetNode(Node):
-    """Represents an abstract target."""
+class BuildableNode(Node):
+    """
+    Represents a target that can be built by a command.
 
-    # Override
+    Attributes (additional to superclasses):
+        command (callable):
+            command that is responsible for (re)building the node and
+            setting node.modified attribute as appropriate.
+            Should not be set directly.
+    """
+
+    def __init__(self, *, name=None, needs=(), **kwargs):
+        """
+        Initialize BuildableNode instance.
+
+        Args:
+            name, needs (optional)
+                passed to the superclass.
+        """
+        super().__init__(name=name, needs=needs, **kwargs)
+        self.command = None
+
+    def _update_self(self):
+        super()._update_self()
+        if self._needs_build():
+            self._run_command()
+
+    def force(self):
+        """
+        Make the node unconditionally need to be rebuilt.
+        """
+        force_node = Node(name='{}:force'.format(self.name))
+        self.needs.insert(0, force_node)
+        force_node.update()
+        force_node.modified = True
+
+    def set_command(self, command):
+        """
+        Set the argement as node.command attribute.
+
+        May be used as decorator.
+
+        Args:
+            command (callable):
+                a command to be assigned to the node.command attribute.
+
+        Returns:
+            command (the same object).
+        """
+        self.command = command
+        return command
+
+    def set_subprocess_command(self, callargs, *, cwd, **kwargs):
+        return self.set_command(SubprocessCommand( self,
+            callargs, cwd=cwd, **kwargs ))
+
     def _run_command(self):
-        if self.command is not None:
-            raise RuntimeError
+        # Should be only called by self._update_self()
+        if self.command is None:
+            raise ValueError(
+                "Node {node} cannot be rebuilt due to the lack of command"
+                .format(node=self) )
+        self.command()
+
+
+class Command:
+    """Convenience class for commands used with nodes."""
+
+    def __init__(self, node):
+        assert isinstance(node, Node), type(node)
+        self.node = node
+
+    def __call__(self):
+        pass
+
+    def log(self, level, message):
+        return self.node.log(level, message)
+
+
+class SubprocessCommand(Command):
+
+    def __init__(self, node, callargs, *, cwd, **kwargs):
+        super().__init__(node)
+        self.callargs = callargs
+        if not isinstance(cwd, Path):
+            raise ValueError(
+                "cwd must be a pathlib.Path instance, not {cwd_type}"
+                .format(cwd_type=type(cwd)) )
+        if not cwd.is_absolute():
+            raise ValueError("cwd must be an absolute path")
+        self.cwd = cwd
+        kwargs.setdefault('stderr', subprocess.STDOUT)
+        self.kwargs = kwargs
+
+    def __call__(self):
+        super().__call__()
+        self._subprocess()
+
+    def _subprocess(self):
+        """
+        Run external process.
+
+        Process output (see _subprocess_output() method documentation)
+        is catched and logged (with INFO level).
+
+        Returns None.
+
+        Raises:
+            subprocess.CalledProcessError:
+                in case of error in the called process.
+        """
+
+        output = self._subprocess_output()
+        if not output:
+            return
+        self._log_output(output)
+
+    def _subprocess_output(self, log_error_output=True):
+        """
+        Run external process.
+
+        Process output (the combined stdout and stderr of the spawned
+        process, decoded with default encoding and errors='replace')
+        is catched and done something with, depending on args.
+
+        Args:
+            log_error_output (bool, optional):
+                If True (default), in case of process error its output will be
+                logged (with ERROR level). If False, it will not be logged.
+                Defaults to True. In any case, any received
+                subprocess.CalledProcessError exception is reraised.
+
+        Returns:
+            Process output (str).
+
+        Raises:
+            subprocess.CalledProcessError:
+                in case of error in the called process.
+        """
+
+        if isinstance(self.node, PathNode):
+            root_relative = self.node.root_relative
+        else:
+            root_relative = PathNode.root_relative
+
+        self.log(logging.INFO, (
+            '<cwd=<CYAN>{cwd}<NOCOLOUR>> <GREEN>{command}<NOCOLOUR>'
+            .format(
+                cwd=root_relative(self.cwd),
+                command=' '.join(self.callargs), )
+        ))
+
+        try:
+            encoded_output = subprocess.check_output(
+                self.callargs, cwd=str(self.cwd), **self.kwargs )
+        except subprocess.CalledProcessError as exception:
+            if not log_error_output:
+                raise
+            output = exception.output.decode(errors='replace')
+            self.log(logging.ERROR,
+                "<BOLD>Command {exc.cmd[0]} returned code {exc.returncode}, "
+                    "output:<RESET>\n{output}"
+                "<BOLD>(error output while building "
+                    "<RED>{node.name}<NOCOLOUR>)<RESET>"
+                .format(node=self.node, exc=exception, output=output)
+            )
+            # Stop jeolm.commands.refrain_called_process_error
+            # (which most probably surrounds us) from reporting the error.
+            exception.reported = True
+            raise
+        else:
+            return encoded_output.decode(errors='replace')
+
+    def _log_output(self, output, level=logging.INFO):
+        self.log( level,
+            "Command {prog} output:<RESET>\n{output}"
+            "{bold}(output while building {node_name})"
+            .format(
+                node_name=self.node.fancified_repr(level),
+                prog=self.callargs[0], output=output,
+                bold='<BOLD>' if level >= logging.WARNING else '')
+        )
 
 
 class DatedNode(Node):
@@ -323,7 +519,7 @@ class DatedNode(Node):
 
     def __init__(self, name=None, needs=(), **kwargs):
         """
-        Initialize Node instance.
+        Initialize DatedNode instance.
 
         Args:
             name, needs (optional)
@@ -448,20 +644,6 @@ class PathNode(DatedNode):
             "name='{node.name}', path='{node.relative_path}')"
             .format(node=self) )
 
-    def _run_command(self):
-        prerun_mtime = self.mtime
-        super()._run_command()
-        self._load_mtime()
-        if self.mtime is None:
-            # Succeeded command did not result in a file
-            raise MissingTargetError(repr(self))
-        if mtime_less(prerun_mtime, self.mtime):
-            self.modified = True
-
-    def set_subprocess_command(self, callargs, *, cwd, **kwargs):
-        return self.set_command(SubprocessCommand(
-            callargs, cwd=cwd, **kwargs ))
-
     @property
     def relative_path(self):
         return self.root_relative(self.path)
@@ -473,7 +655,20 @@ class PathNode(DatedNode):
         return path.relative_to(cls.root)
 
 
-class ProductNode(PathNode):
+class BuildablePathNode(PathNode, BuildableNode):
+
+    def _run_command(self):
+        prerun_mtime = self.mtime
+        super()._run_command()
+        self._load_mtime()
+        if self.mtime is None:
+            # Succeeded command did not result in a file
+            raise MissingTargetError(repr(self))
+        if mtime_less(prerun_mtime, self.mtime):
+            self.modified = True
+
+
+class ProductNode(BuildablePathNode):
     """
     Represents a node with a source.
 
@@ -534,12 +729,9 @@ class FilelikeNode(PathNode):
 class SourceFileNode(FollowingPathNode, FilelikeNode):
     """Represents a source file."""
 
-    # Override.
-    def _run_command(self):
-        raise RuntimeError
+    pass
 
-
-class FileNode(FilelikeNode):
+class FileNode(BuildablePathNode, FilelikeNode):
     """
     Represents a file that can be recreated by a build command.
     """
@@ -563,6 +755,33 @@ class FileNode(FilelikeNode):
                     'deleting {}'.format(self.relative_path) )
                 self.path.unlink()
             raise
+
+
+class WriteTextCommand(Command):
+    """
+    Write some generated text to a file.
+    """
+
+    def __init__(self, node, textfunc):
+        assert isinstance(node, FileNode), type(node)
+        super().__init__(node)
+        self.textfunc = textfunc
+
+    @classmethod
+    def from_text(cls, node, text):
+        return cls(node, textfunc=lambda: text)
+
+    def __call__(self):
+        super().__call__()
+        text = self.textfunc()
+        if not isinstance(text, str):
+            raise TypeError(type(text))
+        self.log(logging.INFO, (
+            '<GREEN>Write generated text to {node.relative_path}<NOCOLOUR>'
+            .format(node=self.node)
+        ))
+        with self.node.open('w') as text_file:
+            text_file.write(text)
 
 
 class ProductFileNode(ProductNode, FileNode):
@@ -661,8 +880,44 @@ class LinkedFileNode(LinkNode, FilelikeNode):
     pass
 
 
-class DirectoryNode(PathNode):
-    """Represents a directory."""
+class MakeDirCommand(Command):
+    """
+    Create a directory.
+
+    Attributes (additional to superclasses):
+        parents (bool):
+            True if the parents of directory will be created if needed.
+    """
+
+    def __init__(self, node, *, parents):
+        assert isinstance(node, DirectoryNode), type(node)
+        super().__init__(node)
+        self.parents = parents
+
+    def __call__(self):
+        super().__call__()
+        node = self.node
+        path = node.path
+        parents = self.parents
+        if os.path.lexists(str(path)):
+            path.unlink()
+        self.log(logging.INFO, (
+            '<GREEN>{command} {node.relative_path}<NOCOLOUR>'
+            .format(
+                node=node,
+                command='mkdir --parents' if parents else 'mkdir' )
+        ))
+        # rwxr-xr-x
+        path.mkdir(mode=0b111101101, parents=parents)
+        node.modified = True
+
+
+class DirectoryNode(BuildablePathNode):
+    """
+    Represents a directory.
+    """
+
+    _Command = MakeDirCommand
 
     def __init__(self, path,
         *, parents=False,
@@ -681,19 +936,7 @@ class DirectoryNode(PathNode):
                 passed to the superclass.
         """
         super().__init__(path=path, name=name, needs=needs, **kwargs)
-        def mkdir_command():
-            if os.path.lexists(str(path)):
-                path.unlink()
-            self.log(logging.INFO, (
-                '<GREEN>{command} {node.relative_path}<NOCOLOUR>'
-                .format(
-                    node=self,
-                    command='mkdir --parents' if parents else 'mkdir' )
-            ))
-            # rwxr-xr-x
-            path.mkdir(mode=0b111101101, parents=parents)
-            self.modified = True
-        self.set_command(mkdir_command)
+        self.set_command(self._Command(self, parents=parents))
 
     def _load_mtime(self):
         """
@@ -732,215 +975,4 @@ class DirectoryNode(PathNode):
         if self.mtime is None:
             return True
         return False
-
-
-
-####################
-# Commands
-
-
-class Command:
-    """Convenience class for commands used with nodes."""
-
-    def __init__(self, node):
-        assert isinstance(node, Node), type(node)
-        self.node = node
-
-    def __call__(self):
-        self._call()
-
-    def _call(self):
-        pass
-
-    def log(self, level, message):
-        return self.node.log(level, message)
-
-
-class SubprocessCommand(Command):
-
-    def __init__(self, node, callargs, *, cwd, **kwargs):
-        super().__init__(node)
-        self.callargs = callargs
-        if not isinstance(cwd, Path):
-            raise ValueError(
-                "cwd must be a pathlib.Path instance, "
-                "not {cwd_type}"
-                .format(cwd_type=type(cwd)) )
-        if not cwd.is_absolute():
-            raise ValueError("cwd must be an absolute Path")
-        self.cwd = cwd
-        kwargs.setdefault('stderr', subprocess.STDOUT)
-        self.kwargs = kwargs
-
-    def _call(self):
-        super()._call()
-        self._subprocess()
-
-    def _subprocess(self):
-        """
-        Run external process.
-
-        Process output (see _subprocess_output() method documentation)
-        is catched and logged (with INFO level).
-
-        Returns None.
-
-        Raises:
-            subprocess.CalledProcessError:
-                in case of error in the called process.
-        """
-
-        output = self._subprocess_output()
-        if not output:
-            return
-        self._log_output(output)
-
-    def _subprocess_output(self, log_error_output=True):
-        """
-        Run external process.
-
-        Process output (the combined stdout and stderr of the spawned
-        process, decoded with default encoding and errors='replace')
-        is catched and done something with, depending on args.
-
-        Args:
-            log_error_output (bool, optional):
-                If True (default), in case of process error its output will be
-                logged (with ERROR level). If False, it will not be logged.
-                Defaults to True. In any case, any received
-                subprocess.CalledProcessError exception is reraised.
-
-        Returns:
-            Process output (str).
-
-        Raises:
-            subprocess.CalledProcessError:
-                in case of error in the called process.
-        """
-
-        self.log(logging.INFO, (
-            '<cwd=<CYAN>{cwd}<NOCOLOUR>> <GREEN>{command}<NOCOLOUR>'
-            .format(
-                cwd=self.node.root_relative(self.cwd),
-                command=' '.join(self.callargs), )
-        ))
-
-        try:
-            encoded_output = subprocess.check_output(
-                self.callargs, cwd=str(self.cwd), **self.kwargs )
-        except subprocess.CalledProcessError as exception:
-            if not log_error_output:
-                raise
-            output = exception.output.decode(errors='replace')
-            self.log(logging.ERROR,
-                "<BOLD>Command {exc.cmd[0]} returned code {exc.returncode}, "
-                    "output:<RESET>\n{output}"
-                "<BOLD>(error output while building "
-                    "<RED>{node.name}<NOCOLOUR>)<RESET>"
-                .format(node=self.node, exc=exception, output=output)
-            )
-            # Stop jeolm.commands.refrain_called_process_error
-            # (which most probably surrounds us) from reporting the error.
-            exception.reported = True
-            raise
-        else:
-            return encoded_output.decode(errors='replace')
-
-    def _log_output(self, output, level=logging.INFO):
-        self.log( level,
-            "Command {prog} output:<RESET>\n{output}"
-            "{bold}(output while building {node_name})"
-            .format(
-                node_name=self.node.fancified_repr(level),
-                prog=self.callargs[0], output=output,
-                bold='<BOLD>' if level >= logging.WARNING else '')
-        )
-
-
-class WriteTextCommand(Command):
-    """
-    Write some generated text to a file.
-    """
-    def __init__(self, node, textfunc):
-        assert isinstance(node, FileNode), type(node)
-        super().__init__(node)
-        self.textfunc = textfunc
-
-    @classmethod
-    def from_text(cls, node, text):
-        return cls(node, textfunc=lambda: text)
-
-    def _call(self):
-        super()._call()
-        text = self.textfunc()
-        if not isinstance(text, str):
-            raise TypeError(type(text))
-        self.log(logging.INFO, (
-            '<GREEN>Write generated text to {node.relative_path}<NOCOLOUR>'
-            .format(node=self.node)
-        ))
-        with self.node.open('w') as text_file:
-            text_file.write(text)
-
-
-
-####################
-# Supplementary classes and routines
-
-
-class CatchingThread(threading.Thread):
-    def __init__(self, *, target=None):
-        super().__init__(target=target)
-        assert not hasattr(self, 'exception')
-        self.exception = None
-
-    def run(self):
-        """
-        Extension.
-
-        Catch and save any exception occured.
-        """
-        try:
-            return super().run()
-        except Exception as exception: # pylint: disable=broad-except
-            self.exception = exception
-
-    def join(self, timeout=None):
-        """
-        Extension.
-
-        Raise any exception catched by run().
-        """
-        super().join(timeout=timeout)
-        if self.exception is not None:
-            raise self.exception # pylint: disable=raising-bad-type
-
-def mtime_less(mtime, other):
-    if other is None:
-        return False
-    if mtime is None:
-        return True
-    return mtime < other
-
-
-def pure_relative(path, root):
-    """
-    Compute relative PurePosixPath, with '..' parts.
-
-    Both arguments must be absolute PurePosixPath's and lack '..' parts.
-    """
-    if not path.is_absolute():
-        raise ValueError(path)
-    if not root.is_absolute():
-        raise ValueError(root)
-    if any('..' in p.parts for p in (path, root)):
-        raise ValueError(path, root)
-    upstairs = 0
-    while root not in path.parents:
-        parent = root.parent
-        assert parent != root
-        root = parent
-        upstairs += 1
-    return PurePosixPath(*
-        ['..'] * upstairs + [path.relative_to(root)] )
 

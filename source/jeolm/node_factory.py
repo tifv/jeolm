@@ -19,6 +19,10 @@ import logging
 logger = logging.getLogger(__name__) # pylint: disable=invalid-name
 
 
+class TargetNode(jeolm.node.Node):
+    pass
+
+
 class TargetNodeFactory:
 
     def __init__(self, *, local, driver, text_node_factory):
@@ -62,7 +66,7 @@ class TargetNodeFactory:
                     *targets, recursively=True )
             ]
 
-        target_node = jeolm.node.TargetNode(name=name)
+        target_node = TargetNode(name=name)
         target_node.extend_needs(
             self.document_node_factory(target)
             for target in targets )
@@ -511,6 +515,9 @@ class SourceNodeFactory:
         return source_node
 
 
+class TextNode(jeolm.node.DatedNode):
+    pass
+
 class TextNodeFactory:
 
     def __init__(self, *, local):
@@ -537,6 +544,7 @@ class TextNodeFactory:
         text_hash = hashlib.sha256(text.encode()).digest()
         if node.text_hash == text_hash:
             node.log(logging.DEBUG, "Text not changed")
+            assert node.mtime is not None, node
             return node
         node.log(logging.INFO, "Text has UPDATED")
         node.text_hash = text_hash
@@ -545,7 +553,7 @@ class TextNodeFactory:
         return node
 
     def _load_node(self, path):
-        node = jeolm.node.DatedNode(name='text:{}'.format(path))
+        node = TextNode(name='text:{}'.format(path))
         record = self.shelf.get(str(path))
         if record is not None:
             assert isinstance(record, dict), type(record)
@@ -554,7 +562,6 @@ class TextNodeFactory:
             node.mtime = record['mtime']
         else:
             node.text_hash = node.mtime = None
-        node.update()
         return node
 
     def _dump_node(self, path, node):

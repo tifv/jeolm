@@ -31,16 +31,16 @@ class _LaTeXCommand(SubprocessCommand):
     # Override
     def _subprocess(self, *, reruns=0):
         latex_output = self._subprocess_output()
-        self.node.modified = True
 
         if self._latex_output_requests_rerun(latex_output):
             if reruns >= self._max_latex_reruns:
                 self._log_output(latex_output, level=logging.WARNING)
                 self.log( logging.WARNING,
                     "LaTeX requests rerun too many times in a row." )
-            self.log( logging.WARNING,
-                "LaTeX requests rerun" + '…' * (reruns+1) )
-            return self._subprocess(reruns=reruns+1)
+            else:
+                self.log( logging.WARNING,
+                    "LaTeX requests rerun" + '…' * (reruns+1) )
+                return self._subprocess(reruns=reruns+1)
         else:
             self._print_latex_log(
                 latex_output,
