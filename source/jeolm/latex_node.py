@@ -33,14 +33,14 @@ class _LaTeXCommand(SubprocessCommand):
         latex_output = self._subprocess_output()
 
         if self._latex_output_requests_rerun(latex_output):
-            if reruns >= self._max_latex_reruns:
-                self._log_output(latex_output, level=logging.WARNING)
-                self.log( logging.WARNING,
-                    "LaTeX requests rerun too many times in a row." )
-            else:
+            if reruns < self._max_latex_reruns:
                 self.log( logging.WARNING,
                     "LaTeX requests rerun" + '…' * (reruns+1) )
                 return self._subprocess(reruns=reruns+1)
+            else:
+                self._log_output(latex_output, level=logging.WARNING)
+                self.log( logging.WARNING,
+                    "LaTeX requests rerun too many times in a row." )
         else:
             self._print_latex_log(
                 latex_output,
@@ -48,10 +48,10 @@ class _LaTeXCommand(SubprocessCommand):
 
     @classmethod
     def _latex_output_requests_rerun(cls, latex_output):
-        match = cls.latex_output_rerun_pattern.search(latex_output)
+        match = cls._latex_output_rerun_pattern.search(latex_output)
         return match is not None
 
-    latex_output_rerun_pattern = re.compile(
+    _latex_output_rerun_pattern = re.compile(
         r'[Rr]erun to (?#get something right)' )
 
     def _print_latex_log(self, latex_output, latex_log_path=None):
@@ -71,11 +71,15 @@ class _LaTeXCommand(SubprocessCommand):
 
     @classmethod
     def _latex_output_is_alarming(cls, latex_output):
-        match = cls.latex_output_alarming_pattern.search(latex_output)
+        match = cls._latex_output_alarming_pattern.search(latex_output)
         return match is not None
 
-    latex_output_alarming_pattern = re.compile(
-        r'[Ee]rror|[Ww]arning|No pages of output' )
+    _latex_output_alarming_pattern = re.compile(
+        r'[Ee]rror|'
+            # loading warning.sty package should not trigger alarm
+            r'(?!warning/warning.sty)(?!(?<=warning/)warning.sty)'
+        r'[Ww]arning|'
+        r'No pages of output' )
 
     def _print_overfulls_from_latex_log(self, latex_log_text):
         page_numberer = self._find_page_numbers_in_latex_log(latex_log_text)
