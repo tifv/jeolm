@@ -55,10 +55,6 @@ class JeolmLoader(the_yaml.loader.SafeLoader):
     def construct_path(self, node):
         return RecordPath(self.construct_scalar(node))
 
-    def construct_large(self, node):
-        self.construct_scalar(node)
-        return large
-
 JeolmLoader.add_constructor(
         'tag:yaml.org,2002:omap',
         JeolmLoader.construct_yaml_omap)
