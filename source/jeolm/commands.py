@@ -33,7 +33,6 @@ def print_source_list(targets, *, local, driver, viewpoint=None,
         print(path)
 
 def check_spelling(targets, *, local, driver, context=0, colour=True):
-    from . import spell
     from .spell import LaTeXSpeller, CorrectWord, IncorrectWord
     if colour:
         from .fancify import fancifying_print as fprint
@@ -70,7 +69,7 @@ def check_spelling(targets, *, local, driver, context=0, colour=True):
         lines = ['']
         printed_line_numbers = set()
         try:
-            for piece in spell.LaTeXSpeller(text, lang='ru_RU'):
+            for piece in LaTeXSpeller(text, lang='ru_RU'):
                 if isinstance(piece, IncorrectWord):
                     lineno = len(lines) - 1
                     printed_line_numbers.update(
