@@ -63,11 +63,14 @@ def mtime_less(mtime, other):
     return mtime < other
 
 
-def pure_relative(path, root):
+def _naive_relative_to(path, root):
     """
-    Compute relative PurePosixPath, with '..' parts.
+    Compute relative PurePosixPath, result may include '..' parts.
 
     Both arguments must be absolute PurePosixPath's and lack '..' parts.
+
+    Possibility of symlinks is ignored, i. e. arguments are interpreted
+    as resolved paths.
     """
     if not path.is_absolute():
         raise ValueError(path)
@@ -821,7 +824,7 @@ class LinkNode(ProductNode):
         if not relative:
             self.link_target = str(source.path)
         else:
-            self.link_target = str(pure_relative(
+            self.link_target = str(_naive_relative_to(
                 source.path, self.path.parent ))
 
         def link_command():
