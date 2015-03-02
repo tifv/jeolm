@@ -1,4 +1,5 @@
 import argparse
+from contextlib import closing
 
 from pathlib import Path
 
@@ -47,6 +48,7 @@ def main(args):
     finally:
         finish_logging()
 
+
 build_parser = subparsers.add_parser( 'build',
     help='build specified targets' )
 build_parser.add_argument( 'targets',
@@ -74,7 +76,6 @@ def main_build(args, *, local):
     from jeolm.metadata import MetadataManager
     from jeolm.node_factory import TargetNodeFactory, TextNodeFactory
 
-    PathNode.root = local.root
     if not args.targets:
         logger.warn('No-op: no targets for building')
     md = MetadataManager(local=local)
@@ -92,41 +93,71 @@ def main_build(args, *, local):
         driver.clear()
         md.feed_metadata(driver)
 
+    PathNode.root = local.root
     if args.jobs < 1:
         raise argparse.ArgumentTypeError(
             "Positive integral number of jobs is required." )
-    elif args.jobs > 1:
-        import threading
-        semaphore = threading.BoundedSemaphore(value=args.jobs)
-    else:
-        semaphore = None
-
+    semaphore = _get_build_semaphore(args.jobs)
     text_node_factory = TextNodeFactory(local=local)
     target_node_factory = TargetNodeFactory(
         local=local, driver=driver, text_node_factory=text_node_factory)
-    try:
+
+    with closing(text_node_factory):
         target_node = target_node_factory(args.targets, delegate=args.delegate)
-    finally:
-        text_node_factory.close()
-    if args.force is None:
-        pass
-    elif args.force == 'latex':
-        from jeolm.latex_node import LaTeXNode
-        for node in target_node.iter_needs():
-            if isinstance(node, LaTeXNode):
-                node.force()
-    elif args.force == 'generate':
-        from jeolm.latex_node import LaTeXNode
-        from jeolm.node import FileNode
-        for node in target_node.iter_needs():
-            if (isinstance(node, LaTeXNode) and
-                isinstance(node.source, FileNode)
-            ):
-                node.source.force()
+        if args.force is None:
+            pass
+        elif args.force == 'latex':
+            from jeolm.latex_node import LaTeXNode
+            for node in target_node.iter_needs():
+                if isinstance(node, LaTeXNode):
+                    node.force()
+        elif args.force == 'generate':
+            from jeolm.latex_node import LaTeXNode
+            from jeolm.node import FileNode
+            for node in target_node.iter_needs():
+                if (isinstance(node, LaTeXNode) and
+                    isinstance(node.source, FileNode)
+                ):
+                    node.source.force()
+        else:
+            raise RuntimeError(args.force)
+        with jeolm.commands.refrain_called_process_error():
+            target_node.update(semaphore=semaphore)
+
+def _get_build_semaphore(jobs):
+    assert isinstance(jobs, int), type(jobs)
+    if jobs > 1:
+        import threading
+        return threading.BoundedSemaphore(value=jobs)
     else:
-        raise RuntimeError(args.force)
-    with jeolm.commands.refrain_called_process_error():
-        target_node.update(semaphore=semaphore)
+        return None
+
+
+buildline_parser = subparsers.add_parser( 'buildline',
+    help='start an interactive build shell' )
+buildline_parser.add_argument( '-j', '--jobs',
+    help='number of parallel jobs',
+    type=int, default=1 )
+buildline_parser.set_defaults(command='buildline', force=None)
+
+def main_buildline(args, *, local):
+    from jeolm.node import PathNode
+    from jeolm.node_factory import TextNodeFactory
+    from jeolm.buildline import BuildLine
+
+    PathNode.root = local.root
+    if args.jobs < 1:
+        raise argparse.ArgumentTypeError(
+            "Positive integral number of jobs is required." )
+    semaphore = _get_build_semaphore(args.jobs)
+    text_node_factory = TextNodeFactory(local=local)
+
+    with closing(text_node_factory):
+        buildline = BuildLine(
+            local=local, text_node_factory=text_node_factory,
+            semaphore=semaphore )
+        with buildline.readline_setup():
+            return buildline.main()
 
 
 review_parser = subparsers.add_parser( 'review',

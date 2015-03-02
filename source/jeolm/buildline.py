@@ -1,6 +1,7 @@
 import readline
 import subprocess
 import traceback
+from contextlib import contextmanager
 
 from pathlib import Path, PurePosixPath
 import pyinotify
@@ -24,91 +25,124 @@ if __name__ == '__main__':
 else:
     logger = logging.getLogger(__name__) # pylint: disable=invalid-name
 
-def mainloop(local, text_node_factory):
-    md = NotifiedMetadataManager(local=local)
-    driver_class = local.driver_class
-    md.review(PurePosixPath())
-    driver = driver_class()
-    md.feed_metadata(driver)
-    history_filename = str(local.build_dir/'buildline.history')
 
-    def review_metadata():
-        with log_metadata_diff(md, logger=logger):
-            review_list = md.generate_review_list()
-            assert review_list is not None
-            assert not isinstance(review_list, str), review_list
+class BuildLine:
+
+    def __init__(self, *, local, text_node_factory, semaphore):
+        self.local = local
+        self.text_node_factory = text_node_factory
+        self.semaphore = semaphore
+        self.metadata = NotifiedMetadataManager(local=self.local)
+        self.metadata.review(PurePosixPath())
+        self.driver = self.local.driver_class()
+        self.metadata.feed_metadata(self.driver)
+        self.history_filename = str(self.local.build_dir/'buildline.history')
+
+    @contextmanager
+    def readline_setup(self):
+        """
+        Return a context manager.
+
+        Should enclose the code where readline is actually working.
+
+        On exit, writes readline history.
+        """
+        readline.set_completer(
+            Completer(driver=self.driver).readline_completer )
+        readline.set_completer_delims(';')
+        readline.parse_and_bind('tab: complete')
+        try:
+            readline.read_history_file(self.history_filename)
+        except FileNotFoundError:
+            pass
+        readline.set_history_length(1000)
+        try:
+            yield
+        finally:
+            readline.write_history_file(self.history_filename)
+
+    def review_metadata(self):
+
+        review_list = self.metadata.generate_review_list()
+        assert isinstance(review_list, (tuple, list))
+        if not review_list:
+            return
+
+        with log_metadata_diff(self.metadata, logger=logger):
             for review_path in review_list:
                 try:
                     inpath, = jeolm.commands.resolve_inpaths(
-                        [review_path], source_dir=local.source_dir )
-                    md.review(inpath)
+                        [review_path], source_dir=self.local.source_dir )
+                    self.metadata.review(inpath)
                 except Exception: # pylint: disable=broad-except
                     traceback.print_exc()
                     logger.error(
                         "<BOLD>Error occured while reviewing "
                         "<RED>{}<NOCOLOUR>.<RESET>"
-                        .format(review_path.relative_to(local.source_dir)) )
-        if review_list:
-            driver.clear()
-            md.feed_metadata(driver)
+                        .format(review_path.relative_to(self.local.source_dir))
+                    )
+        self.driver.clear()
+        self.metadata.feed_metadata(self.driver)
 
-    completer = Completer(driver=driver).readline_completer
-    readline.set_completer(completer)
-    readline.set_completer_delims(';')
-    readline.parse_and_bind('tab: complete')
-    try:
-        readline.read_history_file(history_filename)
-    except FileNotFoundError:
-        pass
-    readline.set_history_length(1000)
-
-    targets = []
-    while True:
+    def main(self):
         try:
-            targets_string = input('jeolm> ')
-        except (KeyboardInterrupt, EOFError):
-            # Finish
-            print()
-            md.dump_metadata_cache()
-            readline.write_history_file(history_filename)
-            raise SystemExit
-        review_metadata()
-        if not targets_string:
-            pass # use previous target
-        elif targets_string == 'clean':
-            targets = []
-            jeolm.commands.clean(root=local.root)
-        elif targets_string == 'dump':
-            targets = []
-            md.dump_metadata_cache()
-        else:
+            self.mainloop()
+        finally:
+            self.metadata.dump_metadata_cache()
+
+    def mainloop(self):
+        targets = []
+        while True:
             try:
+                targets_string = self.input()
+            except (KeyboardInterrupt, EOFError):
+                return
+            self.review_metadata()
+            if not targets_string:
+                pass # use previous target
+            elif targets_string == 'clean':
                 targets = []
-                for piece in targets_string.split(';'):
-                    target_string = piece.strip()
-                    if not target_string:
-                        continue
-                    targets.append(Target.from_string(target_string))
-            except TargetError:
+                jeolm.commands.clean(root=self.local.root)
+            elif targets_string == 'dump':
+                targets = []
+                self.metadata.dump_metadata_cache()
+            else:
+                try:
+                    targets = self.parse_targets(targets_string)
+                except TargetError:
+                    traceback.print_exc()
+                    continue
+            if not targets:
+                continue
+            try:
+                self.build(targets)
+            except subprocess.CalledProcessError as exception:
+                if getattr(exception, 'reported', False):
+                    continue
                 traceback.print_exc()
-                continue
-        if not targets:
-            continue
-        try:
-            build(targets, local, text_node_factory, driver)
-        except subprocess.CalledProcessError as exception:
-            if getattr(exception, 'reported', False):
-                continue
-            traceback.print_exc()
-        except Exception: # pylint: disable=broad-except
-            traceback.print_exc()
+            except Exception: # pylint: disable=broad-except
+                traceback.print_exc()
 
-def build(targets, local, text_node_factory, driver):
-    target_node_factory = jeolm.node_factory.TargetNodeFactory(
-        local=local, driver=driver,
-        text_node_factory=text_node_factory )
-    target_node = target_node_factory(targets, delegate=True)
-    target_node.update()
+    @classmethod
+    def input(cls):
+        return input('jeolm> ')
+
+    @classmethod
+    def parse_targets(cls, targets_string):
+        targets = []
+        for piece in targets_string.split(';'):
+            target_string = piece.strip()
+            if not target_string:
+                continue
+            targets.append(Target.from_string(target_string))
+        return targets
+
+    def build(self, targets):
+        target_node_factory = jeolm.node_factory.TargetNodeFactory(
+            local=self.local, driver=self.driver,
+            text_node_factory=self.text_node_factory )
+        target_node = target_node_factory(targets, delegate=True)
+        target_node.update(semaphore=self.semaphore)
 
 class NotifiedMetadataManager(jeolm.metadata.MetadataManager):
 
@@ -123,23 +157,23 @@ class NotifiedMetadataManager(jeolm.metadata.MetadataManager):
 
     def __init__(self, *, local):
         self.review_set = set()
-        self.wm = wm = pyinotify.WatchManager()
-        self.eh = eh = self.EventHandler(md=self)
-        self.notifier = pyinotify.Notifier(wm, eh, timeout=0)
-        self.wdm = self.WatchDescriptorManager()
+        self.watch = pyinotify.WatchManager()
+        self.events = self.EventHandler()
+        self.notifier = pyinotify.Notifier(self.watch, self.events, timeout=0)
+        self.descriptors = self.WatchDescriptorManager()
         super().__init__(local=local)
-        self.wdm.add(self.wm.add_watch(
+        self.descriptors.add(self.watch.add_watch(
             str(self.local.source_dir), self.mask, rec=False ))
-        self.source_dir_wd, = self.wdm.path_by_wd
+        self.source_dir_wd, = self.descriptors.path_by_wd
 
     def generate_review_list(self):
         if not self.notifier.check_events():
             return ()
-        self.eh.prepare_event_lists()
+        self.events.prepare_event_lists()
         self.notifier.read_events()
         self.notifier.process_events()
-        creative_events, destructive_events = self.eh.get_event_lists()
-        if self.source_dir_wd in self.eh.distrusted_wds:
+        creative_events, destructive_events = self.events.get_event_lists()
+        if self.source_dir_wd in self.events.distrusted_wds:
             raise RuntimeError(
                 "Source directory appears to be moved or deleted, "
                 "unable to continue." )
@@ -153,6 +187,7 @@ class NotifiedMetadataManager(jeolm.metadata.MetadataManager):
 
     @classmethod
     def filter_reasonable_paths(cls, events):
+        """Yield paths."""
         for event in events:
             path = Path(event.pathname)
             if event.dir and path.suffix != '':
@@ -166,13 +201,14 @@ class NotifiedMetadataManager(jeolm.metadata.MetadataManager):
     def _create_record(self, path, parent_record, key):
         if path.suffix == '':
             source_path = str(self.local.source_dir/path.as_inpath())
-            self.wdm.add(self.wm.add_watch(source_path, self.mask, rec=False))
+            self.descriptors.add(self.watch.add_watch(
+                source_path, self.mask, rec=False ))
         return super()._create_record(path, parent_record, key)
 
     def _delete_record(self, path, *args, **kwargs):
         if path.suffix == '':
             source_path = str(self.local.source_dir/path.as_inpath())
-            self.wm.rm_watch(self.wdm.pop(path=source_path))
+            self.watch.rm_watch(self.descriptors.pop(path=source_path))
         return super()._delete_record(path, *args, **kwargs)
 
     class WatchDescriptorManager:
@@ -182,32 +218,30 @@ class NotifiedMetadataManager(jeolm.metadata.MetadataManager):
             super().__init__()
 
         def add(self, mapping):
-            for path, wd in mapping.items():
-                logger.debug("<GREEN>Start<NOCOLOUR> watching "
-                    "path=<MAGENTA>{path}<NOCOLOUR> "
-                    "(wd=<CYAN>{wd}<NOCOLOUR>)"
-                    .format(path=path, wd=wd) )
+            for path, descriptor in mapping.items():
+                logger.debug( "Start watching path {path} (wd={descriptor})"
+                    .format(path=path, descriptor=descriptor) )
                 assert path not in self.wd_by_path
-                assert wd not in self.path_by_wd
-                self.wd_by_path[path] = wd
-                self.path_by_wd[wd] = path
+                assert descriptor not in self.path_by_wd
+                self.wd_by_path[path] = descriptor
+                self.path_by_wd[descriptor] = path
 
         def pop(self, *, path):
-            wd = self.wd_by_path.pop(path)
-            reverse_path = self.path_by_wd.pop(wd)
-            logger.debug("<RED>Stop<NOCOLOUR> watching "
-                "path=<MAGENTA>{path}<NOCOLOUR> "
-                "(wd=<CYAN>{wd}<NOCOLOUR>)"
-                .format(path=path, wd=wd) )
+            descriptor = self.wd_by_path.pop(path)
+            reverse_path = self.path_by_wd.pop(descriptor)
+            logger.debug( "Stop watching path {path} (wd={descriptor})"
+                .format(path=path, descriptor=descriptor) )
             assert reverse_path == path
-            return wd
+            return descriptor
 
     class EventHandler(pyinotify.ProcessEvent):
 
         def prepare_event_lists(self):
+            # pylint: disable=attribute-defined-outside-init
             self.creative_events = []
             self.destructive_events = []
             self.distrusted_wds = set()
+            # pylint: enable=attribute-defined-outside-init
 
         def get_event_lists(self):
             """
@@ -307,23 +341,4 @@ class Completer:
                 return None
         except Exception: # pylint: disable=broad-except
             traceback.print_exc()
-
-
-def main():
-    jeolm.setup_logging(verbose=True, concurrent=False)
-    try:
-        local = jeolm.local.LocalManager(root=Path.cwd())
-    except jeolm.local.RootNotFoundError:
-        jeolm.local.report_missing_root()
-        raise SystemExit
-    jeolm.node.PathNode.root = local.root
-    text_node_factory = jeolm.node_factory.TextNodeFactory(local=local)
-    try:
-        mainloop(local, text_node_factory)
-    finally:
-        text_node_factory.close()
-
-
-if __name__ == '__main__':
-    main()
 
