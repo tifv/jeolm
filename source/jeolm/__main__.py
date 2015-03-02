@@ -63,9 +63,6 @@ force_build_group.add_argument( '-F', '--force-generate',
 build_parser.add_argument( '-D', '--no-delegate',
     help='ignore the possibility of delegating targets',
     action='store_false', dest='delegate' )
-build_parser.add_argument( '-r', '--review',
-    help='review included infiles prior to build',
-    action='store_true' )
 build_parser.add_argument( '-j', '--jobs',
     help='number of parallel jobs',
     type=int, default=1 )
@@ -73,32 +70,17 @@ build_parser.set_defaults(command='build', force=None)
 
 def main_build(args, *, local):
     from jeolm.node import PathNode
-    from jeolm.metadata import MetadataManager
     from jeolm.node_factory import TargetNodeFactory, TextNodeFactory
 
     if not args.targets:
         logger.warn('No-op: no targets for building')
-    md = MetadataManager(local=local)
-    md.load_metadata_cache()
-    driver = md.feed_metadata(local.driver_class())
-
-    if args.review:
-        from jeolm.diffprint import log_metadata_diff
-        sources = jeolm.commands.list_sources( args.targets,
-            local=local, driver=driver, source_type='tex' )
-        with log_metadata_diff(md, logger=logger):
-            jeolm.commands.review( sources,
-                viewpoint=Path.cwd(), local=local, md=md )
-        md.dump_metadata_cache()
-        driver.clear()
-        md.feed_metadata(driver)
-
     PathNode.root = local.root
     if args.jobs < 1:
         raise argparse.ArgumentTypeError(
             "Positive integral number of jobs is required." )
     semaphore = _get_build_semaphore(args.jobs)
     text_node_factory = TextNodeFactory(local=local)
+    driver = jeolm.commands.simple_load_driver(local)
     target_node_factory = TargetNodeFactory(
         local=local, driver=driver, text_node_factory=text_node_factory)
 
