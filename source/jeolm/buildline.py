@@ -96,6 +96,7 @@ class BuildLine:
             try:
                 targets_string = self.input()
             except (KeyboardInterrupt, EOFError):
+                print() # clear the line before returning control
                 return
             self.review_metadata()
             if not targets_string:
