@@ -88,7 +88,6 @@ def _naive_relative_to(path, root):
         ['..'] * upstairs + [path.relative_to(root)] )
 
 
-
 class Node:
     """
     Represents target, or source, or whatever.

@@ -155,6 +155,7 @@ def main_review(args, *, local):
             viewpoint=Path.cwd(), local=local, md=md )
     md.dump_metadata_cache()
 
+
 init_parser = subparsers.add_parser( 'init',
     help='create jeolm directory/file structure' )
 init_parser.add_argument( 'resources',
@@ -164,6 +165,7 @@ init_parser.set_defaults(command='init')
 def main_init(args):
     jeolm.local.InitLocalManager(
         root=args.root, resources=args.resources )
+
 
 list_parser = subparsers.add_parser( 'list',
     help='list all infiles for given targets' )
@@ -183,6 +185,7 @@ def main_list(args, *, local):
         driver=jeolm.commands.simple_load_driver(local),
         source_type=args.source_type )
 
+
 spell_parser = subparsers.add_parser( 'spell',
     help='spell-check all infiles for given targets' )
 spell_parser.add_argument( 'targets',
@@ -196,6 +199,7 @@ def main_spell(args, *, local):
         local=local,
         driver=jeolm.commands.simple_load_driver(local),
         colour=args.colour )
+
 
 clean_parser = subparsers.add_parser( 'clean',
     help='clean toplevel links to build/**.pdf' )

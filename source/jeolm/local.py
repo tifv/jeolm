@@ -3,6 +3,7 @@ This module manages local features of jeolm project.
 """
 
 import shutil
+from contextlib import suppress
 
 from pathlib import Path, PurePosixPath
 
@@ -174,10 +175,8 @@ class LocalManager:
         local_module = self.local_module
         assert not isinstance(local_module, bool)
         if local_module is not None:
-            try:
+            with suppress(AttributeError):
                 return local_module.Driver
-            except AttributeError:
-                pass
         import jeolm.driver.regular
         return jeolm.driver.regular.Driver
 
