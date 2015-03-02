@@ -1,4 +1,5 @@
 from string import Template
+from contextlib import suppress
 
 import hashlib
 import dbm.gnu
@@ -93,10 +94,8 @@ class DocumentNodeFactory:
 
     def __call__(self, target):
         assert isinstance(target, jeolm.target.Target), type(target)
-        try:
+        with suppress(KeyError):
             return self.nodes[target]
-        except KeyError:
-            pass
         node = self.nodes[target] = self._prebuild_document(target)
         return node
 
@@ -295,11 +294,10 @@ class PackageNodeFactory:
 
     def __call__(self, metapath):
         assert isinstance(metapath, RecordPath), type(metapath)
-        try:
+        with suppress(KeyError):
             return self.nodes[metapath]
-        except KeyError:
-            node = self.nodes[metapath] = self._prebuild_package(metapath)
-            return node
+        node = self.nodes[metapath] = self._prebuild_package(metapath)
+        return node
 
     def _prebuild_package(self, metapath):
         package_record = self.driver.produce_package_record(metapath)
@@ -392,11 +390,10 @@ class FigureNodeFactory:
 
     def __call__(self, metapath):
         assert isinstance(metapath, RecordPath), type(metapath)
-        try:
+        with suppress(KeyError):
             return self.nodes[metapath]
-        except KeyError:
-            node = self.nodes[metapath] = self._prebuild_figure(metapath)
-            return node
+        node = self.nodes[metapath] = self._prebuild_figure(metapath)
+        return node
 
     def _prebuild_figure(self, metapath):
         figure_record = self.driver.produce_figure_record(metapath)
@@ -498,11 +495,10 @@ class SourceNodeFactory:
     def __call__(self, inpath):
         assert isinstance(inpath, PurePosixPath), type(inpath)
         assert not inpath.is_absolute(), inpath
-        try:
+        with suppress(KeyError):
             return self.nodes[inpath]
-        except KeyError:
-            node = self.nodes[inpath] = self._prebuild_source(inpath)
-            return node
+        node = self.nodes[inpath] = self._prebuild_source(inpath)
+        return node
 
     def _prebuild_source(self, inpath):
         source_node = jeolm.node.SourceFileNode(

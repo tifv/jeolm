@@ -1,7 +1,7 @@
 import readline
 import subprocess
 import traceback
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 
 from pathlib import Path, PurePosixPath
 import pyinotify
@@ -51,10 +51,8 @@ class BuildLine:
             Completer(driver=self.driver).readline_completer )
         readline.set_completer_delims(';')
         readline.parse_and_bind('tab: complete')
-        try:
+        with suppress(FileNotFoundError):
             readline.read_history_file(self.history_filename)
-        except FileNotFoundError:
-            pass
         readline.set_history_length(1000)
         try:
             yield
@@ -293,10 +291,8 @@ class Completer:
         return path in self.driver and self.driver.metapath_is_targetable(path)
 
     def _list_subtargets(self, path):
-        try:
+        with suppress(RecordNotFoundError):
             yield from self.driver.list_targetable_children(path)
-        except RecordNotFoundError:
-            pass
 
     def complete_target(self, uncompleted_arg):
         """Return an iterator over completions."""

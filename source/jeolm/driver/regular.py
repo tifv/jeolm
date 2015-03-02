@@ -91,7 +91,7 @@ Keys recognized in metarecords:
 """
 
 from functools import wraps, partial
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from collections import OrderedDict
 from string import Template
 import datetime
@@ -386,10 +386,8 @@ class Driver(RecordsManager, metaclass=DriverMetaclass):
         'name'
             package name, as in ProvidesPackage.
         """
-        try:
+        with suppress(KeyError):
             return self._cache['outrecords'][target]
-        except KeyError:
-            pass
         outrecord = self._cache['outrecords'][target] = \
             self.generate_outrecord(target)
         keys = outrecord.keys()
@@ -425,10 +423,8 @@ class Driver(RecordsManager, metaclass=DriverMetaclass):
             where used_name is a filename with '.asy' extension,
             and inpath has '.asy' extension
         """
-        try:
+        with suppress(KeyError):
             return self._cache['figure_records'][figure_path]
-        except KeyError:
-            pass
         figure_record = self._cache['figure_records'][figure_path] = \
             self.generate_figure_record(figure_path)
         keys = figure_record.keys()
@@ -453,10 +449,8 @@ class Driver(RecordsManager, metaclass=DriverMetaclass):
         'name'
             package name, as in ProvidesPackage.
         """
-        try:
+        with suppress(KeyError):
             return self._cache['package_records'][package_path]
-        except KeyError:
-            pass
         package_record = self._cache['package_records'][package_path] = \
             self.generate_package_record(package_path)
         keys = package_record.keys()

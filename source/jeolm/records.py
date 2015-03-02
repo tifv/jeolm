@@ -1,5 +1,6 @@
 import re
 from collections import OrderedDict
+from contextlib import suppress
 
 from .utils import unique, dict_ordered_keys, dict_ordered_items
 
@@ -121,10 +122,8 @@ class RecordsManager:
             raise TypeError(type(path))
         use_cache = not original
         if use_cache:
-            try:
+            with suppress(KeyError):
                 return self._records_cache[path]
-            except KeyError:
-                pass
 
         if path.is_root():
             record = self._get_root(original=original)
