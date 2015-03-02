@@ -31,22 +31,17 @@ subparsers = parser.add_subparsers()
 def main(args):
     if 'command' not in args:
         return parser.print_help()
-    finish_logging = jeolm.setup_logging(
-        verbose=args.verbose, colour=args.colour,
-    )
-    if args.command == 'init':
-        # special case: no local expected
-        return main_init(args)
-    try:
-        local = jeolm.local.LocalManager(root=args.root)
-    except jeolm.local.RootNotFoundError:
-        jeolm.local.report_missing_root()
-        raise SystemExit
-    main_function = globals()['main_' + args.command]
-    try:
+    with jeolm.setup_logging(verbose=args.verbose, colour=args.colour):
+        if args.command == 'init':
+            # special case: no local expected
+            return main_init(args)
+        try:
+            local = jeolm.local.LocalManager(root=args.root)
+        except jeolm.local.RootNotFoundError:
+            jeolm.local.report_missing_root()
+            raise SystemExit
+        main_function = globals()['main_' + args.command]
         return main_function(args, local=local)
-    finally:
-        finish_logging()
 
 
 build_parser = subparsers.add_parser( 'build',

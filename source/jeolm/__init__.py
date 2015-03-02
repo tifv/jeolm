@@ -6,6 +6,8 @@ Application includes build system implemented in Python, and
 complementary LaTeX package.
 """
 
+from contextlib import contextmanager
+
 from pathlib import Path
 
 import logging
@@ -14,9 +16,17 @@ logger = logging.getLogger(__name__) # pylint: disable=invalid-name
 logger.setLevel(logging.DEBUG)
 logger.addHandler(logging.NullHandler())
 
+@contextmanager
 def setup_logging(verbose=False, colour=True, concurrent=True):
     """
-    Setup handlers and formatters for package-top-level logger.
+    Context manager.
+
+    Enter:
+        Setup handlers and formatters for package-top-level logger.
+
+    Exit:
+        If concurrent is True (default), then print out any remaining
+        messages and shut down logging system.
     """
     if colour:
         from jeolm.fancify import FancifyingFormatter as Formatter
@@ -32,14 +42,17 @@ def setup_logging(verbose=False, colour=True, concurrent=True):
         finishing_handler = logging.StreamHandler()
         listener = QueueListener(log_queue, finishing_handler)
         listener.start()
-        def finish_logging():
-            listener.stop()
     else:
         handler = finishing_handler = logging.StreamHandler()
-        def finish_logging():
-            pass
     handler.setLevel(logging.INFO if not verbose else logging.DEBUG)
     finishing_handler.setFormatter(formatter)
     logger.addHandler(handler)
-    return finish_logging
+
+    try:
+        yield
+    finally:
+        if concurrent:
+            listener.stop()
+        else:
+            pass
 
