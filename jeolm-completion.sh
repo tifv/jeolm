@@ -50,7 +50,7 @@ done
 if [[ $COMP_CWORD == $inspected_index ]];
 then
     COMPREPLY=( $(compgen \
-        -W 'build review init list spell clean' -- $inspected) )
+        -W 'build buildline review init list spell clean' -- $inspected) )
     return 0
 fi
 
