@@ -66,7 +66,7 @@ def _add_build_arg_subparser(subparsers):
 
 def main_build(args, *, local, logging_manager):
     from jeolm.node import PathNode
-    from jeolm.node_factory import TargetNodeFactory, TextNodeFactory
+    from jeolm.node_factory import TargetNodeFactory
 
     if not args.targets:
         logger.warn('No-op: no targets for building')
@@ -75,12 +75,11 @@ def main_build(args, *, local, logging_manager):
         raise argparse.ArgumentTypeError(
             "Positive integral number of jobs is required." )
     semaphore = _get_build_semaphore(args.jobs)
-    text_node_factory = TextNodeFactory(local=local)
     driver = jeolm.commands.simple_load_driver(local)
-    target_node_factory = TargetNodeFactory(
-        local=local, driver=driver, text_node_factory=text_node_factory)
 
-    with closing(text_node_factory):
+    with local.open_text_node_shelf() as text_node_shelf:
+        target_node_factory = TargetNodeFactory(
+            local=local, driver=driver, text_node_shelf=text_node_shelf)
         target_node = target_node_factory(args.targets, delegate=args.delegate)
         if args.force is None:
             pass
@@ -121,7 +120,6 @@ def _add_buildline_arg_subparser(subparsers):
 
 def main_buildline(args, *, local, logging_manager):
     from jeolm.node import PathNode
-    from jeolm.node_factory import TextNodeFactory
     from jeolm.buildline import BuildLine
 
     PathNode.root = local.root
@@ -129,11 +127,10 @@ def main_buildline(args, *, local, logging_manager):
         raise argparse.ArgumentTypeError(
             "Positive integral number of jobs is required." )
     semaphore = _get_build_semaphore(args.jobs)
-    text_node_factory = TextNodeFactory(local=local)
 
-    with closing(text_node_factory):
+    with local.open_text_node_shelf() as text_node_shelf:
         buildline = BuildLine(
-            local=local, text_node_factory=text_node_factory,
+            local=local, text_node_shelf=text_node_shelf,
             semaphore=semaphore, logging_manager=logging_manager )
         with buildline.readline_setup():
             return buildline.main()

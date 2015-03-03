@@ -759,19 +759,13 @@ class FileNode(BuildablePathNode, FilelikeNode):
             raise
 
 
-class WriteTextCommand(Command):
-    """
-    Write some generated text to a file.
-    """
+class LazyWriteTextCommand(Command):
 
     def __init__(self, node, textfunc):
-        assert isinstance(node, FileNode), type(node)
+        if not isinstance(node, FileNode):
+            raise RuntimeError(type(node))
         super().__init__(node)
         self.textfunc = textfunc
-
-    @classmethod
-    def from_text(cls, node, text):
-        return cls(node, textfunc=lambda: text)
 
     def __call__(self):
         super().__call__()
@@ -784,6 +778,15 @@ class WriteTextCommand(Command):
         ))
         with self.node.open('w') as text_file:
             text_file.write(text)
+
+class WriteTextCommand(LazyWriteTextCommand):
+    """
+    Write some text to a file.
+    """
+
+    def __init__(self, node, text):
+        super().__init__(node, textfunc=lambda: text)
+        self.text = text
 
 
 class ProductFileNode(ProductNode, FileNode):

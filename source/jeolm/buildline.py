@@ -29,10 +29,10 @@ else:
 class BuildLine:
 
     def __init__(self, *,
-        local, text_node_factory, semaphore, logging_manager
+        local, text_node_shelf, semaphore, logging_manager
     ):
         self.local = local
-        self.text_node_factory = text_node_factory
+        self.text_node_shelf = text_node_shelf
         self.semaphore = semaphore
         self.logging_manager = logging_manager
         self.metadata = NotifiedMetadataManager(local=self.local)
@@ -143,7 +143,7 @@ class BuildLine:
     def build(self, targets):
         target_node_factory = jeolm.node_factory.TargetNodeFactory(
             local=self.local, driver=self.driver,
-            text_node_factory=self.text_node_factory )
+            text_node_shelf=self.text_node_shelf )
         target_node = target_node_factory(targets, delegate=True)
         target_node.update(semaphore=self.semaphore)
 

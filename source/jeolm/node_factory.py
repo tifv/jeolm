@@ -2,10 +2,8 @@ from string import Template
 from contextlib import suppress
 
 import hashlib
-import dbm.gnu
-import shelve
 
-from pathlib import PurePosixPath, Path
+from pathlib import PurePosixPath
 
 import jeolm
 import jeolm.local
@@ -26,9 +24,9 @@ class TargetNode(jeolm.node.Node):
 
 class TargetNodeFactory:
 
-    def __init__(self, *, local, driver, text_node_factory):
+    def __init__(self, *, local, driver, text_node_shelf):
         self.local = local
-        self.text_node_factory = text_node_factory
+        self.text_node_shelf = text_node_shelf
         self.driver = driver
 
         self.source_node_factory = SourceNodeFactory(local=self.local)
@@ -45,7 +43,7 @@ class TargetNodeFactory:
                 name='package:dir',
                 path=self.local.build_dir/'packages', parents=True ),
             source_node_factory=self.source_node_factory,
-            text_node_factory=self.text_node_factory,
+            text_node_shelf=self.text_node_shelf,
         )
         self.document_node_factory = DocumentNodeFactory(
             local=self.local, driver=self.driver,
@@ -55,7 +53,7 @@ class TargetNodeFactory:
             source_node_factory=self.source_node_factory,
             package_node_factory=self.package_node_factory,
             figure_node_factory=self.figure_node_factory,
-            text_node_factory=self.text_node_factory,
+            text_node_shelf=self.text_node_shelf,
         )
 
     def __call__(self, targets, *, delegate=True, name='target'):
@@ -80,7 +78,7 @@ class DocumentNodeFactory:
     def __init__(self, *, local, driver,
         build_dir_node,
         source_node_factory, package_node_factory, figure_node_factory,
-        text_node_factory
+        text_node_shelf
     ):
         self.local = local
         self.driver = driver
@@ -88,7 +86,7 @@ class DocumentNodeFactory:
         self.source_node_factory = source_node_factory
         self.package_node_factory = package_node_factory
         self.figure_node_factory = figure_node_factory
-        self.text_node_factory = text_node_factory
+        self.text_node_shelf = text_node_shelf
 
         self.nodes = dict()
 
@@ -126,13 +124,13 @@ class DocumentNodeFactory:
     ):
         buildname = recipe['buildname']
 
-        main_tex_node = jeolm.node.FileNode(
+        main_tex_node = TextNode(
             name='document:{}:tex'.format(target),
             path=build_dir/'main.tex',
-            needs=(build_dir_node,) )
-        main_tex_node.append_needs(self.text_node_factory(
-            main_tex_node.path, recipe['document'] ))
-        main_tex_node.set_command(jeolm.node.WriteTextCommand.from_text(
+            needs=(build_dir_node,),
+            text_node_shelf=self.text_node_shelf,
+            build_dir=self.local.build_dir )
+        main_tex_node.set_command(jeolm.node.WriteTextCommand(
             main_tex_node, text=recipe['document'] ))
 
         package_nodes = [
@@ -199,14 +197,14 @@ class DocumentNodeFactory:
             source=source_node,
             path=build_dir/'{}.dtx'.format(package_name),
             needs=(build_dir_node,) )
-        ins_node = jeolm.node.FileNode(
+        ins_node = TextNode(
             name='document:{}:ins'.format(target),
             path=build_dir/'driver.ins',
-            needs=(build_dir_node,) )
-        ins_text = self._substitute_driver_ins(package_name=package_name)
-        ins_node.set_command(jeolm.node.WriteTextCommand.from_text(
-            ins_node, ins_text ))
-        ins_node.append_needs(self.text_node_factory(ins_node.path, ins_text))
+            needs=(build_dir_node,),
+            text_node_shelf=self.text_node_shelf,
+            build_dir=self.local.build_dir )
+        ins_node.set_command(jeolm.node.WriteTextCommand( ins_node,
+            self._substitute_driver_ins(package_name=package_name) ))
         drv_node = jeolm.node.ProductFileNode(
             name='document:{}:drv'.format(target),
             source=dtx_node,
@@ -282,13 +280,13 @@ class PackageNodeFactory:
 
     def __init__(self, *, local, driver,
         build_dir_node,
-        source_node_factory, text_node_factory
+        source_node_factory, text_node_shelf
     ):
         self.local = local
         self.driver = driver
         self.build_dir_node = build_dir_node
         self.source_node_factory = source_node_factory
-        self.text_node_factory = text_node_factory
+        self.text_node_shelf = text_node_shelf
 
         self.nodes = dict()
 
@@ -345,14 +343,14 @@ class PackageNodeFactory:
             source=source_node,
             path=build_dir/'{}.dtx'.format(package_name),
             needs=(build_dir_node,) )
-        ins_node = jeolm.node.FileNode(
+        ins_node = TextNode(
             name='package:{}:ins'.format(metapath),
             path=build_dir/'package.ins',
-            needs=(build_dir_node,) )
-        ins_text = self._substitute_ins(package_name=package_name)
-        ins_node.set_command(jeolm.node.WriteTextCommand.from_text(
-            ins_node, ins_text ))
-        ins_node.append_needs(self.text_node_factory(ins_node.path, ins_text))
+            needs=(build_dir_node,),
+            text_node_shelf=self.text_node_shelf,
+            build_dir=self.local.build_dir )
+        ins_node.set_command(jeolm.node.WriteTextCommand( ins_node,
+            self._substitute_ins(package_name=package_name) ))
         sty_node = jeolm.node.ProductFileNode(
             name='package:{}:sty'.format(metapath),
             source=dtx_node,
@@ -511,71 +509,38 @@ class SourceNodeFactory:
         return source_node
 
 
-class TextNode(jeolm.node.DatedNode):
-    pass
+class TextNode(jeolm.node.FileNode):
 
-class TextNodeFactory:
-
-    def __init__(self, *, local):
-        self.local = local
-        self.nodes = dict()
-        self.shelf_db = dbm.gnu.open(str(self._db_path), 'cf')
-        self.shelf = shelve.Shelf(self.shelf_db)
+    def __init__(self, path, *, name=None, needs=(),
+        text_node_shelf, build_dir
+    ):
+        super().__init__(path, name=name, needs=needs)
+        self._shelf = text_node_shelf
+        self._key = str(self.path.relative_to(build_dir))
+        self._text_hash = None
 
     @property
-    def _db_path(self):
-        return self.local.build_dir / self._db_name
+    def text_hash(self):
+        if self._text_hash is not None:
+            return self._text_hash
+        assert self.command is not None, self
+        assert isinstance(self.command, jeolm.node.WriteTextCommand), self
+        self._text_hash = hashlib.sha256(self.command.text.encode()).digest()
+        return self._text_hash
 
-    _db_name = 'textnodes.db'
-
-    def __call__(self, path, text):
-        assert isinstance(path, Path), type(path)
-        if path.is_absolute():
-            path = path.relative_to(self.local.root)
-        assert not path.is_absolute(), path
-        try:
-            node = self.nodes[path]
-        except KeyError:
-            node = self.nodes[path] = self._load_node(path)
-        text_hash = hashlib.sha256(text.encode()).digest()
-        if node.text_hash == text_hash:
-            node.log(logging.DEBUG, "Text not changed")
-            assert node.mtime is not None, node
-            return node
-        node.log(logging.INFO, "Text has UPDATED")
-        node.text_hash = text_hash
-        node.touch()
-        self._dump_node(path, node)
-        return node
-
-    def _load_node(self, path):
-        node = TextNode(name='text:{}'.format(path))
-        record = self.shelf.get(str(path))
-        if record is not None:
-            assert isinstance(record, dict), type(record)
-            assert len(record) == 2, record.keys()
-            node.text_hash = record['text_hash']
-            node.mtime = record['mtime']
+    def _needs_build(self):
+        if super()._needs_build():
+            return True
+        old_text_hash = self._shelf.get(self._key)
+        if self.text_hash != old_text_hash:
+            self.log(logging.INFO, "Change in content detected")
+            return True
         else:
-            node.text_hash = node.mtime = None
-        return node
+            self.log(logging.INFO, "No change in content detected")
+        return False
 
-    def _dump_node(self, path, node):
-        record = {'text_hash' : node.text_hash, 'mtime' : node.mtime}
-        self.shelf[str(path)] = record
-        if record is not None:
-            node.text_hash = record['text_hash']
-            node.mtime = record['mtime']
-        else:
-            node.text_hash = node.mtime = None
-        node.update()
-        return node
-
-    def sync(self):
-        self.shelf.sync()
-        self.shelf_db.sync() # probably redundant
-
-    def close(self):
-        self.shelf.close()
-        self.shelf_db.close() # probably redundant
+    def _run_command(self):
+        super()._run_command()
+        self._shelf[self._key] = self.text_hash
+        self.log(logging.DEBUG, "Text database updated")
 
