@@ -7,52 +7,61 @@ complementary LaTeX package.
 """
 
 from contextlib import contextmanager
+import queue
 
 from pathlib import Path
 
 import logging
+import logging.handlers
 
 logger = logging.getLogger(__name__) # pylint: disable=invalid-name
 logger.setLevel(logging.DEBUG)
 logger.addHandler(logging.NullHandler())
 
-@contextmanager
-def setup_logging(verbose=False, colour=True, concurrent=True):
-    """
-    Context manager.
+class LoggingManager:
 
-    Enter:
-        Setup handlers and formatters for package-top-level logger.
-
-    Exit:
-        If concurrent is True (default), then print out any remaining
-        messages and shut down logging system.
-    """
-    if colour:
-        from jeolm.fancify import FancifyingFormatter as Formatter
-    else:
-        from jeolm.fancify import UnfancifyingFormatter as Formatter
-    formatter = Formatter("%(name)s: %(message)s")
-    if concurrent:
-        from logging.handlers import QueueHandler, QueueListener
-        import queue
-        import atexit
-        log_queue = queue.Queue()
-        handler = QueueHandler(log_queue)
-        finishing_handler = logging.StreamHandler()
-        listener = QueueListener(log_queue, finishing_handler)
-        listener.start()
-    else:
-        handler = finishing_handler = logging.StreamHandler()
-    handler.setLevel(logging.INFO if not verbose else logging.DEBUG)
-    finishing_handler.setFormatter(formatter)
-    logger.addHandler(handler)
-
-    try:
-        yield
-    finally:
-        if concurrent:
-            listener.stop()
+    def __init__(self, verbose=False, colour=True, concurrent=True):
+        if colour:
+            from jeolm.fancify import FancifyingFormatter as formatter_class
         else:
-            pass
+            from jeolm.fancify import UnfancifyingFormatter as formatter_class
+        self.formatter = formatter_class("%(name)s: %(message)s")
+        self.finishing_handler = logging.StreamHandler()
+        self.finishing_handler.setFormatter(self.formatter)
+
+        self.concurrent = concurrent
+        if self.concurrent:
+            self.queue = queue.Queue()
+            self.handler = logging.handlers.QueueHandler(self.queue)
+            self.listener = None
+        else:
+            self.handler = self.finishing_handler
+        self.handler.setLevel(logging.INFO if not verbose else logging.DEBUG)
+        logger.addHandler(self.handler)
+
+    def _get_listener(self):
+        listener = logging.handlers.QueueListener(
+            self.queue, self.finishing_handler )
+        return listener
+
+    def sync(self):
+        if self.concurrent:
+            if self.listener is not None:
+                self.listener.stop()
+            self.listener = self._get_listener()
+            self.listener.start()
+
+    def __enter__(self):
+        if self.concurrent:
+            if self.listener is not None:
+                raise RuntimeError(
+                    "LoggingManager is not a reentrant context manager.")
+            self.listener = self._get_listener()
+            self.listener.start()
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        if self.concurrent:
+            self.listener.stop()
+            self.listener = None
+        return False # reraise exception, if any
 

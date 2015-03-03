@@ -31,17 +31,21 @@ subparsers = parser.add_subparsers()
 def main(args):
     if 'command' not in args:
         return parser.print_help()
-    with jeolm.setup_logging(verbose=args.verbose, colour=args.colour):
+    concurrent = args.command in {'build', 'buildline'} and args.jobs > 1
+    logging_manager = jeolm.LoggingManager(
+        verbose=args.verbose, colour=args.colour, concurrent=concurrent)
+    with logging_manager:
         if args.command == 'init':
             # special case: no local expected
-            return main_init(args)
+            return main_init(args, logging_manager=logging_manager)
         try:
             local = jeolm.local.LocalManager(root=args.root)
         except jeolm.local.RootNotFoundError:
             jeolm.local.report_missing_root()
             raise SystemExit
         main_function = globals()['main_' + args.command]
-        return main_function(args, local=local)
+        return main_function(
+            args, local=local, logging_manager=logging_manager )
 
 
 build_parser = subparsers.add_parser( 'build',
@@ -63,7 +67,7 @@ build_parser.add_argument( '-j', '--jobs',
     type=int, default=1 )
 build_parser.set_defaults(command='build', force=None)
 
-def main_build(args, *, local):
+def main_build(args, *, local, logging_manager):
     from jeolm.node import PathNode
     from jeolm.node_factory import TargetNodeFactory, TextNodeFactory
 
@@ -117,7 +121,7 @@ buildline_parser.add_argument( '-j', '--jobs',
     type=int, default=1 )
 buildline_parser.set_defaults(command='buildline', force=None)
 
-def main_buildline(args, *, local):
+def main_buildline(args, *, local, logging_manager):
     from jeolm.node import PathNode
     from jeolm.node_factory import TextNodeFactory
     from jeolm.buildline import BuildLine
@@ -132,7 +136,7 @@ def main_buildline(args, *, local):
     with closing(text_node_factory):
         buildline = BuildLine(
             local=local, text_node_factory=text_node_factory,
-            semaphore=semaphore )
+            semaphore=semaphore, logging_manager=logging_manager )
         with buildline.readline_setup():
             return buildline.main()
 
@@ -143,7 +147,7 @@ review_parser.add_argument( 'inpaths',
     nargs='*', metavar='INPATH' )
 review_parser.set_defaults(command='review')
 
-def main_review(args, *, local):
+def main_review(args, *, local, logging_manager):
     from jeolm.metadata import MetadataManager
     from jeolm.diffprint import log_metadata_diff
     if not args.inpaths:
@@ -162,7 +166,7 @@ init_parser.add_argument( 'resources',
     nargs='*', metavar='RESOURCE' )
 init_parser.set_defaults(command='init')
 
-def main_init(args):
+def main_init(args, logging_manager):
     jeolm.local.InitLocalManager(
         root=args.root, resources=args.resources )
 
@@ -177,7 +181,7 @@ list_parser.add_argument( '--type',
     dest='source_type', metavar='SOURCE_TYPE' )
 list_parser.set_defaults(command='list')
 
-def main_list(args, *, local):
+def main_list(args, *, local, logging_manager):
     if not args.targets:
         logger.warn('No-op: no targets for source list')
     jeolm.commands.print_source_list( args.targets,
@@ -192,7 +196,7 @@ spell_parser.add_argument( 'targets',
     nargs='*', metavar='TARGET', type=jeolm.target.Target.from_string )
 spell_parser.set_defaults(command='spell')
 
-def main_spell(args, *, local):
+def main_spell(args, *, local, logging_manager):
     if not args.targets:
         logger.warn('No-op: no targets for spell check')
     jeolm.commands.check_spelling( args.targets,
@@ -205,7 +209,7 @@ clean_parser = subparsers.add_parser( 'clean',
     help='clean toplevel links to build/**.pdf' )
 clean_parser.set_defaults(command='clean')
 
-def main_clean(args, *, local):
+def main_clean(args, *, local, logging_manager):
     jeolm.commands.clean(root=local.root)
     jeolm.commands.clean_broken_links(local.build_dir, recursive=True)
 

@@ -28,10 +28,13 @@ else:
 
 class BuildLine:
 
-    def __init__(self, *, local, text_node_factory, semaphore):
+    def __init__(self, *,
+        local, text_node_factory, semaphore, logging_manager
+    ):
         self.local = local
         self.text_node_factory = text_node_factory
         self.semaphore = semaphore
+        self.logging_manager = logging_manager
         self.metadata = NotifiedMetadataManager(local=self.local)
         self.metadata.review(PurePosixPath())
         self.driver = self.local.driver_class()
@@ -91,6 +94,7 @@ class BuildLine:
     def mainloop(self):
         targets = []
         while True:
+            self.logging_manager.sync()
             try:
                 targets_string = self.input()
             except (KeyboardInterrupt, EOFError):
