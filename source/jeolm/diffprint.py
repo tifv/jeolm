@@ -20,7 +20,7 @@ class _Large:
             self = cls.large = super().__new__(cls)
         return self
 
-_large = _Large()
+_LARGE = _Large()
 
 class _Dumper(jeolm.yaml.JeolmDumper):
     def represent_Large(self, data):
@@ -33,14 +33,14 @@ def _dump(data, Dumper=_Dumper, default_flow_style=False, **kwargs):
         Dumper=Dumper, default_flow_style=default_flow_style, **kwargs )
 
 @contextmanager
-def log_metadata_diff(md, logger=logger):
+def log_metadata_diff(metadata, logger=logger):
     old_metarecords = RecordsManager()
-    md.feed_metadata(old_metarecords, warn_dropped_keys=False)
+    metadata.feed_metadata(old_metarecords, warn_dropped_keys=False)
 
     yield
 
     new_metarecords = RecordsManager()
-    md.feed_metadata(new_metarecords)
+    metadata.feed_metadata(new_metarecords)
 
     comparing_iterator = RecordsManager.compare_items(
         old_metarecords, new_metarecords, original=True )
@@ -76,7 +76,7 @@ def _wipe_subrecords(record):
     for key in record:
         if key.startswith('$'):
             continue
-        record[key] = _large
+        record[key] = _LARGE
     return record
 
 def _wipe_equal_large_keys(record1, record2):
@@ -92,7 +92,7 @@ def _wipe_equal_large_keys(record1, record2):
             continue
         large_key = '$large' + key
         if record1.get(large_key, False) and record2.get(large_key, False):
-            record1[key] = record2[key] = _large
+            record1[key] = record2[key] = _LARGE
             if record1[large_key] == record2[large_key]:
                 record1.pop(large_key)
                 record2.pop(large_key)

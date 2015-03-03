@@ -10,6 +10,7 @@ import jeolm.commands
 
 from jeolm import logger
 
+
 def _get_base_arg_parser( prog='jeolm',
     description='Automated build system for course-like projects'
 ):
@@ -24,13 +25,8 @@ def _get_base_arg_parser( prog='jeolm',
         action='store_false', dest='colour' )
     return parser
 
-parser = _get_base_arg_parser()
-
-subparsers = parser.add_subparsers()
-
 def main(args):
-    if 'command' not in args:
-        return parser.print_help()
+    assert 'command' in args, args
     concurrent = args.command in {'build', 'buildline'} and args.jobs > 1
     logging_manager = jeolm.LoggingManager(
         verbose=args.verbose, colour=args.colour, concurrent=concurrent)
@@ -48,24 +44,25 @@ def main(args):
             args, local=local, logging_manager=logging_manager )
 
 
-build_parser = subparsers.add_parser( 'build',
-    help='build specified targets' )
-build_parser.add_argument( 'targets',
-    nargs='*', metavar='TARGET', type=jeolm.target.Target.from_string)
-force_build_group = build_parser.add_mutually_exclusive_group()
-force_build_group.add_argument( '-f', '--force-latex',
-    help='force recompilation on LaTeX stage',
-    action='store_const', dest='force', const='latex' )
-force_build_group.add_argument( '-F', '--force-generate',
-    help='force overwriting of generated LaTeX file',
-    action='store_const', dest='force', const='generate' )
-build_parser.add_argument( '-D', '--no-delegate',
-    help='ignore the possibility of delegating targets',
-    action='store_false', dest='delegate' )
-build_parser.add_argument( '-j', '--jobs',
-    help='number of parallel jobs',
-    type=int, default=1 )
-build_parser.set_defaults(command='build', force=None)
+def _add_build_arg_subparser(subparsers):
+    parser = subparsers.add_parser( 'build',
+        help='build specified targets' )
+    parser.add_argument( 'targets',
+        nargs='*', metavar='TARGET', type=jeolm.target.Target.from_string)
+    force_build_group = parser.add_mutually_exclusive_group()
+    force_build_group.add_argument( '-f', '--force-latex',
+        help='force recompilation on LaTeX stage',
+        action='store_const', dest='force', const='latex' )
+    force_build_group.add_argument( '-F', '--force-generate',
+        help='force overwriting of generated LaTeX file',
+        action='store_const', dest='force', const='generate' )
+    parser.add_argument( '-D', '--no-delegate',
+        help='ignore the possibility of delegating targets',
+        action='store_false', dest='delegate' )
+    parser.add_argument( '-j', '--jobs',
+        help='number of parallel jobs',
+        type=int, default=1 )
+    parser.set_defaults(command='build', force=None)
 
 def main_build(args, *, local, logging_manager):
     from jeolm.node import PathNode
@@ -114,12 +111,13 @@ def _get_build_semaphore(jobs):
         return None
 
 
-buildline_parser = subparsers.add_parser( 'buildline',
-    help='start an interactive build shell' )
-buildline_parser.add_argument( '-j', '--jobs',
-    help='number of parallel jobs',
-    type=int, default=1 )
-buildline_parser.set_defaults(command='buildline', force=None)
+def _add_buildline_arg_subparser(subparsers):
+    parser = subparsers.add_parser( 'buildline',
+        help='start an interactive build shell' )
+    parser.add_argument( '-j', '--jobs',
+        help='number of parallel jobs',
+        type=int, default=1 )
+    parser.set_defaults(command='buildline', force=None)
 
 def main_buildline(args, *, local, logging_manager):
     from jeolm.node import PathNode
@@ -141,45 +139,48 @@ def main_buildline(args, *, local, logging_manager):
             return buildline.main()
 
 
-review_parser = subparsers.add_parser( 'review',
-    help='review given infiles' )
-review_parser.add_argument( 'inpaths',
-    nargs='*', metavar='INPATH' )
-review_parser.set_defaults(command='review')
+def _add_review_arg_subparser(subparsers):
+    parser = subparsers.add_parser( 'review',
+        help='review given infiles' )
+    parser.add_argument( 'inpaths',
+        nargs='*', metavar='INPATH' )
+    parser.set_defaults(command='review')
 
 def main_review(args, *, local, logging_manager):
     from jeolm.metadata import MetadataManager
     from jeolm.diffprint import log_metadata_diff
     if not args.inpaths:
         logger.warn('No-op: no inpaths for review')
-    md = MetadataManager(local=local)
-    md.load_metadata_cache()
-    with log_metadata_diff(md, logger=logger):
+    metadata = MetadataManager(local=local)
+    metadata.load_metadata_cache()
+    with log_metadata_diff(metadata, logger=logger):
         jeolm.commands.review( args.inpaths,
-            viewpoint=Path.cwd(), local=local, md=md )
-    md.dump_metadata_cache()
+            viewpoint=Path.cwd(), local=local, metadata=metadata )
+    metadata.dump_metadata_cache()
 
 
-init_parser = subparsers.add_parser( 'init',
-    help='create jeolm directory/file structure' )
-init_parser.add_argument( 'resources',
-    nargs='*', metavar='RESOURCE' )
-init_parser.set_defaults(command='init')
+def _add_init_arg_subparser(subparsers):
+    parser = subparsers.add_parser( 'init',
+        help='create jeolm directory/file structure' )
+    parser.add_argument( 'resources',
+        nargs='*', metavar='RESOURCE' )
+    parser.set_defaults(command='init')
 
 def main_init(args, logging_manager):
     jeolm.local.InitLocalManager(
         root=args.root, resources=args.resources )
 
 
-list_parser = subparsers.add_parser( 'list',
-    help='list all infiles for given targets' )
-list_parser.add_argument( 'targets',
-    nargs='*', metavar='TARGET', type=jeolm.target.Target.from_string )
-list_parser.add_argument( '--type',
-    help='searched-for infiles type',
-    choices=['tex', 'asy'], default='tex',
-    dest='source_type', metavar='SOURCE_TYPE' )
-list_parser.set_defaults(command='list')
+def _add_list_arg_subparser(subparsers):
+    parser = subparsers.add_parser( 'list',
+        help='list all infiles for given targets' )
+    parser.add_argument( 'targets',
+        nargs='*', metavar='TARGET', type=jeolm.target.Target.from_string )
+    parser.add_argument( '--type',
+        help='searched-for infiles type',
+        choices=['tex', 'asy'], default='tex',
+        dest='source_type', metavar='SOURCE_TYPE' )
+    parser.set_defaults(command='list')
 
 def main_list(args, *, local, logging_manager):
     if not args.targets:
@@ -190,11 +191,12 @@ def main_list(args, *, local, logging_manager):
         source_type=args.source_type )
 
 
-spell_parser = subparsers.add_parser( 'spell',
-    help='spell-check all infiles for given targets' )
-spell_parser.add_argument( 'targets',
-    nargs='*', metavar='TARGET', type=jeolm.target.Target.from_string )
-spell_parser.set_defaults(command='spell')
+def _add_spell_arg_subparser(subparsers):
+    parser = subparsers.add_parser( 'spell',
+        help='spell-check all infiles for given targets' )
+    parser.add_argument( 'targets',
+        nargs='*', metavar='TARGET', type=jeolm.target.Target.from_string )
+    parser.set_defaults(command='spell')
 
 def main_spell(args, *, local, logging_manager):
     if not args.targets:
@@ -205,15 +207,35 @@ def main_spell(args, *, local, logging_manager):
         colour=args.colour )
 
 
-clean_parser = subparsers.add_parser( 'clean',
-    help='clean toplevel links to build/**.pdf' )
-clean_parser.set_defaults(command='clean')
+def _add_clean_arg_subparser(subparsers):
+    parser = subparsers.add_parser( 'clean',
+        help='clean toplevel links to build/**.pdf' )
+    parser.set_defaults(command='clean')
 
 def main_clean(args, *, local, logging_manager):
     jeolm.commands.clean(root=local.root)
     jeolm.commands.clean_broken_links(local.build_dir, recursive=True)
 
 
+def _get_arg_parser():
+    parser = _get_base_arg_parser()
+    subparsers = parser.add_subparsers()
+    _add_build_arg_subparser(subparsers)
+    _add_buildline_arg_subparser(subparsers)
+    _add_review_arg_subparser(subparsers)
+    _add_init_arg_subparser(subparsers)
+    _add_list_arg_subparser(subparsers)
+    _add_spell_arg_subparser(subparsers)
+    _add_clean_arg_subparser(subparsers)
+    return parser
+
+def _get_args():
+    parser = _get_arg_parser()
+    args = parser.parse_args()
+    if 'command' not in args:
+        return parser.print_help()
+    return args
+
 if __name__ == '__main__':
-    main(args=parser.parse_args())
+    main(args=_get_args())
 

@@ -15,11 +15,11 @@ logger = logging.getLogger(__name__) # pylint: disable=invalid-name
 ##########
 # High-level subprograms
 
-def review(paths, *, local, md, viewpoint=None):
+def review(paths, *, local, metadata, viewpoint=None):
     inpaths = resolve_inpaths(paths,
         source_dir=local.source_dir, viewpoint=viewpoint )
     for inpath in inpaths:
-        md.review(inpath)
+        metadata.review(inpath)
 
 def print_source_list(targets, *, local, driver, viewpoint=None,
     source_type='tex'
@@ -46,10 +46,10 @@ def check_spelling(targets, *, local, driver, context=0, colour=True):
         if indicator_length:
             print(' ' * indicator_length, end='\r')
         indicator_length = 0
-    def indicator_show(s):
+    def indicator_show(name):
         nonlocal indicator_length
-        print(s, end='\r')
-        indicator_length = len(str(s))
+        print(name, end='\r')
+        indicator_length = len(str(name))
     def piece_to_string(piece):
         if isinstance(piece, CorrectWord):
             return '<GREEN>{}<NOCOLOUR>'.format(piece.s)
@@ -64,8 +64,8 @@ def check_spelling(targets, *, local, driver, context=0, colour=True):
         indicator_clean()
         indicator_show(str(path))
 
-        with path.open('r') as f:
-            text = f.read()
+        with path.open('r') as checked_file:
+            text = checked_file.read()
         lines = ['']
         printed_line_numbers = set()
         try:
@@ -106,12 +106,12 @@ def clean(root):
     Remove all symbolic links to 'build/*whatever*' from the toplevel.
     """
     assert isinstance(root, Path), root
-    for x in root.iterdir():
-        if not x.is_symlink():
+    for path in root.iterdir():
+        if not path.is_symlink():
             continue
-        target = os.readlink(str(x))
+        target = os.readlink(str(path))
         if target.startswith('build/'):
-            x.unlink()
+            path.unlink()
 
 
 ##########
@@ -122,9 +122,9 @@ def simple_load_driver(local=None):
         from jeolm.local import LocalManager
         local = LocalManager()
     from jeolm.metadata import MetadataManager
-    md = MetadataManager(local=local)
-    md.load_metadata_cache()
-    return md.feed_metadata(local.driver_class())
+    metadata = MetadataManager(local=local)
+    metadata.load_metadata_cache()
+    return metadata.feed_metadata(local.driver_class())
 
 def list_sources(targets, *, local, driver, source_type='tex'):
     source_dir = local.source_dir
