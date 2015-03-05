@@ -144,11 +144,10 @@ def _add_review_arg_subparser(subparsers):
     parser.set_defaults(command='review')
 
 def main_review(args, *, local, logging_manager):
-    from jeolm.metadata import MetadataManager
     from jeolm.diffprint import log_metadata_diff
     if not args.inpaths:
         logger.warn('No-op: no inpaths for review')
-    metadata = MetadataManager(local=local)
+    metadata = (local.metadata_class)(local=local)
     metadata.load_metadata_cache()
     with log_metadata_diff(metadata, logger=logger):
         jeolm.commands.review( args.inpaths,

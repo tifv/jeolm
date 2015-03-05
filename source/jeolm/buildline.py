@@ -35,9 +35,15 @@ class BuildLine:
         self.text_node_shelf = text_node_shelf
         self.semaphore = semaphore
         self.logging_manager = logging_manager
-        self.metadata = NotifiedMetadataManager(local=self.local)
+        metadata_class = self.local.metadata_class
+        if not issubclass(NotifiedMetadataManager, metadata_class):
+            metadata_class = type( '_MetadataManager',
+                (metadata_class, NotifiedMetadataManager), {} )
+        else:
+            metadata_class = NotifiedMetadataManager
+        self.metadata = metadata_class(local=self.local)
         self.metadata.review(PurePosixPath())
-        self.driver = self.local.driver_class()
+        self.driver = (self.local.driver_class)()
         self.metadata.feed_metadata(self.driver)
         self.history_filename = str(self.local.build_dir/'buildline.history')
 

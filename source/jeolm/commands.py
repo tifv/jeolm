@@ -121,10 +121,9 @@ def simple_load_driver(local=None):
     if local is None:
         from jeolm.local import LocalManager
         local = LocalManager()
-    from jeolm.metadata import MetadataManager
-    metadata = MetadataManager(local=local)
+    metadata = (local.metadata_class)(local=local)
     metadata.load_metadata_cache()
-    return metadata.feed_metadata(local.driver_class())
+    return metadata.feed_metadata((local.driver_class)())
 
 def list_sources(targets, *, local, driver, source_type='tex'):
     source_dir = local.source_dir

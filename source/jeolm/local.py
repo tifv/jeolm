@@ -86,6 +86,7 @@ class LocalManager:
         self.jeolm_dir = self._init_jeolm_dir()
         self.source_dir = self._init_source_dir()
         self.build_dir = self._init_build_dir()
+        self._local_module_loaded = False
         self._local_module = None
 
     @classmethod
@@ -144,20 +145,17 @@ class LocalManager:
 
     @property
     def local_module(self):
-        if self._local_module is None:
+        if not self._local_module_loaded:
             self._load_local_module()
-        assert self._local_module is not None
-        if self._local_module is False:
-            return None
-        else:
-            return self._local_module
+        assert self._local_module_loaded
+        return self._local_module
 
     def _load_local_module(self, *, module_name=None):
-        assert self._local_module is None, self._local_module
+        assert not self._local_module_loaded
 
         module_path = self.jeolm_dir / 'local.py'
         if not module_path.exists():
-            self._local_module = False
+            self._local_module_loaded = True
             return
 
         import importlib.machinery
@@ -169,18 +167,23 @@ class LocalManager:
         loader = importlib.machinery.SourceFileLoader(
             module_name, str(module_path) )
         self._local_module = loader.load_module()
+        self._local_module_loaded = True
         logger.debug("Loaded '{}' as module '{}'"
             .format(module_path, module_name) )
 
     @property
     def driver_class(self):
-        local_module = self.local_module
-        assert not isinstance(local_module, bool)
-        if local_module is not None:
-            with suppress(AttributeError):
-                return local_module.Driver
+        with suppress(AttributeError):
+            return self.local_module.Driver
         import jeolm.driver.regular
         return jeolm.driver.regular.Driver
+
+    @property
+    def metadata_class(self):
+        with suppress(AttributeError):
+            return self.local_module.MetadataManager
+        import jeolm.metadata
+        return jeolm.metadata.MetadataManager
 
     @contextmanager
     def open_text_node_shelf(self):
