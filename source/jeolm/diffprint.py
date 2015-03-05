@@ -11,22 +11,12 @@ from jeolm.records import RecordsManager
 import logging
 logger = logging.getLogger(__name__) # pylint: disable=invalid-name
 
-class _Large:
-    def __new__(cls):
-        """Singleton constructor."""
-        try:
-            self = cls.large
-        except AttributeError:
-            self = cls.large = super().__new__(cls)
-        return self
-
-_LARGE = _Large()
-
 class _Dumper(jeolm.yaml.JeolmDumper):
-    def represent_Large(self, data):
-        return self.represent_scalar('!large', '')
+    def represent_Ellipsis(self, data):
+        assert data is Ellipsis
+        return self.represent_scalar('tag:yaml.org,2002:str', '…')
 
-_Dumper.add_representer(_Large, _Dumper.represent_Large)
+_Dumper.add_representer(type(Ellipsis), _Dumper.represent_Ellipsis)
 
 def _dump(data, Dumper=_Dumper, default_flow_style=False, **kwargs):
     return jeolm.yaml.dump( data,
@@ -76,7 +66,7 @@ def _wipe_subrecords(record):
     for key in record:
         if key.startswith('$'):
             continue
-        record[key] = _LARGE
+        record[key] = Ellipsis
     return record
 
 def _wipe_equal_large_keys(record1, record2):
@@ -92,7 +82,7 @@ def _wipe_equal_large_keys(record1, record2):
             continue
         large_key = '$large' + key
         if record1.get(large_key, False) and record2.get(large_key, False):
-            record1[key] = record2[key] = _LARGE
+            record1[key] = record2[key] = Ellipsis
             if record1[large_key] == record2[large_key]:
                 record1.pop(large_key)
                 record2.pop(large_key)
