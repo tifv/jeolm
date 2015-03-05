@@ -1,5 +1,4 @@
 import argparse
-from contextlib import closing
 
 from pathlib import Path
 

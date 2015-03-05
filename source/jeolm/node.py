@@ -395,7 +395,8 @@ class Command:
     """Convenience class for commands used with nodes."""
 
     def __init__(self, node):
-        assert isinstance(node, Node), type(node)
+        if not isinstance(node, Node):
+            raise RuntimeError(type(node))
         self.node = node
 
     def __call__(self):
@@ -547,16 +548,17 @@ class DatedNode(Node):
         Returns:
             bool: True if the node needs to be rebuilt, False otherwise.
         """
+        if super()._needs_build():
+            return True
         mtime = self.mtime
         if mtime is None:
-            return True
-        if super()._needs_build():
             return True
         for node in self.needs:
             if not isinstance(node, DatedNode):
                 continue
             if mtime_less(mtime, node.mtime):
                 return True
+        return False
 
     def _load_mtime(self):
         """

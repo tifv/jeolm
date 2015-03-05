@@ -160,9 +160,9 @@ class LocalManager:
 
         import importlib.machinery
         if module_name is None:
-            # We most probably exclude the possibility of loading module with
-            # normal import statement by inserting strange characters in module
-            # name.
+            # We exclude the possibility of loading module with normal
+            # import statement by inserting '/' and ':' characters
+            # in module name. This is neither a feature nor a bug.
             module_name = 'jeolm.local_module:{}'.format(self.root)
         loader = importlib.machinery.SourceFileLoader(
             module_name, str(module_path) )

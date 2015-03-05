@@ -20,10 +20,7 @@ from jeolm.target import Target, TargetError
 from jeolm.records import RecordNotFoundError
 
 import logging
-if __name__ == '__main__':
-    from jeolm import logger
-else:
-    logger = logging.getLogger(__name__) # pylint: disable=invalid-name
+logger = logging.getLogger(__name__) # pylint: disable=invalid-name
 
 
 class BuildLine:
