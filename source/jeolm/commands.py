@@ -4,7 +4,6 @@ module.
 """
 import os
 from contextlib import contextmanager
-from subprocess import CalledProcessError
 
 from pathlib import Path, PurePosixPath
 
@@ -181,11 +180,13 @@ def refrain_called_process_error():
     Experiencing subprocess.CalledProcessError usually means error in
     external application, so Python traceback is useless.
     """
+    from subprocess import CalledProcessError
+    from jeolm.node import CalledProcessErrorReported
     try:
         yield
+    except CalledProcessErrorReported:
+        pass
     except CalledProcessError as exception:
-        if getattr(exception, 'reported', False):
-            return
         logger.critical(
             "Command {exc.cmd} returned code {exc.returncode}"
             .format(exc=exception) )

@@ -1,5 +1,4 @@
 import readline
-import subprocess
 import traceback
 from contextlib import contextmanager, suppress
 
@@ -18,6 +17,8 @@ from jeolm.diffprint import log_metadata_diff
 from jeolm.record_path import RecordPath
 from jeolm.target import Target, TargetError
 from jeolm.records import RecordNotFoundError
+
+from jeolm.node import CalledProcessErrorReported
 
 import logging
 logger = logging.getLogger(__name__) # pylint: disable=invalid-name
@@ -122,10 +123,8 @@ class BuildLine:
                 continue
             try:
                 self.build(targets)
-            except subprocess.CalledProcessError as exception:
-                if getattr(exception, 'reported', False):
-                    continue
-                traceback.print_exc()
+            except CalledProcessErrorReported:
+                continue
             except Exception: # pylint: disable=broad-except
                 traceback.print_exc()
 

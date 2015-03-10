@@ -536,7 +536,7 @@ class TextNode(jeolm.node.FileNode):
             self.log(logging.INFO, "Change in content detected")
             return True
         else:
-            self.log(logging.INFO, "No change in content detected")
+            self.log(logging.DEBUG, "No change in content detected")
         return False
 
     def _run_command(self):

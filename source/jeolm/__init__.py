@@ -46,8 +46,9 @@ class LoggingManager:
 
     def sync(self):
         if self.concurrent:
-            if self.listener is not None:
-                self.listener.stop()
+            if self.listener is None:
+                raise RuntimeError
+            self.listener.stop()
             self.listener = self._get_listener()
             self.listener.start()
 

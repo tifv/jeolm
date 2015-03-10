@@ -3,14 +3,14 @@ Nodes, and dependency trees constructed of them.
 """
 
 from itertools import chain
+from contextlib import contextmanager
 
 import os
-from stat import S_ISDIR
-import subprocess
 import sys
 import time
-from contextlib import contextmanager
 import traceback
+import subprocess
+from stat import S_ISDIR
 
 import threading
 
@@ -21,12 +21,15 @@ logger = logging.getLogger(__name__) # pylint: disable=invalid-name
 
 
 class CycleError(RuntimeError):
+    """Node dependencies formed a cycle."""
     pass
 
 class MissingTargetError(FileNotFoundError):
     """Missing target file after execution of build commands."""
     pass
 
+class CalledProcessErrorReported(subprocess.CalledProcessError):
+    pass
 
 class CatchingThread(threading.Thread):
     def __init__(self, *, target=None):
@@ -452,7 +455,7 @@ class SubprocessCommand(Command):
         """
 
         output = self._subprocess_output()
-        if not output:
+        if not output: # child process didn't write anything
             return
         self._log_output(output)
 
@@ -505,10 +508,10 @@ class SubprocessCommand(Command):
                     "<RED>{node.name}<NOCOLOUR>)<RESET>"
                 .format(node=self.node, exc=exception, output=output)
             )
-            # Stop jeolm.commands.refrain_called_process_error
-            # (which most probably surrounds us) from reporting the error.
-            exception.reported = True
-            raise
+            # Stop jeolm.commands.refrain_called_process_error (which most
+            # probably surrounds us) from logging or somehow otherwise printing
+            # the error.
+            raise CalledProcessErrorReported(*exception.args) from exception
         else:
             return encoded_output.decode(errors='replace')
 
