@@ -7,8 +7,10 @@ from itertools import chain
 import os
 from stat import S_ISDIR
 import subprocess
+import sys
 import time
 from contextlib import contextmanager
+import traceback
 
 import threading
 
@@ -30,7 +32,7 @@ class CatchingThread(threading.Thread):
     def __init__(self, *, target=None):
         super().__init__(target=target)
         assert not hasattr(self, 'exception')
-        self.exception = None
+        self.exc_info = None, None, None
 
     def run(self):
         """
@@ -41,18 +43,22 @@ class CatchingThread(threading.Thread):
         """
         try:
             return super().run()
-        except Exception as exception: # pylint: disable=broad-except
-            self.exception = exception
+        except Exception: # pylint: disable=broad-except
+            self.exc_info = sys.exc_info()
 
-    def join(self, timeout=None):
+    def join(self, timeout=None, *, release_catched=True):
         """
         Extension.
 
-        Raise any exception catched by run().
+        Raise any exception catched by run(), unless release_catched is False.
         """
         super().join(timeout=timeout)
-        if self.exception is not None:
-            raise self.exception # pylint: disable=raising-bad-type
+        exc_type, exc_value, exc_traceback = self.exc_info
+        if exc_type is not None:
+            if release_catched:
+                raise exc_value # pylint: disable=raising-bad-type
+            else:
+                traceback.print_exception(exc_type, exc_value, exc_traceback)
 
 
 def mtime_less(mtime, other):
@@ -192,12 +198,18 @@ class Node:
             for need in self.needs:
                 need.update_start(semaphore=semaphore)
             def wait_and_update():
-                for need in self.needs:
-                    subthread = need.thread
-                    if subthread is None:
-                        continue
-                    assert isinstance(subthread, CatchingThread)
-                    subthread.join()
+                subthreads = iter( need.thread
+                    for need in self.needs
+                    if need.thread is not None )
+                try:
+                    for subthread in subthreads:
+                        assert isinstance(subthread, CatchingThread)
+                        subthread.join()
+                except:
+                    for subthread in subthreads:
+                        assert isinstance(subthread, CatchingThread)
+                        subthread.join(release_catched=False)
+                    raise
                 with semaphore:
                     self._update_self()
             thread = self.thread = CatchingThread(target=wait_and_update)
