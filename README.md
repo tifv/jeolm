@@ -8,7 +8,7 @@ complementary LaTeX package.
 
 * Python 3.3 or greater; the following non-standard packages must be installed:
   * [PyYAML](http://pyyaml.org/)
-  * [pyinotify](http://github.com/seb-m/pyinotify) (used only by jeolm.buildline shell)
+  * [pyinotify](http://github.com/seb-m/pyinotify) (used only by 'jeolm buildline' shell)
   * [pathlib](http://docs.python.org/3/library/pathlib.html) of some specific versions:
     - version included in Python 3.4.2 will work
     - [recent version](http://hg.python.org/cpython/file/4a55b98314cd/Lib/pathlib.py) will work too
@@ -31,5 +31,5 @@ Following programs will be invoked occasionally:
     EOF
     $ python3 -m jeolm review source/
     $ python3 -m jeolm build /_style/jeolm # build documentation of LaTeX package
-    $ python3 -m jeolm.buildline
+    $ python3 -m jeolm buildline
     jeolm>
