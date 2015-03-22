@@ -8,11 +8,12 @@ complementary LaTeX package.
 
 * Python 3.3 or greater; the following non-standard packages must be installed:
   * [PyYAML](http://pyyaml.org/)
-  * [pyinotify](http://github.com/seb-m/pyinotify) (used only by 'jeolm buildline' shell)
   * [pathlib](http://docs.python.org/3/library/pathlib.html) of some specific versions:
     - version included in Python 3.4.2 will work
     - [recent version](http://hg.python.org/cpython/file/4a55b98314cd/Lib/pathlib.py) will work too
     - unfortunately, version included in Python 3.4.1 won't work due to a [bug](http://bugs.python.org/issue20639)
+  * [pyinotify](http://github.com/seb-m/pyinotify) (imported and used only by 'jeolm buildline' shell)
+  * [pyenchant](http://pythonhosted.org/pyenchant/) (imported and used only by 'jeolm spell' subcommand)
 * LaTeX
 
 Following programs will be invoked occasionally:
