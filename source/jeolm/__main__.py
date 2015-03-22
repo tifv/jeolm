@@ -1,4 +1,5 @@
 import argparse
+from contextlib import suppress
 
 from pathlib import Path
 
@@ -64,7 +65,7 @@ def _add_build_arg_subparser(subparsers):
     parser.set_defaults(command='build', force=None)
 
 def main_build(args, *, local, logging_manager):
-    from jeolm.node import PathNode
+    from jeolm.node import PathNode, NodeErrorReported
     from jeolm.node_factory import TargetNodeFactory
 
     if not args.targets:
@@ -97,7 +98,7 @@ def main_build(args, *, local, logging_manager):
                     node.source.force()
         else:
             raise RuntimeError(args.force)
-        with jeolm.commands.refrain_called_process_error():
+        with suppress(NodeErrorReported):
             target_node.update(semaphore=semaphore)
 
 def _get_build_semaphore(jobs):

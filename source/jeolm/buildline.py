@@ -18,7 +18,7 @@ from jeolm.record_path import RecordPath
 from jeolm.target import Target, TargetError
 from jeolm.records import RecordNotFoundError
 
-from jeolm.node import CalledProcessErrorReported
+from jeolm.node import NodeErrorReported
 
 import logging
 logger = logging.getLogger(__name__) # pylint: disable=invalid-name
@@ -122,9 +122,8 @@ class BuildLine:
             if not targets:
                 continue
             try:
-                self.build(targets)
-            except CalledProcessErrorReported:
-                continue
+                with suppress(NodeErrorReported):
+                    self.build(targets)
             except Exception: # pylint: disable=broad-except
                 traceback.print_exc()
 

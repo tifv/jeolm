@@ -3,7 +3,6 @@ Miscellaneous and relatively simple commands, not deserving their own
 module.
 """
 import os
-from contextlib import contextmanager
 
 from pathlib import Path, PurePosixPath
 
@@ -171,25 +170,6 @@ def _path_is_subpath(a_path, b_path):
         raise ValueError("Paths '{}' and '{}' are uncomparable."
             .format(a_path, b_path))
     return len(a_parts) >= len(b_parts)
-
-@contextmanager
-def refrain_called_process_error():
-    """
-    Silence CalledProcessError, avoiding unnecessary traceback print.
-
-    Experiencing subprocess.CalledProcessError usually means error in
-    external application, so Python traceback is useless.
-    """
-    from subprocess import CalledProcessError
-    from jeolm.node import CalledProcessErrorReported
-    try:
-        yield
-    except CalledProcessErrorReported:
-        pass
-    except CalledProcessError as exception:
-        logger.critical(
-            "Command {exc.cmd} returned code {exc.returncode}"
-            .format(exc=exception) )
 
 def iter_broken_links(directory, *, recursive):
     """

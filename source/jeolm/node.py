@@ -28,8 +28,14 @@ class MissingTargetError(FileNotFoundError):
     """Missing target file after execution of build commands."""
     pass
 
-class CalledProcessErrorReported(subprocess.CalledProcessError):
+class NodeErrorReported(ValueError):
     pass
+
+class NodeMultipleExceptions(NodeErrorReported):
+    def __init__(self, exceptions):
+        assert isinstance(exceptions, set)
+        self.exceptions = exceptions
+        super().__init__()
 
 class CatchingThread(threading.Thread):
     def __init__(self, *, target=None):
@@ -49,19 +55,16 @@ class CatchingThread(threading.Thread):
         except Exception: # pylint: disable=broad-except
             self.exc_info = sys.exc_info()
 
-    def join(self, timeout=None, *, release_catched=True):
+    def join(self, timeout=None):
         """
         Extension.
 
-        Raise any exception catched by run(), unless release_catched is False.
+        Raise any exception catched by run().
         """
         super().join(timeout=timeout)
         exc_type, exc_value, exc_traceback = self.exc_info
         if exc_type is not None:
-            if release_catched:
-                raise exc_value # pylint: disable=raising-bad-type
-            else:
-                traceback.print_exception(exc_type, exc_value, exc_traceback)
+            raise exc_value # pylint: disable=raising-bad-type
 
 
 def mtime_less(mtime, other):
@@ -204,17 +207,28 @@ class Node:
                 subthreads = iter( need.thread
                     for need in self.needs
                     if need.thread is not None )
-                try:
-                    for subthread in subthreads:
-                        assert isinstance(subthread, CatchingThread)
+                exceptions = set()
+                for subthread in subthreads:
+                    assert isinstance(subthread, CatchingThread)
+                    try:
                         subthread.join()
-                except:
-                    for subthread in subthreads:
-                        assert isinstance(subthread, CatchingThread)
-                        subthread.join(release_catched=False)
-                    raise
+                    except NodeMultipleExceptions as exception:
+                        exceptions.update(exception.exceptions)
+                    except NodeErrorReported as exception:
+                        exceptions.add(exception)
+                if exceptions:
+                    assert all( isinstance(exc, NodeErrorReported)
+                        for exc in exceptions ), exceptions
+                    raise NodeMultipleExceptions(exceptions)
                 with semaphore:
-                    self._update_self()
+                    try:
+                        self._update_self()
+                    except NodeErrorReported:
+                        raise
+                    except Exception as exception:
+                        self.log( logging.ERROR,
+                            "Exception occured: {}".format(traceback.format_exc()) )
+                        raise NodeErrorReported from exception
             thread = self.thread = CatchingThread(target=wait_and_update)
             thread.start()
             self._updated = True
@@ -508,10 +522,7 @@ class SubprocessCommand(Command):
                     "<RED>{node.name}<NOCOLOUR>)<RESET>"
                 .format(node=self.node, exc=exception, output=output)
             )
-            # Stop jeolm.commands.refrain_called_process_error (which most
-            # probably surrounds us) from logging or somehow otherwise printing
-            # the error.
-            raise CalledProcessErrorReported(*exception.args) from exception
+            raise NodeErrorReported from exception
         else:
             return encoded_output.decode(errors='replace')
 
