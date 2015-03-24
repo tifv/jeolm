@@ -8,7 +8,8 @@ import jeolm.local
 import jeolm.target
 import jeolm.commands
 
-from jeolm import logger
+import logging
+from jeolm import logger # use 'jeolm' logger instead of '__main__' one.
 
 
 def _get_base_arg_parser( prog='jeolm',
@@ -18,7 +19,7 @@ def _get_base_arg_parser( prog='jeolm',
     parser.add_argument( '-R', '--root',
         help='explicit root path of a jeolm project' )
     parser.add_argument( '-v', '--verbose',
-        help='make debug messages to stdout',
+        help='include debug messages in log output',
         action='store_true' )
     parser.add_argument( '-C', '--no-colour',
         help='disable colour output',
@@ -26,11 +27,13 @@ def _get_base_arg_parser( prog='jeolm',
     return parser
 
 def main(args):
-    assert 'command' in args, args
     concurrent = args.command in {'build', 'buildline'} and args.jobs > 1
     logging_manager = jeolm.LoggingManager(
         verbose=args.verbose, colour=args.colour, concurrent=concurrent)
     with logging_manager:
+        if args.command is None:
+            logger.fatal("No command selected.")
+            raise SystemExit(1)
         if args.command == 'init':
             # special case: no local expected
             return main_init(args, logging_manager=logging_manager)
@@ -38,9 +41,8 @@ def main(args):
             local = jeolm.local.LocalManager(root=args.root)
         except jeolm.local.RootNotFoundError:
             jeolm.local.report_missing_root()
-            raise SystemExit
-        main_function = globals()['main_' + args.command]
-        return main_function(
+            raise SystemExit(1)
+        return args.command_func(
             args, local=local, logging_manager=logging_manager )
 
 
@@ -62,7 +64,7 @@ def _add_build_arg_subparser(subparsers):
     parser.add_argument( '-j', '--jobs',
         help='number of parallel jobs',
         type=int, default=1 )
-    parser.set_defaults(command='build', force=None)
+    parser.set_defaults(command_func=main_build, force=None)
 
 def main_build(args, *, local, logging_manager):
     from jeolm.node import PathNode, NodeErrorReported
@@ -116,7 +118,7 @@ def _add_buildline_arg_subparser(subparsers):
     parser.add_argument( '-j', '--jobs',
         help='number of parallel jobs',
         type=int, default=1 )
-    parser.set_defaults(command='buildline', force=None)
+    parser.set_defaults(command_func=main_buildline, force=None)
 
 def main_buildline(args, *, local, logging_manager):
     from jeolm.node import PathNode
@@ -141,7 +143,7 @@ def _add_review_arg_subparser(subparsers):
         help='review given infiles' )
     parser.add_argument( 'inpaths',
         nargs='*', metavar='INPATH' )
-    parser.set_defaults(command='review')
+    parser.set_defaults(command_func=main_review)
 
 def main_review(args, *, local, logging_manager):
     from jeolm.diffprint import log_metadata_diff
@@ -160,7 +162,7 @@ def _add_init_arg_subparser(subparsers):
         help='create jeolm directory/file structure' )
     parser.add_argument( 'resources',
         nargs='*', metavar='RESOURCE' )
-    parser.set_defaults(command='init')
+    # command_func default is intentionally not set
 
 def main_init(args, logging_manager):
     jeolm.local.InitLocalManager(
@@ -176,7 +178,7 @@ def _add_list_arg_subparser(subparsers):
         help='searched-for infiles type',
         choices=['tex', 'asy'], default='tex',
         dest='source_type', metavar='SOURCE_TYPE' )
-    parser.set_defaults(command='list')
+    parser.set_defaults(command_func=main_list)
 
 def main_list(args, *, local, logging_manager):
     if not args.targets:
@@ -192,7 +194,7 @@ def _add_spell_arg_subparser(subparsers):
         help='spell-check all infiles for given targets' )
     parser.add_argument( 'targets',
         nargs='*', metavar='TARGET', type=jeolm.target.Target.from_string )
-    parser.set_defaults(command='spell')
+    parser.set_defaults(command_func=main_spell)
 
 def main_spell(args, *, local, logging_manager):
     if not args.targets:
@@ -206,7 +208,7 @@ def main_spell(args, *, local, logging_manager):
 def _add_clean_arg_subparser(subparsers):
     parser = subparsers.add_parser( 'clean',
         help='clean toplevel links to build/**.pdf' )
-    parser.set_defaults(command='clean')
+    parser.set_defaults(command_func=main_clean)
 
 def main_clean(args, *, local, logging_manager):
     jeolm.commands.clean(root=local.root)
@@ -215,7 +217,7 @@ def main_clean(args, *, local, logging_manager):
 
 def _get_arg_parser():
     parser = _get_base_arg_parser()
-    subparsers = parser.add_subparsers()
+    subparsers = parser.add_subparsers(title='commands', dest='command')
     _add_build_arg_subparser(subparsers)
     _add_buildline_arg_subparser(subparsers)
     _add_review_arg_subparser(subparsers)
@@ -228,8 +230,6 @@ def _get_arg_parser():
 def _get_args():
     parser = _get_arg_parser()
     args = parser.parse_args()
-    if 'command' not in args:
-        return parser.print_help()
     return args
 
 if __name__ == '__main__':
