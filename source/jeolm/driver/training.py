@@ -1,5 +1,6 @@
 from string import Template
 from collections import OrderedDict
+from functools import partial
 from datetime import date as date_type
 
 from jeolm.driver.regular import Driver as RegularDriver, DriverError
@@ -81,26 +82,58 @@ class Driver(RegularDriver):
         return first_date, first_period
 
     ##########
-    # LaTeX-level functions
-
-    @classmethod
-    def _constitute_authors(cls, authors, thin_space=r'\,'):
-        if len(authors) > 2:
-            def abbreviate(author):
-                *names, last = author.split(' ')
-                return thin_space.join(
-                    [name[0] + '.' for name in names] + [last] )
-        else:
-            def abbreviate(author):
-                return author
-        return ', '.join(abbreviate(author) for author in authors)
+    # Record extension
 
     def _derive_attributes(self, parent_record, child_record, name):
         child_record.setdefault('$delegate$groups',
             parent_record.get('$delegate$groups', True) )
-        child_record.setdefault('$source$groups',
-            parent_record.get('$source$groups', True) )
+        child_record.setdefault('$matter$groups',
+            parent_record.get('$matter$groups', True) )
         super()._derive_attributes(parent_record, child_record, name)
+
+    ##########
+    # Record-level functions (delegate)
+
+    @fetching_metarecord
+    @processing_target_aspect(aspect='delegators', wrap_generator=True)
+    def generate_delegators(self, target, metarecord):
+        try:
+            yield from super().generate_delegators(target, metarecord)
+        except self.NoDelegators:
+            delegate_groups = metarecord['$delegate$groups']
+            if not target.flags.check_condition(delegate_groups):
+                raise
+            if '$timetable' not in metarecord:
+                for subname in metarecord:
+                    if subname.startswith('$'):
+                        continue
+                    subrecord = self[target.path/subname]
+                    if not subrecord.get('$target$able', True):
+                        continue
+                    delegate_groups_able = subrecord.get(
+                        '$delegate$groups$into', True )
+                    if not target.flags.check_condition(delegate_groups_able):
+                        continue
+                    yield target.path_derive(subname)
+            elif not target.flags.intersection(self.groups):
+                for group_flag in self.groups:
+                    yield target.flags_union({group_flag})
+            else:
+                group_flags = target.flags.intersection(self.groups)
+                if len(group_flags) != 1:
+                    raise DriverError(
+                        "Multiple flags in target {}".format(target)
+                    ) from None
+                group_flag, = group_flags
+                if group_flag in metarecord['$timetable']:
+                    raise # this is an atomic target, nowhere to delegate
+                else:
+                    pass # group does not match, delegate to nothing
+        else:
+            return
+
+    ##########
+    # Record-level functions (outrecord)
 
 #    def select_outname(self, target, metarecord, date=None):
 #        no_group = ( not target.flags.intersection(self.groups) or
@@ -124,44 +157,12 @@ class Driver(RegularDriver):
 #    def select_outname(self, target, metarecord, date=None):
 #        return super().select_outname(target, metarecord, date=None)
 
-    @fetching_metarecord
-    @processing_target_aspect(aspect='delegators', wrap_generator=True)
-    def generate_delegators(self, target, metarecord):
-        try:
-            yield from super().generate_delegators(target, metarecord)
-        except self.NoDelegators:
-            delegate_groups = metarecord['$delegate$groups']
-            if not target.flags.check_condition(delegate_groups):
-                raise
-            if '$timetable' not in metarecord:
-                for subname in metarecord:
-                    if subname.startswith('$'):
-                        continue
-                    subrecord = self[target.path/subname]
-                    if not subrecord.get('$target$able', True):
-                        continue
-                    yield target.path_derive(subname)
-            elif not target.flags.intersection(self.groups):
-                for group_flag in self.groups:
-                    yield target.flags_union({group_flag})
-            else:
-                group_flags = target.flags.intersection(self.groups)
-                if len(group_flags) != 1:
-                    raise DriverError(target) from None
-                group_flag, = group_flags
-                if group_flag in metarecord['$timetable']:
-                    raise # this is an atomic target, nowhere to delegate
-                else:
-                    pass # group does not match, delegate to nothing
-        else:
-            return
-
     @processing_target_aspect(aspect='auto metabody', wrap_generator=True)
     @classifying_items(aspect='metabody', default='verbatim')
     def generate_auto_metabody(self, target, metarecord):
 
-        source_groups = metarecord['$source$groups']
-        if not target.flags.check_condition(source_groups):
+        matter_groups = metarecord['$matter$groups']
+        if not target.flags.check_condition(matter_groups):
             yield from super().generate_auto_metabody(target, metarecord)
             return
 
@@ -173,18 +174,28 @@ class Driver(RegularDriver):
             for subname in metarecord:
                 if subname.startswith('$'):
                     continue
-                yield target.derive(subname)
+                subrecord = self[target.path/subname]
+                matter_groups_able = subrecord.get('$matter$groups$into', True)
+                if not target.flags.check_condition(matter_groups_able):
+                    continue
+                yield target.path_derive(subname)
+                yield self.substitute_clearpage()
             return
+        timetable = metarecord['$timetable']
 
-        if not target.flags.intersection(self.groups):
-            if len(metarecord['$timetable']) != 1:
+        present_group_flags = target.flags.intersection(self.groups)
+        if not present_group_flags:
+            if len(timetable) != 1:
                 raise DriverError( "Unable to auto matter {target}"
                     .format(target=target) )
-            group_name, = metarecord['$timetable']
+            group_name, = timetable
             yield target.flags_union({group_name})
             return
-        present_group_flag, = target.flags.intersection(self.groups)
-        if present_group_flag not in target.flags:
+        if len(present_group_flags) > 1:
+            raise DriverError(
+                "Multiple group flags present in target {}".format(target) )
+        present_group_flag,  = present_group_flags
+        if present_group_flag not in timetable:
             return
 
         yield from super().generate_auto_metabody(target, metarecord)
@@ -195,9 +206,10 @@ class Driver(RegularDriver):
 
         yield r'\begingroup'
 
-        if '$authors' in metarecord:
-            yield self.substitute_authorsdef(
-                authors=self.constitute_authors(metarecord['$authors']) )
+        authors=self._constitute_authors(metarecord)
+        if authors is not None:
+            assert isinstance(authors, str), type(authors)
+            yield self.substitute_authorsdef(authors=authors)
 
         group_flags = target.flags.intersection(self.groups)
         if group_flags:
@@ -206,9 +218,16 @@ class Driver(RegularDriver):
                     "Multiple group flags in {target}"
                     .format(target=target) )
             group_flag, = group_flags
-            if '$timetable' not in metarecord or \
-                    group_flag not in metarecord['$timetable']:
-                raise DriverError(target)
+            if '$timetable' not in metarecord:
+                raise DriverError(
+                    "Group flag present in target {}, "
+                    "but there is no timetable to generate header."
+                    .format(target) )
+            if group_flag not in metarecord['$timetable']:
+                raise DriverError(
+                    "Group flag present in target {}, "
+                    "but the timetable does not contain it"
+                    .format(target) )
             yield self.substitute_groupnamedef(
                 group_name=self.groups[group_flag]['name'] )
             first_date, first_period = self.extract_first_period(
@@ -226,33 +245,50 @@ class Driver(RegularDriver):
 
         yield r'\endgroup'
 
-    authorsdef_template = r'\def\jeolmauthors{$authors}'
-    groupnamedef_template = r'\def\jeolmgroupname{$group_name}'
-    period_template = r'$date, пара $period'
-
-    @classmethod
-    def constitute_authors(cls, authors, thin_space=r'\,'):
-        if len(authors) > 2:
-            def abbreviate(author):
-                *names, last = author.split(' ')
-                return thin_space.join([name[0] + '.' for name in names] + [last])
-        else:
-            def abbreviate(author):
-                return author
-        return ', '.join(abbreviate(author) for author in authors)
-
     @processing_target_aspect(aspect='source metabody', wrap_generator=True)
     @classifying_items(aspect='metabody', default='verbatim')
     def generate_source_metabody(self, target, metarecord):
         if target.flags.issuperset({'addtoc', 'no-header'}):
-            if '$caption' in metarecord:
-                caption = metarecord['$caption']
-            else:
-                caption = '; '.join(metarecord['$source$sections'])
+            caption = self._constitute_caption(metarecord)
+            if caption is None:
+                raise DriverError("Failed to retrieve caption for toc")
+            assert isinstance(caption, str), type(caption)
             yield self.substitute_addtoc(line=caption)
             yield target.flags_difference({'addtoc'})
         else:
             yield from super().generate_source_metabody(target, metarecord)
 
+    ##########
+    # LaTeX-level functions
+
+    @classmethod
+    def _constitute_authors(cls, metarecord, thin_space=r'\,'):
+        try:
+            authors = metarecord['$authors']
+        except KeyError as exception:
+            return None
+        if len(authors) > 2:
+            abbreviate = partial(cls._abbreviate_author, thin_space=thin_space)
+        else:
+            abbreviate = lambda author: author
+        return ', '.join(abbreviate(author) for author in authors)
+
+    @staticmethod
+    def _abbreviate_author(author, thin_space=r'\,'):
+        *names, last = author.split(' ')
+        return thin_space.join([name[0] + '.' for name in names] + [last])
+
+    @classmethod
+    def _constitute_caption(cls, metarecord):
+        if '$caption' in metarecord:
+            return metarecord['$caption']
+        elif '$source$sections' in metarecord:
+            return '; '.join(metarecord['$source$sections'])
+        else:
+            return None
+
+    authorsdef_template = r'\def\jeolmauthors{$authors}'
+    groupnamedef_template = r'\def\jeolmgroupname{$group_name}'
+    period_template = r'$date, пара $period'
     addtoc_template = r'\addcontentsline{toc}{section}{$line}'
 
