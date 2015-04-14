@@ -109,7 +109,7 @@ class FlagContainer(Container):
     def check_condition(self, condition):
         if isinstance(condition, bool):
             return condition
-        if isinstance(condition, str):
+        elif isinstance(condition, str):
             return condition in self
         elif isinstance(condition, list):
             return all(self.check_condition(item) for item in condition)
@@ -117,12 +117,16 @@ class FlagContainer(Container):
             if len(condition) > 1:
                 raise FlagError('Condition, if a dict, must be of length 1')
             (key, value), = condition.items()
-            if key == 'not':
-                return not self.check_condition(value)
-            elif key == 'or':
+            if key == 'or':
                 if not isinstance(value, list):
                     raise FlagError("'or' condition value must be a list")
                 return any(self.check_condition(item) for item in value)
+            elif key == 'and':
+                if not isinstance(value, list):
+                    raise FlagError("'and' condition value must be a list")
+                return all(self.check_condition(item) for item in value)
+            elif key == 'not':
+                return not self.check_condition(value)
             else:
                 raise FlagError(
                     "Condition, if a dict, must have key 'not' or 'or'" )
