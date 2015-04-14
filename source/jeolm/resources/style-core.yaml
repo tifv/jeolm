@@ -42,7 +42,7 @@ optional:
     $style:
     - verbatim: \usepackage{geometry}
     - set-paper-size
-    - verbatim: \geometry{margin=2em,lmargin=2em,rmargin=2em}
+    - verbatim: \geometry{vmargin={2em,2em},hmargin={2em,2em}}
     - verbatim: \geometry{landscape}
       condition: landscape
     set-paper-size:
