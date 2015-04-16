@@ -255,7 +255,7 @@ class MakefileGenerator:
             if command is None:
                 raise RuntimeError("FileNode is expected to have a command")
             if isinstance(command, SubprocessCommand):
-                return cls_SubprocessRuleRepresenter.represent(
+                return cls._SubprocessRuleRepresenter.represent(
                     node, viewpoint=viewpoint )
             if isinstance(command, LazyWriteTextCommand):
                 raise UnbuildableNode(node)
