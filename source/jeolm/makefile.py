@@ -51,8 +51,8 @@ class RuleRepresenter:
     def _check_node_representation(node_repr):
         if any(x in node_repr for x in '\t\n #\\:'):
             raise RuntimeError(
-                "Prohibited symbols found in node representation: '{}'"
-                .format(node_repr) )
+                "Prohibited symbols found in node representation: {}"
+                .format(quote(node_repr)) )
 
     @classmethod
     def _represent_dependencies(cls, node, *, viewpoint):
@@ -236,7 +236,7 @@ class MakefileGenerator:
         if not isinstance(node, Node):
             raise TypeError(type(node))
         if isinstance(node, TargetNode):
-            return TargetRuleRepresenter.represent(
+            return cls._TargetRuleRepresenter.represent(
                 node, viewpoint=viewpoint )
         if not isinstance(node, PathNode):
             raise UnrepresentableNode(node)
@@ -248,14 +248,14 @@ class MakefileGenerator:
             return cls._represent_link_rule(
                 node, viewpoint=viewpoint )
         elif isinstance(node, DirectoryNode):
-            return DirectoryRuleRepresenter.represent(
+            return cls._DirectoryRuleRepresenter.represent(
                 node, viewpoint=viewpoint )
         elif isinstance(node, FileNode):
             command = node.command
             if command is None:
                 raise RuntimeError("FileNode is expected to have a command")
             if isinstance(command, SubprocessCommand):
-                return SubprocessRuleRepresenter.represent(
+                return cls_SubprocessRuleRepresenter.represent(
                     node, viewpoint=viewpoint )
             if isinstance(command, LazyWriteTextCommand):
                 raise UnbuildableNode(node)
@@ -268,6 +268,6 @@ class MakefileGenerator:
 
     @classmethod
     def _represent_link_rule(cls, node, *, viewpoint):
-        return LinkRuleRepresenter.represent(
+        return cls._LinkRuleRepresenter.represent(
             node, viewpoint=viewpoint )
 
