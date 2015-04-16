@@ -205,6 +205,58 @@ def main_spell(args, *, local, logging_manager):
         colour=args.colour )
 
 
+def _add_makefile_arg_subparser(subparsers):
+    parser = subparsers.add_parser( 'makefile',
+        help='generate makefile for given targets' )
+    parser.add_argument( 'targets',
+        nargs='*', metavar='TARGET', type=jeolm.target.Target.from_string)
+    parser.add_argument( '-o', '--output-makefile',
+        help='where to write makefile; default is Makefile; '
+            'generated makefile must be executed from the root directory '
+            'of the jeolm project',
+        default='Makefile' )
+    parser.add_argument( '-O', '--output-unbuildable',
+        help=( 'where to write list of files which Makefile cannot rebuild '
+            '(and depends on); default is stdout' ) )
+    parser.set_defaults(command_func=main_makefile)
+
+def main_makefile(args, *, local, logging_manager):
+    from jeolm.makefile import MakefileGenerator
+    from jeolm.node import PathNode, NodeErrorReported
+    from jeolm.node_factory import TargetNodeFactory
+
+    if not args.targets:
+        logger.warn('No-op: no targets for makefile generation')
+    PathNode.root = local.root
+    driver = jeolm.commands.simple_load_driver(local)
+
+    with local.open_text_node_shelf() as text_node_shelf:
+        target_node_factory = TargetNodeFactory(
+            local=local, driver=driver, text_node_shelf=text_node_shelf)
+        makefile_string, unbuildable_nodes, unrepresentable_nodes = \
+            MakefileGenerator.generate(
+                target_node_factory(args.targets, name='first'),
+                viewpoint=local.root )
+        with suppress(NodeErrorReported):
+            for node in unbuildable_nodes:
+                node.update()
+    for node in unrepresentable_nodes:
+        node.log( logging.WARNING,
+            "Node has no possible representation in Makefile" )
+    with open(args.output_makefile, 'w') as makefile:
+        makefile.write(makefile_string)
+    if args.output_unbuildable is None:
+        _print_unbuildable_list(unbuildable_nodes, local=local)
+    else:
+        with open(args.output_unbuildable, 'w') as unbuildable_list_file:
+            _print_unbuildable_list( unbuildable_nodes, local=local,
+                file=unbuildable_list_file )
+
+def _print_unbuildable_list(unbuildable_nodes, *, local, **kwargs):
+    for node in unbuildable_nodes:
+        print(str(node.path.relative_to(local.root)), **kwargs)
+
+
 def _add_clean_arg_subparser(subparsers):
     parser = subparsers.add_parser( 'clean',
         help='clean toplevel links to build/**.pdf' )
@@ -224,6 +276,7 @@ def _get_arg_parser():
     _add_init_arg_subparser(subparsers)
     _add_list_arg_subparser(subparsers)
     _add_spell_arg_subparser(subparsers)
+    _add_makefile_arg_subparser(subparsers)
     _add_clean_arg_subparser(subparsers)
     return parser
 
