@@ -3,8 +3,9 @@ from shlex import quote
 from pathlib import Path
 
 from jeolm.node import ( Node, PathNode, BuildablePathNode,
-    LinkNode, DirectoryNode, FileNode,
-    SubprocessCommand, LazyWriteTextCommand, MakeDirCommand )
+    FileNode, SubprocessCommand, LazyWriteTextCommand, )
+from jeolm.node.directory import DirectoryNode, MakeDirCommand
+from jeolm.node.symlink import SymLinkNode
 
 from jeolm.node_factory import TargetNode
 
@@ -90,7 +91,7 @@ class RuleRepresenter:
         for need in node.needs:
             if not isinstance(need, (PathNode, TargetNode)):
                 continue
-            while isinstance(need, LinkNode):
+            while isinstance(need, SymLinkNode):
                 order_only_needs.append(need)
                 need = need.source
             if cls._is_order_only_need(node, need):
@@ -244,7 +245,7 @@ class MakefileGenerator:
         # PathNode cases
         if not isinstance(node, BuildablePathNode):
             raise UnbuildableNode(node)
-        if isinstance(node, LinkNode):
+        if isinstance(node, SymLinkNode):
             return cls._represent_link_rule(
                 node, viewpoint=viewpoint )
         elif isinstance(node, DirectoryNode):

@@ -8,7 +8,9 @@ from pathlib import PurePosixPath
 import jeolm
 import jeolm.local
 import jeolm.node
-import jeolm.latex_node
+import jeolm.node.directory
+import jeolm.node.symlink
+import jeolm.node.latex
 import jeolm.records
 import jeolm.target
 
@@ -32,14 +34,14 @@ class TargetNodeFactory:
         self.source_node_factory = SourceNodeFactory(local=self.local)
         self.figure_node_factory = FigureNodeFactory(
             local=self.local, driver=self.driver,
-            build_dir_node=jeolm.node.DirectoryNode(
+            build_dir_node=jeolm.node.directory.DirectoryNode(
                 name='figure:dir',
                 path=self.local.build_dir/'figures', parents=True ),
             source_node_factory=self.source_node_factory,
         )
         self.package_node_factory = PackageNodeFactory(
             local=self.local, driver=self.driver,
-            build_dir_node=jeolm.node.DirectoryNode(
+            build_dir_node=jeolm.node.directory.DirectoryNode(
                 name='package:dir',
                 path=self.local.build_dir/'packages', parents=True ),
             source_node_factory=self.source_node_factory,
@@ -47,7 +49,7 @@ class TargetNodeFactory:
         )
         self.document_node_factory = DocumentNodeFactory(
             local=self.local, driver=self.driver,
-            build_dir_node=jeolm.node.DirectoryNode(
+            build_dir_node=jeolm.node.directory.DirectoryNode(
                 name='document:dir',
                 path=self.local.build_dir/'documents', parents=True ),
             source_node_factory=self.source_node_factory,
@@ -102,7 +104,7 @@ class DocumentNodeFactory:
         buildname = recipe['buildname']
         assert '/' not in buildname
         build_subdir = self.build_dir_node.path / buildname
-        build_subdir_node = jeolm.node.DirectoryNode(
+        build_subdir_node = jeolm.node.directory.DirectoryNode(
             name='document:{}:dir'.format(target),
             path=build_subdir, parents=False,
             needs=(self.build_dir_node,) )
@@ -134,7 +136,7 @@ class DocumentNodeFactory:
             main_tex_node, text=recipe['document'] ))
 
         package_nodes = [
-            jeolm.node.LinkedFileNode(
+            jeolm.node.symlink.SymLinkedFileNode(
                 name='document:{}:sty:{}'.format(target, alias_name),
                 source=self.package_node_factory(package_path),
                 path=(build_dir/alias_name).with_suffix('.sty'),
@@ -142,7 +144,7 @@ class DocumentNodeFactory:
             for alias_name, package_path
             in recipe['package_paths'].items() ]
         figure_nodes = [
-            jeolm.node.LinkedFileNode(
+            jeolm.node.symlink.SymLinkedFileNode(
                 name='document:{}:fig:{}'.format(target, alias_name),
                 source=self.figure_node_factory(figure_path),
                 path=(build_dir/alias_name).with_suffix('.eps'),
@@ -150,14 +152,14 @@ class DocumentNodeFactory:
             for alias_name, figure_path
             in recipe['figure_paths'].items() ]
         source_nodes = [
-            jeolm.node.LinkedFileNode(
+            jeolm.node.symlink.SymLinkedFileNode(
                 name='document:{}:in.tex:{}'.format(target, alias),
                 source=self.source_node_factory(inpath),
                 path=build_dir/alias,
                 needs=(build_dir_node,) )
             for alias, inpath in recipe['sources'].items() ]
 
-        dvi_node = jeolm.latex_node.LaTeXNode(
+        dvi_node = jeolm.node.latex.LaTeXNode(
             name='document:{}:dvi'.format(target),
             source=main_tex_node,
             path=(build_dir/buildname).with_suffix('.dvi') )
@@ -173,12 +175,12 @@ class DocumentNodeFactory:
         buildname = recipe['buildname']
 
         source_node = self.source_node_factory(recipe['source'])
-        tex_node = jeolm.node.LinkedFileNode(
+        tex_node = jeolm.node.symlink.SymLinkedFileNode(
             name='document:{}:tex'.format(target),
             source=source_node,
             path=build_dir/'main.tex',
             needs=(build_dir_node,) )
-        dvi_node = jeolm.latex_node.LaTeXNode(
+        dvi_node = jeolm.node.latex.LaTeXNode(
             name='document:{}:dvi'.format(target),
             source=tex_node,
             path=(build_dir/buildname).with_suffix('.dvi') )
@@ -192,7 +194,7 @@ class DocumentNodeFactory:
         package_name = recipe['name']
 
         source_node = self.source_node_factory(recipe['source'])
-        dtx_node = jeolm.node.LinkedFileNode(
+        dtx_node = jeolm.node.symlink.SymLinkedFileNode(
             name='document:{}:dtx'.format(target),
             source=source_node,
             path=build_dir/'{}.dtx'.format(package_name),
@@ -214,13 +216,13 @@ class DocumentNodeFactory:
             ( 'latex', '-interaction=nonstopmode', '-halt-on-error',
                 ins_node.path.name ),
             cwd=build_dir )
-        sty_node = jeolm.node.LinkedFileNode(
+        sty_node = jeolm.node.symlink.SymLinkedFileNode(
             name='document:{}:sty'.format(target),
             source=self.package_node_factory(target.path),
             path=(build_dir/package_name).with_suffix('.sty'),
             needs=(build_dir_node,) )
 
-        dvi_node = jeolm.latex_node.LaTeXNode(
+        dvi_node = jeolm.node.latex.LaTeXNode(
             name='document:{}:dvi'.format(target),
             source=drv_node,
             path=(build_dir/buildname).with_suffix('.dvi'),
@@ -267,7 +269,7 @@ class DocumentNodeFactory:
     def _prebuild_exposed_document(self, target, recipe, document_node):
         outname = recipe['outname']
         assert '/' not in outname
-        return jeolm.node.LinkedFileNode(
+        return jeolm.node.symlink.SymLinkedFileNode(
             name='document:{}:exposed'.format(target),
             source=document_node,
             path=(self.local.root/outname).with_suffix(
@@ -302,7 +304,7 @@ class PackageNodeFactory:
         buildname = package_record['buildname']
         assert '/' not in buildname
         build_subdir = self.build_dir_node.path / buildname
-        build_subdir_node = jeolm.node.DirectoryNode(
+        build_subdir_node = jeolm.node.directory.DirectoryNode(
             name='package:{}:dir'.format(metapath),
             path=build_subdir, parents=False,
             needs=(self.build_dir_node,) )
@@ -338,7 +340,7 @@ class PackageNodeFactory:
         source_node = self.source_node_factory(
             package_record['source'] )
         package_name = package_record['name']
-        dtx_node = jeolm.node.LinkedFileNode(
+        dtx_node = jeolm.node.symlink.SymLinkedFileNode(
             name='package:{}:dtx'.format(metapath),
             source=source_node,
             path=build_dir/'{}.dtx'.format(package_name),
@@ -398,7 +400,7 @@ class FigureNodeFactory:
         buildname = figure_record['buildname']
         assert '/' not in buildname
         build_subdir = self.build_dir_node.path / buildname
-        build_subdir_node = jeolm.node.DirectoryNode(
+        build_subdir_node = jeolm.node.directory.DirectoryNode(
             name='figure:{}:dir'.format(metapath),
             path=build_subdir, parents=False,
             needs=(self.build_dir_node,) )
@@ -438,14 +440,14 @@ class FigureNodeFactory:
     ):
         """Yield main asy source node and other source nodes."""
         build_dir = build_dir_node.path
-        main_asy_node = jeolm.node.LinkedFileNode(
+        main_asy_node = jeolm.node.symlink.SymLinkedFileNode(
             name='figure:{}:asy:main'.format(metapath),
             source=self.source_node_factory(
                 figure_record['source'] ),
             path=build_dir/'main.asy',
             needs=(build_dir_node,) )
         other_asy_nodes = [
-            jeolm.node.LinkedFileNode(
+            jeolm.node.symlink.SymLinkedFileNode(
                 name='figure:{}:asy:{}'.format(metapath, accessed_name),
                 source=self.source_node_factory(inpath),
                 path=build_dir/accessed_name,
@@ -459,7 +461,7 @@ class FigureNodeFactory:
         *, build_dir_node
     ):
         build_dir = build_dir_node.path
-        svg_node = jeolm.node.LinkedFileNode(
+        svg_node = jeolm.node.symlink.SymLinkedFileNode(
             name='figure:{}:svg'.format(metapath),
             source=self.source_node_factory(
                 figure_record['source'] ),

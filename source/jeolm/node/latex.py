@@ -2,12 +2,11 @@ from itertools import chain
 
 import re
 
-from jeolm.node import ProductFileNode, SubprocessCommand
+from . import ProductFileNode, SubprocessCommand
 
 import logging
 logger = logging.getLogger(__name__) # pylint: disable=invalid-name
 
-__all__ = ['LaTeXNode']
 
 class _LaTeXCommand(SubprocessCommand):
 

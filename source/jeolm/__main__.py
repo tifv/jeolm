@@ -86,12 +86,12 @@ def main_build(args, *, local, logging_manager):
         if args.force is None:
             pass
         elif args.force == 'latex':
-            from jeolm.latex_node import LaTeXNode
+            from jeolm.node.latex import LaTeXNode
             for node in target_node.iter_needs():
                 if isinstance(node, LaTeXNode):
                     node.force()
         elif args.force == 'generate':
-            from jeolm.latex_node import LaTeXNode
+            from jeolm.node.latex import LaTeXNode
             from jeolm.node import FileNode
             for node in target_node.iter_needs():
                 if (isinstance(node, LaTeXNode) and
