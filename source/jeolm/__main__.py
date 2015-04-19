@@ -168,6 +168,9 @@ def _add_init_arg_subparser(subparsers):
     # command_func default is intentionally not set
 
 def main_init(args, logging_manager):
+    root = args.root
+    if root is None:
+        root = Path.cwd()
     jeolm.local.InitLocalManager(
         root=args.root, resources=args.resources )
 

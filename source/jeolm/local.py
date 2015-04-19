@@ -9,8 +9,18 @@ import shelve
 
 from pathlib import Path, PurePosixPath
 
+import jeolm
+
 import logging
 logger = logging.getLogger(__name__) # pylint: disable=invalid-name
+
+# pylint: disable=unbalanced-tuple-unpacking
+
+def _get_jeolm_package_path():
+    path_s, = jeolm.__path__
+    return Path(path_s)
+
+# pylint: enable=unbalanced-tuple-unpacking
 
 
 class RootNotFoundError(FileNotFoundError):
@@ -198,9 +208,8 @@ def report_missing_root():
 
 
 class InitLocalManager(LocalManager):
-    def __init__(self, root=None, resources=()):
-        if root is None:
-            root = Path.cwd()
+    def __init__(self, root, resources=()):
+        assert isinstance(root, Path)
         super().__init__(root=root)
         self._resource_tables_cache = None
         for resource_name in resources:
@@ -242,19 +251,23 @@ class InitLocalManager(LocalManager):
             if not destination_path.parent.exists():
                 destination_path.parent.mkdir(parents=True)
             if destination_path.is_dir():
-                raise IsADirectoryError()
+                raise IsADirectoryError(str(destination))
             shutil.copyfile(str(source_path), str(destination_path))
 
-    _resource_dir_path = Path(__file__).parent / 'resources'
-    _resource_manifest_path = _resource_dir_path / 'MANIFEST.yaml'
+    _resource_dir_path = _get_jeolm_package_path() / 'resources'
+    _resource_manifest_path = _resource_dir_path / 'RESOURCES.yaml'
 
     @property
     def _resource_tables(self):
         if self._resource_tables_cache is not None:
             return self._resource_tables_cache
+        resource_tables = self._resource_tables_cache = \
+            self.load_resource_tables()
+        return resource_tables
+
+    @classmethod
+    def load_resource_tables(cls):
         import yaml
-        with self._resource_manifest_path.open() as manifest_file:
-            resource_tables = self._resource_tables_cache = (
-                yaml.load(manifest_file) )
-            return resource_tables
+        with cls._resource_manifest_path.open() as manifest_file:
+            return yaml.load(manifest_file)
 
