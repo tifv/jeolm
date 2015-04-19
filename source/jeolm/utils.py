@@ -25,7 +25,7 @@ def dict_is_ordered(d):
     return isinstance(d, OrderedDict) or len(d) <= 1
 
 def dict_ordered_keys(d, *, keyfunc=None):
-    """Provide persistently ordered dictionary items."""
+    """Return persistently ordered dictionary keys."""
     if dict_is_ordered(d):
         return d.keys()
     assert type(d) is dict, type(d)
@@ -34,7 +34,7 @@ def dict_ordered_keys(d, *, keyfunc=None):
     return sorted(d.keys(), key=keyfunc)
 
 def dict_ordered_items(d, *, keyfunc=None):
-    """Provide persistently ordered dictionary items."""
+    """Return persistently ordered dictionary items."""
     if dict_is_ordered(d):
         return d.items()
     assert type(d) is dict, type(d)

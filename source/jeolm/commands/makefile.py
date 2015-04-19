@@ -36,6 +36,8 @@ class RuleRepresenter:
         else:
             raise RuntimeError(type(node))
 
+    # pylint: disable=invalid-name
+
     @classmethod
     def _represent_node_TargetNode(cls, node):
         node_repr = node.name
@@ -47,6 +49,8 @@ class RuleRepresenter:
         node_repr = str(node.path.relative_to(viewpoint))
         cls._check_node_representation(node_repr)
         return node_repr
+
+    # pylint: enable=invalid-name
 
     @staticmethod
     def _check_node_representation(node_repr):
@@ -100,9 +104,13 @@ class RuleRepresenter:
                 normal_needs.append(need)
         return normal_needs, order_only_needs
 
+    # pylint: disable=unused-argument
+
     @classmethod
     def _is_order_only_need(cls, node, need):
         return isinstance(need, DirectoryNode)
+
+    # pylint: enable=unused-argument
 
 
 class TargetRuleRepresenter(RuleRepresenter):
@@ -216,6 +224,7 @@ class MakefileGenerator:
         unrepresentable_nodes = []
 
         for need in node.iter_needs():
+            # pylint: disable=unpacking-non-sequence
             try:
                 rule_repr = cls._represent_rule(need, viewpoint=viewpoint)
             except UnbuildableNode as exception:
@@ -226,6 +235,7 @@ class MakefileGenerator:
                 unrepresentable_nodes.append(node)
             else:
                 makefile_parts.append(rule_repr)
+            # pylint: enable=unpacking-non-sequence
         return (
             '\n\n'.join(makefile_parts),
             unbuildable_nodes,

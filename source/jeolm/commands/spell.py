@@ -3,17 +3,88 @@ from collections import OrderedDict
 
 import enchant
 
+from jeolm.commands.list_sources import list_sources
+
 import logging
 logger = logging.getLogger(__name__) # pylint: disable=invalid-name
 
-class TextPiece:
-    __slots__ = ['s']
+def check_spelling(targets, *, local, driver, context=0, colour=True):
+    if colour:
+        from jeolm.fancify import fancifying_print as fprint
+    else:
+        logger.warn('Spelling is nearly useless in colourless mode.')
+        from jeolm.fancify import unfancifying_print as fprint
 
-    def __init__(self, s):
-        if isinstance(s, str):
-            self.s = s
+    indicator_length = 0
+    def indicator_clean():
+        nonlocal indicator_length
+        if indicator_length:
+            print(' ' * indicator_length, end='\r')
+        indicator_length = 0
+    def indicator_show(name):
+        nonlocal indicator_length
+        print(name, end='\r')
+        indicator_length = len(str(name))
+    def piece_to_string(piece):
+        if isinstance(piece, CorrectWord):
+            return '<GREEN>{}<NOCOLOUR>'.format(piece.string)
+        elif isinstance(piece, IncorrectWord):
+            return '<RED>{}<NOCOLOUR>'.format(piece.string)
         else:
-            raise RuntimeError(type(s))
+            return piece.string
+
+    path_generator = list_sources(targets,
+        local=local, driver=driver, source_type='tex' )
+    for path in path_generator:
+        indicator_clean()
+        indicator_show(str(path))
+
+        with path.open('r') as checked_file:
+            text = checked_file.read()
+        lines = ['']
+        printed_line_numbers = set()
+        try:
+            for piece in LaTeXSpeller(text, lang='ru_RU'):
+                if isinstance(piece, IncorrectWord):
+                    lineno = len(lines) - 1
+                    printed_line_numbers.update(
+                        range(lineno-context, lineno+context+1) )
+                piece_sl = piece_to_string(piece).split('\n')
+                lines[-1] += piece_sl[0]
+                for subpiece in piece_sl[1:]:
+                    lines.append(subpiece)
+        except ValueError as error:
+            raise ValueError(
+                "Error while spell-checking {}"
+                .format(path.relative_to(local.source_dir))
+            ) from error
+        if not printed_line_numbers:
+            continue
+        indicator_clean()
+        fprint(
+            '<BOLD><YELLOW>{}<NOCOLOUR> possible misspellings<RESET>'
+            .format(path.relative_to(local.source_dir)) )
+        line_range = range(len(lines))
+        lineno_offset = len(str(len(lines)))
+        for lineno in sorted(printed_line_numbers):
+            if lineno not in line_range:
+                continue
+            fprint(
+                '<MAGENTA>{lineno: >{lineno_offset}}<NOCOLOUR>:{line}'
+                .format( lineno=lineno+1, lineno_offset=lineno_offset,
+                    line=lines[lineno] )
+            )
+    indicator_clean()
+
+
+class TextPiece:
+    __slots__ = ['string']
+
+    def __init__(self, string):
+        if isinstance(string, str):
+            self.string = string
+        else:
+            raise RuntimeError(type(string))
 
 class Word(TextPiece):
     __slots__ = []
@@ -26,6 +97,7 @@ class CorrectWord(Word):
 
 class IncorrectWord(Word):
     __slots__ = []
+
 
 class LaTeXSpeller:
     def __init__(self, text, lang):
@@ -46,16 +118,16 @@ class LaTeXSpeller:
             if not isinstance(text_piece, Word):
                 yield text_piece
             elif isinstance(text_piece, DottedAbbr):
-                if text_piece.s in self.dotted_abbrs[self.lang]:
-                    yield CorrectWord(text_piece.s)
+                if text_piece.string in self.dotted_abbrs[self.lang]:
+                    yield CorrectWord(text_piece.string)
                 else:
-                    yield IncorrectWord(text_piece.s)
+                    yield IncorrectWord(text_piece.string)
                 continue
             else:
-                if dictionary.check(text_piece.s):
-                    yield CorrectWord(text_piece.s)
+                if dictionary.check(text_piece.string):
+                    yield CorrectWord(text_piece.string)
                 else:
-                    yield IncorrectWord(text_piece.s)
+                    yield IncorrectWord(text_piece.string)
 
     spell_pattern = re.compile('(?m)'
         r'% spell (?P<words>.*)$')
@@ -68,6 +140,7 @@ class LaTeXSpeller:
             for word in match.group('words').split(' '):
                 text = text.replace(word, '')
         return text
+
 
 class LaTeXSlicer:
     def __init__(self, text):
@@ -149,6 +222,7 @@ class LaTeXSlicer:
                 yield TextPiece(text[clean_pos:pos])
                 clean_pos = pos
             matched_piece = match.group(0)
+            # pylint: disable=undefined-loop-variable
             if not stack.math_mode and name in {'dotted_abbr', 'word'}:
                 if name == 'word':
                     yield Word(matched_piece)
@@ -162,8 +236,11 @@ class LaTeXSlicer:
                     except self.LaTeXStack.Error as error:
                         error.args += ("<char={}>".format(match.group(0)),)
                 yield TextPiece(matched_piece)
+            # pylint: enable=undefined-loop-variable
             pos = clean_pos = match.end()
         stack.finish()
+
+    # pylint: disable=unused-argument
 
     @staticmethod
     def tex_begin(match, stack):
@@ -244,6 +321,8 @@ class LaTeXSlicer:
         else:
             stack.push('{')
 
+    # pylint: enable=unused-argument
+
     class LaTeXStack:
         __slots__ = ['_stack', 'math_mode']
         fatal = True
@@ -296,7 +375,7 @@ class LaTeXSlicer:
                 self.error("Unclosed groups by the end of the document.")
 
         def error(self, message):
-            message += ' <stack={}>'.format( list(self) )
+            message += ' <stack={}>'.format(self._stack)
             logger.error(message)
             if self.fatal:
                 raise self.Error(message)

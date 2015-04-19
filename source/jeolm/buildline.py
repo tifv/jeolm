@@ -7,12 +7,14 @@ import pyinotify
 
 import jeolm
 import jeolm.commands
+import jeolm.commands.review
+import jeolm.commands.clean
 import jeolm.local
 import jeolm.node
 import jeolm.node_factory
 import jeolm.metadata
 
-from jeolm.diffprint import log_metadata_diff
+from jeolm.commands.diffprint import log_metadata_diff
 
 from jeolm.record_path import RecordPath
 from jeolm.target import Target, TargetError
@@ -76,7 +78,7 @@ class BuildLine:
         with log_metadata_diff(self.metadata, logger=logger):
             for review_path in review_list:
                 try:
-                    inpath, = jeolm.commands.resolve_inpaths(
+                    inpath, = jeolm.commands.review.resolve_inpaths(
                         [review_path], source_dir=self.local.source_dir )
                     self.metadata.review(inpath)
                 except Exception: # pylint: disable=broad-except
@@ -109,7 +111,7 @@ class BuildLine:
                 pass # use previous target
             elif targets_string == 'clean':
                 targets = []
-                jeolm.commands.clean(root=self.local.root)
+                jeolm.commands.clean.clean_build_links(self.local.root)
             elif targets_string == 'dump':
                 targets = []
                 self.metadata.dump_metadata_cache()

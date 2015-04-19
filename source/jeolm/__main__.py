@@ -46,6 +46,8 @@ def main(args):
             args, local=local, logging_manager=logging_manager )
 
 
+# pylint: disable=unused-variable,unused-argument
+
 def _add_build_arg_subparser(subparsers):
     parser = subparsers.add_parser( 'build',
         help='build specified targets' )
@@ -146,13 +148,14 @@ def _add_review_arg_subparser(subparsers):
     parser.set_defaults(command_func=main_review)
 
 def main_review(args, *, local, logging_manager):
-    from jeolm.diffprint import log_metadata_diff
+    from jeolm.commands.review import review
+    from jeolm.commands.diffprint import log_metadata_diff
     if not args.inpaths:
         logger.warn('No-op: no inpaths for review')
     metadata = (local.metadata_class)(local=local)
     metadata.load_metadata_cache()
     with log_metadata_diff(metadata, logger=logger):
-        jeolm.commands.review( args.inpaths,
+        review( args.inpaths,
             viewpoint=Path.cwd(), local=local, metadata=metadata )
     metadata.dump_metadata_cache()
 
@@ -181,9 +184,10 @@ def _add_list_arg_subparser(subparsers):
     parser.set_defaults(command_func=main_list)
 
 def main_list(args, *, local, logging_manager):
+    from jeolm.commands.list_sources import print_source_list
     if not args.targets:
         logger.warn('No-op: no targets for source list')
-    jeolm.commands.print_source_list( args.targets,
+    print_source_list( args.targets,
         viewpoint=Path.cwd(), local=local,
         driver=jeolm.commands.simple_load_driver(local),
         source_type=args.source_type )
@@ -197,9 +201,10 @@ def _add_spell_arg_subparser(subparsers):
     parser.set_defaults(command_func=main_spell)
 
 def main_spell(args, *, local, logging_manager):
+    from jeolm.commands.spell import check_spelling
     if not args.targets:
         logger.warn('No-op: no targets for spell check')
-    jeolm.commands.check_spelling( args.targets,
+    check_spelling( args.targets,
         local=local,
         driver=jeolm.commands.simple_load_driver(local),
         colour=args.colour )
@@ -221,7 +226,7 @@ def _add_makefile_arg_subparser(subparsers):
     parser.set_defaults(command_func=main_makefile)
 
 def main_makefile(args, *, local, logging_manager):
-    from jeolm.makefile import MakefileGenerator
+    from jeolm.commands.makefile import MakefileGenerator
     from jeolm.node import PathNode, NodeErrorReported
     from jeolm.node_factory import TargetNodeFactory
 
@@ -263,8 +268,11 @@ def _add_clean_arg_subparser(subparsers):
     parser.set_defaults(command_func=main_clean)
 
 def main_clean(args, *, local, logging_manager):
-    jeolm.commands.clean(root=local.root)
-    jeolm.commands.clean_broken_links(local.build_dir, recursive=True)
+    from jeolm.commands.clean import clean_build_links, clean_broken_links
+    clean_build_links(local.root)
+    clean_broken_links(local.build_dir, recursive=True)
+
+# pylint: enable=unused-variable,unused-argument
 
 
 def _get_arg_parser():

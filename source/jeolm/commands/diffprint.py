@@ -14,6 +14,7 @@ logger = logging.getLogger(__name__) # pylint: disable=invalid-name
 class _Dumper(jeolm.yaml.JeolmDumper):
     def represent_Ellipsis(self, data):
         assert data is Ellipsis
+        assert '…' == '\u2026'
         return self.represent_scalar('tag:yaml.org,2002:str', '…')
 
 _Dumper.add_representer(type(Ellipsis), _Dumper.represent_Ellipsis)
