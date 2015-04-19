@@ -178,22 +178,21 @@ class LocalManager:
             module_name, str(module_path) )
         self._local_module = loader.load_module()
         self._local_module_loaded = True
-        logger.debug("Loaded '{}' as module '{}'"
-            .format(module_path, module_name) )
+        logger.debug("Loaded '%s' as module '%s'", module_path, module_name)
 
     @property
     def driver_class(self):
         with suppress(AttributeError):
             return self.local_module.Driver
-        import jeolm.driver.regular
-        return jeolm.driver.regular.Driver
+        from jeolm.driver.regular import Driver
+        return Driver
 
     @property
     def metadata_class(self):
         with suppress(AttributeError):
             return self.local_module.MetadataManager
-        import jeolm.metadata
-        return jeolm.metadata.MetadataManager
+        from jeolm.metadata import MetadataManager
+        return MetadataManager
 
     @contextmanager
     def open_text_node_shelf(self):
