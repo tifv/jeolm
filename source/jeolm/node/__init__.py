@@ -636,11 +636,13 @@ class PathNode(DatedNode):
         os.utime(str(self.path))
         self._load_mtime()
 
-    def stat(self):
+    def stat(self, follow_symlinks=False):
         """
-        Return appropriate stat structure. Do not follow symlinks.
+        Return appropriate stat structure.
+
+        By default, do not follow symlinks.
         """
-        return os.stat(str(self.path), follow_symlinks=False)
+        return os.stat(str(self.path), follow_symlinks=follow_symlinks)
 
     def __repr__(self):
         return (
@@ -715,11 +717,13 @@ class FollowingPathNode(PathNode):
     """Represent a path that can be or not be a symbolic link."""
 
     # Override
-    def stat(self):
+    def stat(self, follow_symlinks=True):
         """
-        Return appropriate stat structure. Follow symlinks.
+        Return appropriate stat structure.
+
+        By default, do follow symlinks.
         """
-        return os.stat(str(self.path), follow_symlinks=True)
+        return super().stat(follow_symlinks=follow_symlinks)
 
 
 class FilelikeNode(PathNode):

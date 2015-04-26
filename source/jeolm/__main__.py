@@ -265,6 +265,42 @@ def _print_unbuildable_list(unbuildable_nodes, *, local, **kwargs):
         print(str(node.path.relative_to(local.root)), **kwargs)
 
 
+def _add_excerpt_arg_subparser(subparsers):
+    parser = subparsers.add_parser( 'excerpt',
+        help='create a source archive for a given target' )
+    parser.add_argument( 'target',
+        metavar='TARGET', type=jeolm.target.Target.from_string,
+        help='target to create an archive for; '
+            'no delegation will be performed on it' )
+    parser.add_argument( '-o', '--output')
+    parser.set_defaults(command_func=main_excerpt)
+
+def main_excerpt(args, *, local, logging_manager):
+    from jeolm.node import PathNode, NodeErrorReported
+    from jeolm.node_factory import TargetNodeFactory, DocumentNode
+    from jeolm.commands.excerpt import excerpt_document
+
+    PathNode.root = local.root
+    driver = jeolm.commands.simple_load_driver(local)
+    with local.open_text_node_shelf() as text_node_shelf:
+        target_node_factory = TargetNodeFactory(
+            local=local, driver=driver, text_node_shelf=text_node_shelf )
+        target_node = target_node_factory([args.target], delegate=False)
+        document_node, = [ node
+            for node in target_node.iter_needs()
+            if isinstance(node, DocumentNode) ]
+        if args.output is not None:
+            output_file = open(args.output, 'wb')
+        else:
+            from sys import stdout as output_file
+        with suppress(NodeErrorReported):
+            try:
+                excerpt_document(document_node, stream=output_file)
+            finally:
+                if args.output is not None:
+                    output_file.close()
+
+
 def _add_clean_arg_subparser(subparsers):
     parser = subparsers.add_parser( 'clean',
         help='clean toplevel links to build/**.pdf' )
@@ -288,6 +324,7 @@ def _get_arg_parser():
     _add_list_arg_subparser(subparsers)
     _add_spell_arg_subparser(subparsers)
     _add_makefile_arg_subparser(subparsers)
+    _add_excerpt_arg_subparser(subparsers)
     _add_clean_arg_subparser(subparsers)
     return parser
 

@@ -238,16 +238,30 @@ class LaTeXNode(ProductFileNode):
     def __init__(self, source, path, *, name=None, needs=(), **kwargs):
         super().__init__( source=source, path=path,
             name=name, needs=needs, **kwargs )
-        assert path.is_absolute(), path
 
-        cwd = path.parent
-        if cwd != source.path.parent:
+        build_dir = self.path.parent
+        if build_dir != source.path.parent:
             raise RuntimeError
-        jobname = path.stem
+        jobname = self.path.stem
 
-        command = self._Command(self, source.path.name, jobname, cwd=cwd)
-        if path.suffix != command.target_suffix:
+        command = self._Command(self, source.path.name, jobname, cwd=build_dir)
+        if self.path.suffix != command.target_suffix:
             raise RuntimeError
 
         self.set_command(command)
+
+class DVI2PDFNode(ProductFileNode):
+
+    def __init__(self, source, path, *, name=None, needs=(), **kwargs):
+        super().__init__( source=source, path=path,
+            name=name, needs=needs, **kwargs)
+
+        build_dir = self.path.parent
+        if build_dir != source.path.parent:
+            raise RuntimeError(source, self)
+        if source.path.suffix != '.dvi' or self.path.suffix != '.pdf':
+            raise RuntimeError(source, self)
+        self.set_subprocess_command(
+            ('dvipdf', str(source.path.name), str(self.path.name)),
+            cwd=build_dir )
 
