@@ -68,9 +68,17 @@ class TargetNodeFactory:
             ]
 
         target_node = TargetNode(name=name)
-        target_node.extend_needs(
-            self.document_node_factory(target)
-            for target in targets )
+        for target in targets:
+            document_node = self.document_node_factory(target)
+            outname = document_node.outname
+            assert '/' not in outname
+            exposed_node = jeolm.node.symlink.SymLinkedFileNode(
+                name='document:{}:exposed'.format(target),
+                source=document_node,
+                path=(self.local.root/outname).with_suffix(
+                    document_node.path.suffix )
+            )
+            target_node.append_needs(exposed_node)
         return target_node
 
 
@@ -104,9 +112,13 @@ class DocumentNodeFactory:
 
     def __call__(self, target):
         assert isinstance(target, jeolm.target.Target), type(target)
-        with suppress(KeyError):
-            return self.nodes[target]
-        node = self.nodes[target] = self._prebuild_document(target)
+        try:
+            node = self.nodes[target]
+        except KeyError:
+            node = None
+        if node is None:
+            node = self.nodes[target] = self._prebuild_document(target)
+        assert hasattr(node, 'outname'), node
         return node
 
     def _prebuild_document(self, target):
@@ -131,7 +143,7 @@ class DocumentNodeFactory:
             build_dir=build_subdir, build_dir_node=build_subdir_node )
         pdf_node = self._prebuild_pdf( target, recipe, dvi_node,
             build_dir=build_subdir, build_dir_node=build_subdir_node )
-        return self._prebuild_exposed(target, recipe, pdf_node)
+        return pdf_node
 
     def _prebuild_dvi_regular(self, target, recipe,
         *, build_dir, build_dir_node
@@ -262,19 +274,12 @@ class DocumentNodeFactory:
             source=dvi_node, path=build_dir/'Main.pdf',
             needs=chain(dvi_node.figure_nodes, (build_dir_node,))
         )
+        # pylint: disable=attribute-defined-outside-init
         pdf_node.figure_nodes = dvi_node.figure_nodes
         pdf_node.build_dir_node = build_dir_node
+        pdf_node.outname = recipe['outname']
+        # pylint: enable=attribute-defined-outside-init
         return pdf_node
-
-    def _prebuild_exposed(self, target, recipe, document_node):
-        outname = recipe['outname']
-        assert '/' not in outname
-        return jeolm.node.symlink.SymLinkedFileNode(
-            name='document:{}:exposed'.format(target),
-            source=document_node,
-            path=(self.local.root/outname).with_suffix(
-                document_node.path.suffix )
-        )
 
 
 class PackageNodeFactory:

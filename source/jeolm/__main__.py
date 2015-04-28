@@ -285,14 +285,14 @@ def main_excerpt(args, *, local, logging_manager):
     with local.open_text_node_shelf() as text_node_shelf:
         target_node_factory = TargetNodeFactory(
             local=local, driver=driver, text_node_shelf=text_node_shelf )
-        target_node = target_node_factory([args.target], delegate=False)
-        document_node, = [ node
-            for node in target_node.iter_needs()
-            if isinstance(node, DocumentNode) ]
+        document_node_factory = target_node_factory.document_node_factory
+        document_node = document_node_factory(args.target)
         if args.output is not None:
             output_file = open(args.output, 'wb')
         else:
-            from sys import stdout as output_file
+            from sys import stdout
+            stdout.flush()
+            output_file = stdout.buffer
         with suppress(NodeErrorReported):
             try:
                 excerpt_document(document_node, stream=output_file)
@@ -310,6 +310,7 @@ def main_clean(args, *, local, logging_manager):
     from jeolm.commands.clean import clean_build_links, clean_broken_links
     clean_build_links(local.root)
     clean_broken_links(local.build_dir, recursive=True)
+
 
 # pylint: enable=unused-variable,unused-argument
 
