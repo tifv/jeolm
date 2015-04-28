@@ -286,6 +286,7 @@ def main_excerpt(args, *, local, logging_manager):
         target_node_factory = TargetNodeFactory(
             local=local, driver=driver, text_node_shelf=text_node_shelf )
         document_node_factory = target_node_factory.document_node_factory
+        figure_node_factory = document_node_factory.figure_node_factory
         document_node = document_node_factory(args.target)
         if args.output is not None:
             output_file = open(args.output, 'wb')
@@ -295,7 +296,8 @@ def main_excerpt(args, *, local, logging_manager):
             output_file = stdout.buffer
         with suppress(NodeErrorReported):
             try:
-                excerpt_document(document_node, stream=output_file)
+                excerpt_document( document_node, stream=output_file,
+                    figure_node_factory=figure_node_factory )
             finally:
                 if args.output is not None:
                     output_file.close()

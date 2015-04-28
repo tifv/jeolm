@@ -7,7 +7,7 @@ from stat import S_ISREG as stat_is_regular_file
 import tarfile
 import zipfile
 
-from jeolm.node import ( Node,
+from jeolm.node import (
     FilelikeNode, FollowingPathNode,
     FileNode, LazyWriteTextCommand, )
 from jeolm.node.symlink import SymLinkedFileNode
@@ -108,7 +108,10 @@ class _ZipArchiveManager(_ArchiveManager):
         self.archive.close()
         del self.archive # break reference cycle
 
-def excerpt_document( document_node, *, stream, archive_format='tar.gz'):
+def excerpt_document( document_node, *, stream,
+    figure_node_factory,
+    archive_format='tar.gz'
+):
     """Return None."""
     if archive_format == 'tar.gz':
         archive_manager = _TarGzArchiveManager(stream)
@@ -134,6 +137,12 @@ def excerpt_document( document_node, *, stream, archive_format='tar.gz'):
         if build_dir != node.path.parent:
             raise RuntimeError(node)
         archived_nodes.append(node)
+    for node in document_node.figure_nodes:
+        archived_nodes.extend(
+            _get_other_figure_formats( node,
+                figure_node_factory=figure_node_factory,
+                build_dir_node=build_dir_node )
+        )
 
     for member_node in archived_nodes:
         archive_manager.add_member_node(
@@ -141,4 +150,25 @@ def excerpt_document( document_node, *, stream, archive_format='tar.gz'):
             node=member_node )
 
     archive_manager.finish()
+
+def _get_other_figure_formats( node, *,
+    figure_node_factory, build_dir_node
+):
+    if not isinstance(node, SymLinkedFileNode):
+        raise RuntimeError(node)
+    figure_eps_node = node.source
+    if not hasattr(figure_eps_node, 'metapath'):
+        raise RuntimeError(figure_eps_node)
+    metapath = figure_eps_node.metapath
+    figure_nodes = {figure_eps_node}
+    for figure_format in ('eps', 'pdf', '<pdflatex>',):
+        figure_node = figure_node_factory( metapath,
+            figure_format=figure_format )
+        if figure_node in figure_nodes:
+            continue
+        figure_nodes.add(figure_node)
+        yield SymLinkedFileNode(
+            source=figure_node,
+            path=node.path.with_suffix(figure_node.path.suffix),
+            needs=(build_dir_node,) )
 
