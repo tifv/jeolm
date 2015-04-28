@@ -38,9 +38,9 @@ Keys recognized in metarecords:
   $package$name
     - in build process, the package is symlinked with that very name
       (with .sty extension added)
-    - extracted by metadata grabber from \ProvidesPackage command in
+    - extracted by metadata grabber from \\ProvidesPackage command in
       .sty or .dtx file
-    - in absence of \ProvidesPackage, borrowed by metadata grabber
+    - in absence of \\ProvidesPackage, borrowed by metadata grabber
       from the filename
 
   $delegate$stop[*]
@@ -119,7 +119,7 @@ class Substitutioner(type):
     For any '*_template' attribute create 'substitute_*' attribute, like
     cls.substitute_* = Template(cls.*_template).substitute
     """
-    def __new__(metacls, name, bases, namespace, **kwargs):
+    def __new__(mcs, name, bases, namespace, **kwargs):
         substitute_items = list()
         for key, value in namespace.items():
             if key.endswith('_template'):
@@ -127,7 +127,7 @@ class Substitutioner(type):
                 substitute_items.append(
                     (substitute_key, Template(value).substitute) )
         namespace.update(substitute_items)
-        return super().__new__(metacls, name, bases, namespace, **kwargs)
+        return super().__new__(mcs, name, bases, namespace, **kwargs)
 
 class Decorationer(type):
     """
@@ -143,7 +143,7 @@ class Decorationer(type):
     """
 
     @classmethod
-    def __prepare__(metacls, name, bases, **kwargs):
+    def __prepare__(mcs, name, bases, **kwargs):
         namespace = super().__prepare__(name, bases, **kwargs)
         for base in bases:
             base_inclass_objects = getattr(base, '_inclass_decorators', None)
@@ -157,7 +157,7 @@ class Decorationer(type):
                     # from the later base.
                     continue
                 namespace[key] = value
-        namespace['inclass_decorator'] = metacls.mark_inclass_decorator
+        namespace['inclass_decorator'] = mcs.mark_inclass_decorator
         return namespace
 
     @staticmethod
@@ -166,7 +166,7 @@ class Decorationer(type):
         decorator.is_inclass_decorator = True
         return decorator
 
-    def __new__(metacls, name, bases, namespace, **kwargs):
+    def __new__(mcs, name, bases, namespace, **kwargs):
         if '_inclass_decorators' in namespace:
             raise RuntimeError
         inclass_objects = namespace.__class__()
@@ -178,7 +178,7 @@ class Decorationer(type):
             del namespace[key]
         del namespace['inclass_decorator']
         namespace['_inclass_decorators'] = inclass_objects
-        return super().__new__(metacls, name, bases, namespace, **kwargs)
+        return super().__new__(mcs, name, bases, namespace, **kwargs)
 
 class DriverError(Exception):
     pass
@@ -188,7 +188,7 @@ class DriverMetaclass(Substitutioner, Decorationer):
 
 class Driver(RecordsManager, metaclass=DriverMetaclass):
 
-    driver_errors = frozenset((DriverError, TargetError, RecordError, FlagError))
+    driver_errors = (DriverError, TargetError, RecordError, FlagError)
 
     def __init__(self):
         super().__init__()
@@ -204,9 +204,9 @@ class Driver(RecordsManager, metaclass=DriverMetaclass):
     def fold_driver_errors(cls):
         try:
             yield
-        except tuple(cls.driver_errors) as error:
+        except cls.driver_errors as error:
             driver_messages = []
-            while isinstance(error, tuple(cls.driver_errors)):
+            while isinstance(error, cls.driver_errors):
                 message, = error.args
                 driver_messages.append(str(message))
                 error = error.__cause__
@@ -252,7 +252,7 @@ class Driver(RecordsManager, metaclass=DriverMetaclass):
     def process_target_aspect(cls, target, aspect):
         try:
             yield
-        except tuple(cls.driver_errors) as error:
+        except cls.driver_errors as error:
             raise DriverError(
                 "Error encountered while processing "
                 "{target} {aspect}"
@@ -597,7 +597,7 @@ class Driver(RecordsManager, metaclass=DriverMetaclass):
                 if not isinstance(item, dict):
                     raise DriverError(type(item))
                 item = item.copy()
-                condition = item.pop('condition', [])
+                condition = item.pop('condition', True)
                 if not target.flags.check_condition(condition):
                     continue
                 if item.keys() == {'delegate'}:
@@ -691,6 +691,7 @@ class Driver(RecordsManager, metaclass=DriverMetaclass):
         def __init__(self, document_class, options=()):
             self.document_class = str(document_class)
             self.options = [str(o) for o in options]
+            super().__init__()
 
     class DocumentFontItem(MetapreambleItem):
         __slots__ = ['font']
@@ -699,6 +700,7 @@ class Driver(RecordsManager, metaclass=DriverMetaclass):
             if font not in {'10pt', '11pt', '12pt'}:
                 raise DriverError(font)
             self.font = font
+            super().__init__()
 
     class LocalPackagePreambleItem(MetapreambleItem):
         __slots__ = ['package_path', 'package_name']
@@ -816,11 +818,12 @@ class Driver(RecordsManager, metaclass=DriverMetaclass):
         outrecord.setdefault('date', self.min_date(date_set))
 
         metabody = list(self.digest_metabody(
-            metabody, sources=sources, figure_paths=figure_paths,
+            metabody,
+            sources=sources, figure_paths=figure_paths,
             required_packages=required_packages ))
         metapreamble = list(self.digest_metapreamble(
-            metapreamble, sources=sources, package_paths=package_paths,
-            required_packages=required_packages ))
+            metapreamble, required_packages,
+            package_paths=package_paths ))
 
         target.check_unutilized_flags()
 
@@ -891,7 +894,8 @@ class Driver(RecordsManager, metaclass=DriverMetaclass):
         if matter is not None:
             seen_targets -= {target}
         if '$date' in metarecord:
-            date_set.add(metarecord['$date']); date_set = set()
+            date_set.add(metarecord['$date'])
+            date_set = set()
 
         if 'header' in target.flags:
             date_subset = set()
@@ -934,7 +938,7 @@ class Driver(RecordsManager, metaclass=DriverMetaclass):
     @processing_target_aspect(aspect='matter metabody', wrap_generator=True)
     @classifying_items(aspect='metabody', default='verbatim')
     def generate_matter_metabody(self, target, metarecord,
-        *, matter_key=None, matter=None, recursed=False
+        *, matter_key=None, matter=None
     ):
         if matter is None:
             matter_key, matter = self.select_flagged_item(
@@ -981,7 +985,7 @@ class Driver(RecordsManager, metaclass=DriverMetaclass):
                 "Matter item must be a string or a dictionary, not {}"
                 .format(type(matter_item).__name__) )
         matter_item = matter_item.copy()
-        condition = matter_item.pop('condition', [])
+        condition = matter_item.pop('condition', True)
         if not target.flags.check_condition(condition):
             return
         if matter_item.keys() == {'delegate'}:
@@ -1084,7 +1088,7 @@ class Driver(RecordsManager, metaclass=DriverMetaclass):
                 "Style item must be a string or a dictionary, not {}"
                 .format(type(style_item).__name__) )
         style_item = style_item.copy()
-        condition = style_item.pop('condition', [])
+        condition = style_item.pop('condition', True)
         if not target.flags.check_condition(condition):
             return
         if style_item.keys() == {'delegate'}:
@@ -1135,11 +1139,12 @@ class Driver(RecordsManager, metaclass=DriverMetaclass):
                 continue # skip yield
             yield item
 
-    def digest_metapreamble(self, metapreamble,
-        *, sources, package_paths, required_packages):
+    def digest_metapreamble(self, metapreamble, required_packages, *,
+        package_paths
+    ):
         """
         Yield metapreamble items.
-        Extend inpaths, aliases.
+        Extend package_paths.
         """
         for item in metapreamble:
             assert isinstance(item, self.MetapreambleItem), type(item)

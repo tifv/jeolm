@@ -256,10 +256,13 @@ class MakefileGenerator:
                 node, viewpoint=viewpoint )
         if not isinstance(node, PathNode):
             raise UnrepresentableNode(node)
+
+        return cls._represent_path_rule(node, viewpoint=viewpoint)
+
+    @classmethod
+    def _represent_path_rule(cls, node, *, viewpoint):
         if isinstance(node, ProxyNode):
             raise UnrepresentableNode(node)
-
-        # PathNode cases
         if not isinstance(node, BuildablePathNode):
             raise UnbuildableNode(node)
         if isinstance(node, SymLinkNode):
@@ -269,20 +272,24 @@ class MakefileGenerator:
             return cls._DirectoryRuleRepresenter.represent(
                 node, viewpoint=viewpoint )
         elif isinstance(node, FileNode):
-            command = node.command
-            if command is None:
-                raise RuntimeError("FileNode is expected to have a command")
-            if isinstance(command, SubprocessCommand):
-                return cls._SubprocessRuleRepresenter.represent(
-                    node, viewpoint=viewpoint )
-            if isinstance(command, LazyWriteTextCommand):
-                raise UnbuildableNode(node)
-            else:
-                raise TypeError(
-                    "Unknown class of command: {}".format(type(command)) )
+            return cls._represent_file_rule(node, viewpoint=viewpoint)
         else:
             raise TypeError(
                 "Unknown subclass of PathNode: {}".format(type(node)) )
+
+    @classmethod
+    def _represent_file_rule(cls, node, *, viewpoint):
+        command = node.command
+        if command is None:
+            raise RuntimeError("FileNode is expected to have a command")
+        if isinstance(command, SubprocessCommand):
+            return cls._SubprocessRuleRepresenter.represent(
+                node, viewpoint=viewpoint )
+        if isinstance(command, LazyWriteTextCommand):
+            raise UnbuildableNode(node)
+        else:
+            raise TypeError(
+                "Unknown class of command: {}".format(type(command)) )
 
     @classmethod
     def _represent_link_rule(cls, node, *, viewpoint):

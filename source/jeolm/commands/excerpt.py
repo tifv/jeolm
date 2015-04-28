@@ -161,7 +161,7 @@ def _get_other_figure_formats( node, *,
         raise RuntimeError(figure_eps_node)
     metapath = figure_eps_node.metapath
     figure_nodes = {figure_eps_node}
-    for figure_format in ('eps', 'pdf', '<pdflatex>',):
+    for figure_format in ('<latex>', '<pdflatex>'):
         figure_node = figure_node_factory( metapath,
             figure_format=figure_format )
         if figure_node in figure_nodes:

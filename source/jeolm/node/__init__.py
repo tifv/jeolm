@@ -61,14 +61,16 @@ class CatchingThread(threading.Thread):
         Raise any exception catched by run().
         """
         super().join(timeout=timeout)
+        # pylint: disable=unused-variable
         exc_type, exc_value, exc_traceback = self.exc_info
+        # pylint: enable=unused-variable
         if exc_type is not None:
             raise exc_value # pylint: disable=raising-bad-type
 
 
 def _mtime_less(mtime, other):
     if other is None:
-        return False
+        raise ValueError
     if mtime is None:
         return True
     return mtime < other
@@ -281,8 +283,9 @@ class Node:
             Every node is guaranteed to come before all of its prerequisites.
         """
         if not _reversed:
-            yield from reversed(list(self.iter_needs(
-                _seen_nodes=_seen_nodes, _reversed=True )))
+            if _seen_nodes is not None:
+                raise RuntimeError
+            yield from reversed(list(self.iter_needs(_reversed=True)))
             return
         if _seen_nodes is None:
             _seen_nodes = {self}
@@ -585,7 +588,6 @@ class PathNode(DatedNode):
         root (pathlib.Path or None):
             absolute path, relative to which various paths will appear in
             log messages.
-            (For that, PathNode.root_relative class method should be used.)
     """
 
     root = None
@@ -737,7 +739,12 @@ class FilelikeNode(PathNode):
 class SourceFileNode(FollowingPathNode, FilelikeNode):
     """Represents a source file."""
 
-    pass
+    def _update_self(self):
+        super()._update_self()
+        if self.mtime is None:
+            self.log(logging.ERROR, "Source file is missing")
+            raise MissingTargetError(self.path)
+
 
 class FileNode(BuildablePathNode, FilelikeNode):
     """

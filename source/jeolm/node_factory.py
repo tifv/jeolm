@@ -168,7 +168,8 @@ class DocumentNodeFactory:
         figure_nodes = [
             jeolm.node.symlink.SymLinkedFileNode(
                 name='document:{}:figure:{}'.format(target, alias_name),
-                source=self.figure_node_factory(figure_path),
+                source=self.figure_node_factory( figure_path,
+                    figure_format='eps' ),
                 path=(build_dir/alias_name).with_suffix('.eps'),
                 needs=(build_dir_node,) )
             for alias_name, figure_path
@@ -395,7 +396,7 @@ class FigureNodeFactory:
 
         self.nodes = dict()
 
-    def __call__(self, metapath, *, figure_format='eps'):
+    def __call__(self, metapath, *, figure_format):
         assert isinstance(metapath, RecordPath), type(metapath)
         assert figure_format in self.output_figure_formats, figure_format
         try:
@@ -435,6 +436,8 @@ class FigureNodeFactory:
         node_dict = prebuild_method( metapath, figure_record,
             build_dir_node=build_subdir_node )
         assert node_dict.keys() >= {'eps', 'pdf'}
+        if '<latex>' not in node_dict:
+            node_dict['<latex>'] = node_dict['eps']
         if '<pdflatex>' not in node_dict:
             node_dict['<pdflatex>'] = node_dict['pdf']
         for node in node_dict.values():

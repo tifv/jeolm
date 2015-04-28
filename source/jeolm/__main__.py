@@ -48,6 +48,10 @@ def main(args):
 
 # pylint: disable=unused-variable,unused-argument
 
+
+####################
+# build
+
 def _add_build_arg_subparser(subparsers):
     parser = subparsers.add_parser( 'build',
         help='build specified targets' )
@@ -73,39 +77,46 @@ def main_build(args, *, local, logging_manager):
     from jeolm.node_factory import TargetNodeFactory
 
     if not args.targets:
-        logger.warn('No-op: no targets for building')
+        logger.warning('No-op: no targets for building')
     PathNode.root = local.root
     if args.jobs < 1:
         raise argparse.ArgumentTypeError(
             "Positive integral number of jobs is required." )
-    semaphore = _get_build_semaphore(args.jobs)
+    semaphore = _build_get_semaphore(args.jobs)
     driver = jeolm.commands.simple_load_driver(local)
 
     with local.open_text_node_shelf() as text_node_shelf:
         target_node_factory = TargetNodeFactory(
-            local=local, driver=driver, text_node_shelf=text_node_shelf)
-        target_node = target_node_factory(args.targets, delegate=args.delegate)
+            local=local, driver=driver, text_node_shelf=text_node_shelf )
+        target_node = target_node_factory(
+            args.targets, delegate=args.delegate )
         if args.force is None:
             pass
         elif args.force == 'latex':
-            from jeolm.node.latex import LaTeXNode
-            for node in target_node.iter_needs():
-                if isinstance(node, LaTeXNode):
-                    node.force()
+            _build_force_latex(target_node)
         elif args.force == 'generate':
-            from jeolm.node.latex import LaTeXNode
-            from jeolm.node import FileNode
-            for node in target_node.iter_needs():
-                if (isinstance(node, LaTeXNode) and
-                    isinstance(node.source, FileNode)
-                ):
-                    node.source.force()
+            _build_force_generate(target_node)
         else:
             raise RuntimeError(args.force)
         with suppress(NodeErrorReported):
             target_node.update(semaphore=semaphore)
 
-def _get_build_semaphore(jobs):
+def _build_force_latex(target_node):
+    from jeolm.node.latex import LaTeXNode
+    for node in target_node.iter_needs():
+        if isinstance(node, LaTeXNode):
+            node.force()
+
+def _build_force_generate(target_node):
+    from jeolm.node.latex import LaTeXNode
+    from jeolm.node import FileNode
+    for node in target_node.iter_needs():
+        if (isinstance(node, LaTeXNode) and
+            isinstance(node.source, FileNode)
+        ):
+            node.source.force()
+
+def _build_get_semaphore(jobs):
     assert isinstance(jobs, int), type(jobs)
     if jobs > 1:
         import threading
@@ -113,6 +124,9 @@ def _get_build_semaphore(jobs):
     else:
         return None
 
+
+####################
+# buildline
 
 def _add_buildline_arg_subparser(subparsers):
     parser = subparsers.add_parser( 'buildline',
@@ -130,7 +144,7 @@ def main_buildline(args, *, local, logging_manager):
     if args.jobs < 1:
         raise argparse.ArgumentTypeError(
             "Positive integral number of jobs is required." )
-    semaphore = _get_build_semaphore(args.jobs)
+    semaphore = _build_get_semaphore(args.jobs)
 
     with local.open_text_node_shelf() as text_node_shelf:
         buildline = BuildLine(
@@ -139,6 +153,9 @@ def main_buildline(args, *, local, logging_manager):
         with buildline.readline_setup():
             return buildline.main()
 
+
+####################
+# review
 
 def _add_review_arg_subparser(subparsers):
     parser = subparsers.add_parser( 'review',
@@ -151,7 +168,7 @@ def main_review(args, *, local, logging_manager):
     from jeolm.commands.review import review
     from jeolm.commands.diffprint import log_metadata_diff
     if not args.inpaths:
-        logger.warn('No-op: no inpaths for review')
+        logger.warning('No-op: no inpaths for review')
     metadata = (local.metadata_class)(local=local)
     metadata.load_metadata_cache()
     with log_metadata_diff(metadata, logger=logger):
@@ -159,6 +176,9 @@ def main_review(args, *, local, logging_manager):
             viewpoint=Path.cwd(), local=local, metadata=metadata )
     metadata.dump_metadata_cache()
 
+
+####################
+# init
 
 def _add_init_arg_subparser(subparsers):
     parser = subparsers.add_parser( 'init',
@@ -175,6 +195,9 @@ def main_init(args, logging_manager):
         root=args.root, resources=args.resources )
 
 
+####################
+# list
+
 def _add_list_arg_subparser(subparsers):
     parser = subparsers.add_parser( 'list',
         help='list all infiles for given targets' )
@@ -189,12 +212,15 @@ def _add_list_arg_subparser(subparsers):
 def main_list(args, *, local, logging_manager):
     from jeolm.commands.list_sources import print_source_list
     if not args.targets:
-        logger.warn('No-op: no targets for source list')
+        logger.warning('No-op: no targets for source list')
     print_source_list( args.targets,
         viewpoint=Path.cwd(), local=local,
         driver=jeolm.commands.simple_load_driver(local),
         source_type=args.source_type )
 
+
+####################
+# spell
 
 def _add_spell_arg_subparser(subparsers):
     parser = subparsers.add_parser( 'spell',
@@ -206,12 +232,15 @@ def _add_spell_arg_subparser(subparsers):
 def main_spell(args, *, local, logging_manager):
     from jeolm.commands.spell import check_spelling
     if not args.targets:
-        logger.warn('No-op: no targets for spell check')
+        logger.warning('No-op: no targets for spell check')
     check_spelling( args.targets,
         local=local,
         driver=jeolm.commands.simple_load_driver(local),
         colour=args.colour )
 
+
+####################
+# makefile
 
 def _add_makefile_arg_subparser(subparsers):
     parser = subparsers.add_parser( 'makefile',
@@ -219,12 +248,10 @@ def _add_makefile_arg_subparser(subparsers):
     parser.add_argument( 'targets',
         nargs='*', metavar='TARGET', type=jeolm.target.Target.from_string)
     parser.add_argument( '-o', '--output-makefile',
-        help='where to write makefile; default is Makefile; '
-            'generated makefile must be executed from the root directory '
-            'of the jeolm project',
+        help='where to write makefile; default is Makefile',
         default='Makefile' )
     parser.add_argument( '-O', '--output-unbuildable',
-        help=( 'where to write list of files which Makefile cannot rebuild '
+        help=( 'where to write list of files which makefile cannot rebuild '
             '(and depends on); default is stdout' ) )
     parser.set_defaults(command_func=main_makefile)
 
@@ -234,7 +261,7 @@ def main_makefile(args, *, local, logging_manager):
     from jeolm.node_factory import TargetNodeFactory
 
     if not args.targets:
-        logger.warn('No-op: no targets for makefile generation')
+        logger.warning('No-op: no targets for makefile generation')
     PathNode.root = local.root
     driver = jeolm.commands.simple_load_driver(local)
 
@@ -265,6 +292,9 @@ def _print_unbuildable_list(unbuildable_nodes, *, local, **kwargs):
         print(str(node.path.relative_to(local.root)), **kwargs)
 
 
+####################
+# excerpt
+
 def _add_excerpt_arg_subparser(subparsers):
     parser = subparsers.add_parser( 'excerpt',
         help='create a source archive for a given target' )
@@ -292,7 +322,6 @@ def main_excerpt(args, *, local, logging_manager):
             output_file = open(args.output, 'wb')
         else:
             from sys import stdout
-            stdout.flush()
             output_file = stdout.buffer
         with suppress(NodeErrorReported):
             try:
@@ -302,6 +331,9 @@ def main_excerpt(args, *, local, logging_manager):
                 if args.output is not None:
                     output_file.close()
 
+
+####################
+# clean
 
 def _add_clean_arg_subparser(subparsers):
     parser = subparsers.add_parser( 'clean',
