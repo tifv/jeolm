@@ -155,7 +155,7 @@ class DocumentNodeFactory:
             in recipe['package_paths'].items() ]
         figure_nodes = [
             jeolm.node.symlink.SymLinkedFileNode(
-                name='document:{}:fig:{}'.format(target, alias_name),
+                name='document:{}:figure:{}'.format(target, alias_name),
                 source=self.figure_node_factory(figure_path),
                 path=(build_dir/alias_name).with_suffix('.eps'),
                 needs=(build_dir_node,) )
@@ -278,7 +278,6 @@ class DocumentNodeFactory:
 
 
 class PackageNodeFactory:
-    package_types = ('dtx', 'sty')
 
     def __init__(self, *, local, driver,
         build_dir_node,
@@ -294,9 +293,12 @@ class PackageNodeFactory:
 
     def __call__(self, metapath):
         assert isinstance(metapath, RecordPath), type(metapath)
-        with suppress(KeyError):
-            return self.nodes[metapath]
-        node = self.nodes[metapath] = self._prebuild_package(metapath)
+        try:
+            node = self.nodes[metapath]
+        except KeyError:
+            node = None
+        if node is None:
+            node = self.nodes[metapath] = self._prebuild_package(metapath)
         return node
 
     def _prebuild_package(self, metapath):
@@ -308,13 +310,13 @@ class PackageNodeFactory:
             name='package:{}:dir'.format(metapath),
             path=build_subdir, parents=False,
             needs=(self.build_dir_node,) )
-        package_type = package_record['type']
-        if package_type not in self.package_types:
-            raise RuntimeError(package_type, metapath)
-        if package_type == 'dtx':
+        source_package_format = package_record['source_format']
+        if source_package_format == 'dtx':
             prebuild_sty_method = self._prebuild_dtx_package
-        elif package_type == 'sty':
+        elif source_package_format == 'sty':
             prebuild_sty_method = self._prebuild_sty_package
+        else:
+            raise RuntimeError(source_package_format, metapath)
         return prebuild_sty_method( metapath, package_record,
             build_dir_node=build_subdir_node )
 
@@ -375,7 +377,7 @@ class PackageNodeFactory:
 
 
 class FigureNodeFactory:
-    figure_types = ('asy', 'svg', 'eps')
+    output_figure_formats = frozenset(('eps', 'pdf', '<pdflatex>'))
 
     def __init__(self, *, local, driver,
         build_dir_node,
@@ -388,14 +390,26 @@ class FigureNodeFactory:
 
         self.nodes = dict()
 
-    def __call__(self, metapath):
+    def __call__(self, metapath, *, figure_format='eps'):
         assert isinstance(metapath, RecordPath), type(metapath)
-        with suppress(KeyError):
-            return self.nodes[metapath]
-        node = self.nodes[metapath] = self._prebuild_figure(metapath)
-        return node
+        assert figure_format in self.output_figure_formats, figure_format
+        try:
+            node_dict = self.nodes[metapath]
+        except KeyError:
+            node_dict = None
+        if node_dict is None:
+            node_dict = self.nodes[metapath] = \
+                self._prebuild_figure(metapath)
+            assert node_dict.keys() >= self.output_figure_formats
+        return node_dict[figure_format]
 
     def _prebuild_figure(self, metapath):
+        """
+        Return a dictionary of nodes.
+
+        Return { figure_format : node
+            for figure_format in self.output_figure_formats }.
+        """
         figure_record = self.driver.produce_figure_record(metapath)
         buildname = figure_record['buildname']
         assert '/' not in buildname
@@ -404,17 +418,24 @@ class FigureNodeFactory:
             name='figure:{}:dir'.format(metapath),
             path=build_subdir, parents=False,
             needs=(self.build_dir_node,) )
-        figure_type = figure_record['type']
-        if figure_type not in self.figure_types:
-            raise RuntimeError(figure_type, metapath)
-        if figure_type == 'asy':
+        source_figure_format = figure_record['source_format']
+        if source_figure_format == 'asy':
             prebuild_method = self._prebuild_asy_figure
-        elif figure_type == 'svg':
+        elif source_figure_format == 'svg':
             prebuild_method = self._prebuild_svg_figure
-        elif figure_type == 'eps':
+        elif source_figure_format == 'eps':
             prebuild_method = self._prebuild_eps_figure
-        return prebuild_method( metapath, figure_record,
+        else:
+            raise RuntimeError(metapath, source_figure_format)
+        node_dict = prebuild_method( metapath, figure_record,
             build_dir_node=build_subdir_node )
+        assert node_dict.keys() >= {'eps', 'pdf'}
+        if '<pdflatex>' not in node_dict:
+            node_dict['<pdflatex>'] = node_dict['pdf']
+        for node in node_dict.values():
+            if not hasattr(node, 'metapath'):
+                node.metapath = metapath
+        return node_dict
 
     def _prebuild_asy_figure(self, metapath, figure_record,
         *, build_dir_node
@@ -427,12 +448,20 @@ class FigureNodeFactory:
         eps_node = jeolm.node.ProductFileNode(
             name='figure:{}:eps'.format(metapath),
             source=main_asy_node, path=build_dir/'Main.eps',
-            needs=other_asy_nodes )
+            needs=chain((build_dir_node,), other_asy_nodes) )
         eps_node.set_subprocess_command(
             ( 'asy', '-outformat=eps', '-offscreen',
                 main_asy_node.path.name ),
             cwd=build_dir )
-        return eps_node
+        pdf_node = jeolm.node.ProductFileNode(
+            name='figure:{}:pdf'.format(metapath),
+            source=main_asy_node, path=build_dir/'Main.pdf',
+            needs=chain((build_dir_node,), other_asy_nodes) )
+        pdf_node.set_subprocess_command(
+            ( 'asy', '-outformat=pdf', '-offscreen',
+                main_asy_node.path.name ),
+            cwd=build_dir )
+        return {'eps' : eps_node, 'pdf' : pdf_node}
 
     def _prebuild_asy_figure_sources(self, metapath, figure_record,
         *, build_dir_node
@@ -460,28 +489,51 @@ class FigureNodeFactory:
         *, build_dir_node
     ):
         build_dir = build_dir_node.path
+        source_svg_node = self.source_node_factory(figure_record['source'])
         svg_node = jeolm.node.symlink.SymLinkedFileNode(
             name='figure:{}:svg'.format(metapath),
-            source=self.source_node_factory(
-                figure_record['source'] ),
-            path=build_dir/'Main.svg',
+            source=source_svg_node, path=build_dir/'Main.svg',
             needs=(build_dir_node,) )
         eps_node = jeolm.node.ProductFileNode(
-            name='fig:{}:eps'.format(metapath),
-            source=svg_node, path=build_dir/'Main.eps' )
+            name='figure:{}:eps'.format(metapath),
+            source=svg_node, path=build_dir/'Main.eps',
+            needs=(build_dir_node,) )
         eps_node.set_subprocess_command(
             ('inkscape', '--without-gui',
                 '--export-eps={}'.format(eps_node.path.name),
                 svg_node.path.name ),
             cwd=build_dir )
-        return eps_node
-
-    # pylint: disable=unused-argument,unused-variable
+        pdf_node = jeolm.node.ProductFileNode(
+            name='figure:{}:pdf'.format(metapath),
+            source=svg_node, path=build_dir/'Main.pdf',
+            needs=(build_dir_node,) )
+        pdf_node.set_subprocess_command(
+            ('inkscape', '--without-gui',
+                '--export-pdf={}'.format(pdf_node.path.name),
+                svg_node.path.name ),
+            cwd=build_dir )
+        return {'eps' : eps_node, 'pdf' : pdf_node}
 
     def _prebuild_eps_figure(self, metapath, figure_record, *, build_dir_node):
-        return self.source_node_factory(figure_record['source'])
-
-    # pylint: enable=unused-argument,unused-variable
+        build_dir = build_dir_node.path
+        source_eps_node = self.source_node_factory(figure_record['source'])
+        eps_node = jeolm.node.symlink.ProxyNode(
+            name='figure:{}:eps'.format(metapath),
+            source=source_eps_node )
+        linked_eps_node = jeolm.node.symlink.SymLinkedFileNode(
+            name='figure:{}:eps:symlink'.format(metapath),
+            source=eps_node, path=build_dir/'Main.eps',
+            needs=(build_dir_node,) )
+        pdf_node = jeolm.node.ProductFileNode(
+            name='figure:{}:pdf'.format(metapath),
+            source=linked_eps_node, path=build_dir/'Main.pdf',
+            needs=(build_dir_node,) )
+        pdf_node.set_subprocess_command(
+            ('inkscape', '--without-gui',
+                '--export-pdf={}'.format(pdf_node.path.name),
+                linked_eps_node.path.name ),
+            cwd=build_dir )
+        return {'eps' : eps_node, 'pdf' : pdf_node }
 
 
 class SourceNodeFactory:

@@ -23,7 +23,7 @@ Keys recognized in metarecords:
     - if false then raise error on figure_record stage
     - assumed false by default
     - set to true by metadata grabber on .asy, .svg and .eps files
-  $figure$type$asy, $figure$type$svg, $figure$type$eps (boolean)
+  $figure$format$asy, $figure$format$svg, $figure$format$eps (boolean)
     - set to true by metadata grabber on respectively .asy, .svg and
       .eps files
   $figure$asy$accessed (dict)
@@ -32,8 +32,9 @@ Keys recognized in metarecords:
     - if false then raise error on package_record stage
     - assumed false by default
     - set to true by metadata grabber on .dtx and .sty files
-  $package$type (one of 'dtx', 'sty')
-    - set by metadata grabber
+  $package$format$dtx, $package$format$sty (boolean)
+    - set to true by metadata grabber on respectively .dtx and .sty
+      files
   $package$name
     - in build process, the package is symlinked with that very name
       (with .sty extension added)
@@ -413,10 +414,10 @@ class Driver(RecordsManager, metaclass=DriverMetaclass):
             string; valid filename without extension
         'source'
             inpath with '.asy', '.svg' or '.eps' extension
-        'type'
+        'source_format'
             one of 'asy', 'svg', 'eps'
 
-        In case of Asymptote file ('asy' type), figure_record must also
+        In case of Asymptote file ('asy' format), figure_record must also
         contain:
         'accessed_sources'
             {accessed_name : inpath for each accessed inpath}
@@ -426,12 +427,12 @@ class Driver(RecordsManager, metaclass=DriverMetaclass):
         with suppress(KeyError):
             return self._cache['figure_records'][figure_path]
         figure_record = self._cache['figure_records'][figure_path] = \
-            self.generate_figure_record(figure_path)
+            self._generate_figure_record(figure_path)
         keys = figure_record.keys()
-        assert keys >= {'buildname', 'source', 'type'}
-        assert figure_record['type'] in {'asy', 'svg', 'eps'}
-        assert figure_record['type'] not in {'asy'} or \
-            keys >= {'accessed_sources'}
+        assert keys >= {'buildname', 'source', 'source_format'}
+        assert figure_record['source_format'] in {'asy', 'svg', 'eps'}
+        assert ( figure_record['source_format'] not in {'asy'} or
+            keys >= {'accessed_sources'} )
         return figure_record
 
     @folding_driver_errors(wrap_generator=False)
@@ -444,7 +445,7 @@ class Driver(RecordsManager, metaclass=DriverMetaclass):
             string; valid filename without extension
         'source'
             inpath with '.dtx' or '.sty' extension
-        'type'
+        'source_format'
             one of 'dtx', 'sty'
         'name'
             package name, as in ProvidesPackage.
@@ -452,10 +453,10 @@ class Driver(RecordsManager, metaclass=DriverMetaclass):
         with suppress(KeyError):
             return self._cache['package_records'][package_path]
         package_record = self._cache['package_records'][package_path] = \
-            self.generate_package_record(package_path)
+            self._generate_package_record(package_path)
         keys = package_record.keys()
-        assert keys >= {'buildname', 'source', 'type', 'name'}
-        assert package_record['type'] in {'dtx', 'sty'}
+        assert keys >= {'buildname', 'source', 'source_format', 'name'}
+        assert package_record['source_format'] in {'dtx', 'sty'}
         return package_record
 
     @folding_driver_errors(wrap_generator=True)
@@ -475,7 +476,7 @@ class Driver(RecordsManager, metaclass=DriverMetaclass):
             elif inpath_type == 'asy':
                 for figpath in outrecord['figure_paths'].values():
                     figure_record = self.produce_figure_record(figpath)
-                    if figure_record['type'] == 'asy':
+                    if figure_record['source_format'] == 'asy':
                         yield figure_record['source']
 
 
@@ -1158,18 +1159,18 @@ class Driver(RecordsManager, metaclass=DriverMetaclass):
     ##########
     # Record-level functions (figure_record)
 
-    def generate_figure_record(self, figure_path):
+    def _generate_figure_record(self, figure_path):
         assert isinstance(figure_path, RecordPath), type(figure_path)
-        figure_type, inpath = self.find_figure_type(figure_path)
+        figure_format, inpath = self._find_figure_info(figure_path)
         assert isinstance(inpath, PurePosixPath), type(inpath)
         assert not inpath.is_absolute(), inpath
 
         figure_record = dict()
         figure_record['buildname'] = '-'.join(figure_path.parts)
         figure_record['source'] = inpath
-        figure_record['type'] = figure_type
+        figure_record['source_format'] = figure_format
 
-        if figure_type == 'asy':
+        if figure_format == 'asy':
             accessed_items = list(self.trace_asy_accessed(figure_path))
             accessed = figure_record['accessed_sources'] = dict(accessed_items)
             if len(accessed) != len(accessed_items):
@@ -1179,23 +1180,22 @@ class Driver(RecordsManager, metaclass=DriverMetaclass):
 
         return figure_record
 
-    _figure_type_suffixes = OrderedDict((
+    # listed in priority order
+    _figure_format_suffixes = OrderedDict((
         ('asy', '.asy'),
         ('svg', '.svg'),
         ('eps', '.eps'),
     ))
-    # Asymptote figures are given priority over Scalable Vector Graphics files,
-    # which in turn have priority over Encapsulated PostScript.
-    _figure_type_keys = OrderedDict((
-        ('asy', '$figure$type$asy'),
-        ('svg', '$figure$type$svg'),
-        ('eps', '$figure$type$eps'),
+    _figure_format_keys = OrderedDict((
+        ('asy', '$figure$format$asy'),
+        ('svg', '$figure$format$svg'),
+        ('eps', '$figure$format$eps'),
     ))
 
-    def find_figure_type(self, figure_path):
+    def _find_figure_info(self, figure_path):
         """
-        Return (figure_type, inpath).
-        figure_type is one of 'asy', 'eps', 'svg'.
+        Return (figure_format, inpath).
+        figure_format is one of 'asy', 'eps', 'svg'.
         """
         try:
             assert figure_path.suffix == '', figure_path
@@ -1206,15 +1206,17 @@ class Driver(RecordsManager, metaclass=DriverMetaclass):
         if not metarecord.get('$figure$able', False):
             raise DriverError("Figure '{}' not found".format(figure_path))
 
-        for figure_type, figure_type_key in self._figure_type_keys.items():
-            if metarecord.get(figure_type_key, False):
+        for figure_format, key in self._figure_format_keys.items():
+            if metarecord.get(key, False):
                 break
         else:
-            raise RuntimeError(
-                "Found $figure$able key, but none of $figure$type$* keys." )
-        figure_suffix = self._figure_type_suffixes[figure_type]
-        inpath = figure_path.as_inpath(suffix=figure_suffix)
-        return figure_type, inpath
+            raise RuntimeError( "Found $figure$able key, "
+                "but none of $figure$format$* keys." )
+        # pylint: disable=undefined-loop-variable
+        suffix = self._figure_format_suffixes[figure_format]
+        inpath = figure_path.as_inpath(suffix=suffix)
+        return figure_format, inpath
+        # pylint: enable=undefined-loop-variable
 
     def trace_asy_accessed(self, figure_path, *, seen_paths=frozenset()):
         """Yield (alias_name, inpath) pairs."""
@@ -1233,31 +1235,35 @@ class Driver(RecordsManager, metaclass=DriverMetaclass):
     ##########
     # Record-level functions (package_record)
 
-    def generate_package_record(self, package_path):
+    def _generate_package_record(self, package_path):
         assert isinstance(package_path, RecordPath), type(package_path)
-        package_type, inpath, package_name = \
-            self.find_package_info(package_path)
+        package_format, inpath, package_name = \
+            self._find_package_info(package_path)
         assert isinstance(inpath, PurePosixPath), type(inpath)
         assert not inpath.is_absolute(), inpath
 
         package_record = dict()
         package_record['buildname'] = '-'.join(package_path.parts)
         package_record['source'] = inpath
-        package_record['type'] = package_type
+        package_record['source_format'] = package_format
         package_record['name'] = package_name
 
         return package_record
 
-    # { package_type : package_suffix for all package types }
-    package_suffixes = {
-        'dtx' : '.dtx',
-        'sty' : '.sty',
-    }
+    # listed in priority order
+    _package_format_suffixes = OrderedDict((
+        ('dtx', '.dtx'),
+        ('sty', '.sty'),
+    ))
+    _package_format_keys = OrderedDict((
+        ('dtx', '$package$format$dtx'),
+        ('sty', '$package$format$sty'),
+    ))
 
-    def find_package_info(self, package_path):
+    def _find_package_info(self, package_path):
         """
-        Return (package_type, inpath, package_name).
-        package_type is one of 'dtx', 'sty'.
+        Return (package_format, inpath, package_name).
+        package_format is one of 'dtx', 'sty'.
         """
         try:
             metarecord = self.getitem(package_path)
@@ -1266,11 +1272,18 @@ class Driver(RecordsManager, metaclass=DriverMetaclass):
         if not metarecord.get('$package$able', False):
             raise DriverError("Package '{}' not found".format(package_path))
 
-        package_type = metarecord['$package$type']
-        package_suffix = self.package_suffixes[package_type]
-        inpath = package_path.as_inpath(suffix=package_suffix)
+        for package_format, key in self._package_format_keys.items():
+            if metarecord.get(key, False):
+                break
+        else:
+            raise RuntimeError( "Found $package$able key, "
+                "but none of $package$format$* keys." )
+        # pylint: disable=undefined-loop-variable
+        suffix = self._package_format_suffixes[package_format]
+        inpath = package_path.as_inpath(suffix=suffix)
         package_name = metarecord['$package$name']
-        return package_type, inpath, package_name
+        return package_format, inpath, package_name
+        # pylint: enable=undefined-loop-variable
 
     ##########
     # LaTeX-level functions

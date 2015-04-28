@@ -44,8 +44,7 @@ class SymLinkNode(ProductNode):
             semantics: it is the target of symbolic link.
     """
 
-    def __init__(self, source, path,
-        *, relative=True,
+    def __init__(self, source, path, *, relative=True,
         name=None, needs=(), **kwargs
     ):
         """
@@ -123,7 +122,64 @@ class SymLinkNode(ProductNode):
 
 
 class SymLinkedFileNode(SymLinkNode, FilelikeNode):
-    pass
 
+    def __init__(self, source, path, *, relative=True,
+        name=None, needs=(), **kwargs
+    ):
+        if not isinstance(source, FilelikeNode):
+            raise TypeError(type(source))
+        super().__init__( source, path, relative=relative,
+            name=name, needs=needs, **kwargs )
 
+class ProxyNode(ProductNode):
+    """
+    Represents the same path as its source.
+
+    This allows assigning some attributes which sould not belong to the
+    original node.
+
+    Attributes (additional to superclasses):
+        source (PathNode):
+            derived from ProductNode, this attribute is assigned specific
+            semantics: it is the node to be proxy for.
+    """
+
+    def __init__(self, source, *, name=None, needs=(), **kwargs):
+        """
+        Initialize SymLinkNode instance.
+
+        Args:
+            source (PathNode):
+                passed to the superclass; source.path becomes self.path.
+            name (optional)
+                passed to the superclass.
+            needs (optional)
+                must be an empty iterable.
+        """
+        if list(needs):
+            raise ValueError("ProxyNode does not accept any excess needs.")
+        super().__init__( source=source, path=source.path,
+            name=name, **kwargs )
+
+    # Override
+    def _update_self(self):
+        self._load_mtime()
+        self.modified = self.source.modified
+
+    def _load_mtime(self):
+        self.mtime = self.source.mtime
+
+    def _needs_build(self):
+        raise RuntimeError("You should not be here.")
+
+    def _append_needs(self, node):
+        if node is not self.source:
+            raise RuntimeError(node)
+
+class ProxyFileNode(ProxyNode, FilelikeNode):
+
+    def __init__(self, source, *, name=None, needs=(), **kwargs):
+        if not isinstance(source, FilelikeNode):
+            raise TypeError(type(source))
+        super().__init__(source, name=name, needs=needs, **kwargs)
 

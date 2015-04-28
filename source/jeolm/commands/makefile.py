@@ -5,7 +5,7 @@ from pathlib import Path
 from jeolm.node import ( Node, PathNode, BuildablePathNode,
     FileNode, SubprocessCommand, LazyWriteTextCommand, )
 from jeolm.node.directory import DirectoryNode, MakeDirCommand
-from jeolm.node.symlink import SymLinkNode
+from jeolm.node.symlink import SymLinkNode, ProxyNode
 
 from jeolm.node_factory import TargetNode
 
@@ -95,9 +95,14 @@ class RuleRepresenter:
         for need in node.needs:
             if not isinstance(need, (PathNode, TargetNode)):
                 continue
-            while isinstance(need, SymLinkNode):
-                order_only_needs.append(need)
-                need = need.source
+            while True:
+                if isinstance(need, SymLinkNode):
+                    order_only_needs.append(need)
+                    need = need.source
+                elif isinstance(need, ProxyNode):
+                    need = need.source
+                else:
+                    break
             if cls._is_order_only_need(node, need):
                 order_only_needs.append(need)
             else:
@@ -250,6 +255,8 @@ class MakefileGenerator:
             return cls._TargetRuleRepresenter.represent(
                 node, viewpoint=viewpoint )
         if not isinstance(node, PathNode):
+            raise UnrepresentableNode(node)
+        if isinstance(node, ProxyNode):
             raise UnrepresentableNode(node)
 
         # PathNode cases

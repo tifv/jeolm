@@ -251,7 +251,7 @@ class MetadataManager(RecordsManager):
             dtx_content = dtx_file.read()
         metadata = {
             '$package$able' : True,
-            '$package$type' : 'dtx',
+            '$package$format$dtx' : True,
             '$build$special' : 'latexdoc' }
         metadata.update(self._query_package_content(inpath, dtx_content))
         return metadata
@@ -261,7 +261,7 @@ class MetadataManager(RecordsManager):
             sty_content = sty_file.read()
         metadata = {
             '$package$able' : True,
-            '$package$type' : 'sty' }
+            '$package$format$sty' : True }
         metadata.update(self._query_package_content(inpath, sty_content))
         return metadata
 
@@ -282,7 +282,7 @@ class MetadataManager(RecordsManager):
             asy_content = asy_file.read()
         metadata = {
             '$figure$able' : True,
-            '$figure$type$asy' : True }
+            '$figure$format$asy' : True }
         metadata.update(self._query_asy_content(inpath, asy_content))
         return metadata
 
@@ -313,13 +313,13 @@ class MetadataManager(RecordsManager):
     def _query_svg_file(self, inpath):
         metadata = {
             '$figure$able' : True,
-            '$figure$type$svg' : True }
+            '$figure$format$svg' : True }
         return metadata
 
     def _query_eps_file(self, inpath):
         metadata = {
             '$figure$able' : True,
-            '$figure$type$eps' : True }
+            '$figure$format$eps' : True }
         return metadata
 
     # pylint: enable=no-self-use,unused-argument
