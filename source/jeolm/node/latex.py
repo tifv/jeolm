@@ -100,13 +100,13 @@ class _LaTeXCommand(SubprocessCommand):
     _latex_log_overfull_pattern = re.compile(
         r'(?m)^'
         r'(?P<overfull_type>Overfull|Underfull) '
-        r'\\(?P<box_type>hbox|vbox) '
+        r'(?P<box_type>\\hbox|\\vbox) '
         r'(?P<badness>\((?:\d+(?:\.\d+)?pt too wide|badness \d+)\) |)'
         r'(?P<rest>.*)$'
     )
     _latex_overfull_log_template = (
         r'\g<overfull_type> '
-        r'\\\g<box_type> '
+        r'\g<box_type> '
         r'<YELLOW>\g<badness><NOCOLOUR>'
         r'\g<rest>' )
 
@@ -127,96 +127,61 @@ class _LaTeXCommand(SubprocessCommand):
             message=message
         )
 
+    @staticmethod
+    def _inverse_monotonic(monotonic, min_position, max_position):
+        """
+        Coroutine.
+
+        Initial next() call is required.
+
+        Args:
+            monotonic (iterable of pairs):
+                iterable producing a finite sequence of pairs (p_i, v_i), where
+                p_i is nondecreasing.
+
+        Send:
+            integer p, min_position <= p <= max_position.
+        Return:
+            v_i, such that p_i = max(p_i, p_i <= p).
+        """
+
+        monotonic = chain( monotonic, ((max_position+1, None),) )
+
+        prev_position, prev_value = min_position, None
+        next_position, next_value = next(monotonic)
+        while True:
+            position = (yield prev_value)
+            if position is None or not isinstance(position, int):
+                raise RuntimeError("Expected to receive position.")
+            if position < min_position or position > max_position:
+                raise RuntimeError("Sent position is out of range.")
+            if position < prev_position:
+                raise RuntimeError("Sent position is not monotonic.")
+            while position >= next_position:
+                prev_position, prev_value = next_position, next_value
+                next_position, next_value = next(monotonic)
+
     @classmethod
     def _find_page_numbers_in_latex_log(cls, latex_log_text):
-        """
-        Coroutine, yields page number for sent text position.
-
-        As with any generator, initial next() call required.
-        After that, sending position in latex_log_text will yield corresponding
-        page number.
-        """
-
-        page_mark_positions = [0]
-        last_page_number = 0
-        matches = cls._latex_log_page_number_pattern.finditer(
-            latex_log_text )
-        for match in matches:
-            page_number = int(match.group('page_number'))
-            if page_number != last_page_number + 1:
-                # Something got slightly wrong. Close your eyes
-                continue
-            page_mark_positions.append(match.end())
-            assert len(page_mark_positions) == page_number + 1
-            last_page_number = page_number
-        page_mark_positions.append(len(latex_log_text))
-        assert len(page_mark_positions) > 1
-
-        last_page_number = 0
-        last_position = page_mark_positions[last_page_number]
-        assert last_position == 0
-        next_position = page_mark_positions[last_page_number + 1]
-        page_number = None # "answer" variable
-        while True:
-            position = (yield page_number)
-            if position is None:
-                page_number = None
-                continue
-            if __debug__ and position < last_position:
-                raise RuntimeError("Sent position is not monotonic.")
-            if __debug__ and position >= len(latex_log_text):
-                raise RuntimeError("Sent position is out of range.")
-            while position >= next_position:
-                last_position = next_position
-                last_page_number += 1
-                next_position = page_mark_positions[last_page_number + 1]
-            page_number = last_page_number + 1
+        finder = (
+            (match.end(), int(match.group('page_number')) + 1)
+            for match
+            in cls._latex_log_page_number_pattern.finditer(latex_log_text)
+        )
+        return cls._inverse_monotonic(
+            chain( ((0,1),), finder), 0, len(latex_log_text) )
 
     _latex_log_page_number_pattern = re.compile(
         r'\[(?P<page_number>\d+)\s*\]' )
 
     @classmethod
     def _find_file_names_in_latex_log(cls, latex_log_text):
-        """
-        Coroutine, yields input file name for sent text position.
-
-        As with any generator, initial next() call required.
-        After that, sending position in latex_log_text will yield corresponding
-        input file name.
-
-        Only local filenames are detected, e.g. starting with "./",
-        and yielded without a prefixing "./".
-        """
-
-        file_name_positions = [0]
-        file_names = [None]
-        matches = cls._latex_log_file_name_pattern.finditer(
-            latex_log_text )
-        for match in matches:
-            file_name_positions.append(match.end())
-            file_names.append(match.group('file_name'))
-        file_name_positions.append(len(latex_log_text))
-        assert len(file_name_positions) == len(file_names) + 1
-
-        last_index = 0
-        last_position = file_name_positions[last_index]
-        assert last_position == 0
-        next_position = file_name_positions[last_index + 1]
-        file_name = None # "answer" variable
-        while True:
-            position = (yield file_name)
-            if position is None:
-                file_name = None
-                continue
-            if __debug__ and position < last_position:
-                raise RuntimeError("Sent position is not monotonic.")
-            if __debug__ and position >= len(latex_log_text):
-                raise RuntimeError("Sent position is out of range.")
-            while position >= next_position:
-                last_position = next_position
-                last_index += 1
-                next_position = file_name_positions[last_index + 1]
-            file_name = file_names[last_index]
+        finder = (
+            (match.end(), match.group('file_name'))
+            for match
+            in cls._latex_log_file_name_pattern.finditer(latex_log_text)
+        )
+        return cls._inverse_monotonic(finder, 0, len(latex_log_text))
 
     _latex_log_file_name_pattern = re.compile(
         r'(?<=\(\./)' # "(./"
