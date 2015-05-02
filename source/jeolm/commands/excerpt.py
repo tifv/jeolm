@@ -23,8 +23,12 @@ logger = logging.getLogger(__name__) # pylint: disable=invalid-name
 
 class _ArchiveManager:
 
+    _file_mode = 0o000644
+    _file_type = 0o100000
+
     def __init__(self, stream):
         self.stream = stream
+        self.archive = None
 
     def add_member_stream(self, path, content_stream, content_size, mtime):
         raise NotImplementedError
@@ -60,15 +64,19 @@ class _ArchiveManager:
                 mtime=node_stat.st_mtime,
             )
 
+    def start(self):
+        raise NotImplementedError
+
     def finish(self):
         raise NotImplementedError
 
+    def __enter__(self):
+        self.start()
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        self.finish()
 
 class _TarGzArchiveManager(_ArchiveManager):
-
-    def __init__(self, stream):
-        super().__init__(stream)
-        self.archive = tarfile.open(fileobj=self.stream, mode='w:gz')
 
     def add_member_stream(self, path, content_stream, content_size, mtime):
         if not content_stream.read(0) == b'':
@@ -76,22 +84,21 @@ class _TarGzArchiveManager(_ArchiveManager):
         info = tarfile.TarInfo(path)
         info.size = content_size
         info.mtime = mtime
+        info.mode = self._file_mode
+        info.type = tarfile.REGTYPE
         self.archive.addfile(info, content_stream)
 
     def add_member_bytes(self, path, content, mtime):
         return self.add_member_stream(
             path, io.BytesIO(content), len(content), mtime )
 
+    def start(self):
+        self.archive = tarfile.open(fileobj=self.stream, mode='w:gz')
+
     def finish(self):
         self.archive.close()
-        del self.archive # break reference cycle
-
 
 class _ZipArchiveManager(_ArchiveManager):
-
-    def __init__(self, stream):
-        super().__init__(stream)
-        self.archive = zipfile.ZipFile(self.stream, mode='w')
 
     def add_member_stream(self, path, content_stream, content_size, mtime):
         content = content_stream.read(content_size)
@@ -100,15 +107,19 @@ class _ZipArchiveManager(_ArchiveManager):
     def add_member_bytes(self, path, content, mtime):
         if not isinstance(content, bytes):
             raise TypeError(type(content))
-        info = zipfile.ZipInfo( path.encode(),
+        info = zipfile.ZipInfo( path,
             datetime.datetime.fromtimestamp(mtime).timetuple()[:6] )
+        info.external_attr = (self._file_mode | self._file_type) << 16
         self.archive.writestr(info, content)
+
+    def start(self):
+        self.archive = zipfile.ZipFile(self.stream, mode='w')
 
     def finish(self):
         self.archive.close()
-        del self.archive # break reference cycle
 
-def excerpt_document( document_node, *, stream,
+
+def excerpt_document( document_node, *, stream, include_pdf=False,
     figure_node_factory,
     archive_format='tar.gz'
 ):
@@ -143,13 +154,14 @@ def excerpt_document( document_node, *, stream,
                 figure_node_factory=figure_node_factory,
                 build_dir_node=build_dir_node )
         )
+    if include_pdf:
+        archived_nodes.append(document_node)
 
-    for member_node in archived_nodes:
-        archive_manager.add_member_node(
-            path=str(member_node.path.relative_to(build_dir)),
-            node=member_node )
-
-    archive_manager.finish()
+    with archive_manager:
+        for member_node in archived_nodes:
+            archive_manager.add_member_node(
+                path=str(member_node.path.relative_to(build_dir)),
+                node=member_node )
 
 def _get_other_figure_formats( node, *,
     figure_node_factory, build_dir_node

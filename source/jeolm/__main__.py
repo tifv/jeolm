@@ -302,8 +302,19 @@ def _add_excerpt_arg_subparser(subparsers):
         metavar='TARGET', type=jeolm.target.Target.from_string,
         help='target to create an archive for; '
             'no delegation will be performed on it' )
-    parser.add_argument( '-o', '--output')
-    parser.set_defaults(command_func=main_excerpt)
+    parser.add_argument( '-o', '--output',
+        help='output file; default is stdout')
+    parser.add_argument( '--include-pdf',
+        action='store_true',
+        help='include compiled PDF document in the archive' )
+    format_group = parser.add_mutually_exclusive_group()
+    format_group.add_argument( '--zip',
+        dest='format', const='zip', action='store_const',
+        help='output archive in zip format' )
+    format_group.add_argument( '--tar-gz',
+        dest='format', const='tar.gz', action='store_const',
+        help='output archive in tar.gz format (default)' )
+    parser.set_defaults(command_func=main_excerpt, format='tar.gz')
 
 def main_excerpt(args, *, local, logging_manager):
     from jeolm.node import PathNode, NodeErrorReported
@@ -326,6 +337,7 @@ def main_excerpt(args, *, local, logging_manager):
         with suppress(NodeErrorReported):
             try:
                 excerpt_document( document_node, stream=output_file,
+                    include_pdf=args.include_pdf, archive_format=args.format,
                     figure_node_factory=figure_node_factory )
             finally:
                 if args.output is not None:
