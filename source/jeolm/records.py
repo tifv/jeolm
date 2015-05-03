@@ -8,7 +8,8 @@ from .record_path import RecordPath
 from .flags import FlagContainer
 
 import logging
-logger = logging.getLogger(__name__) # pylint: disable=invalid-name
+logger = logging.getLogger(__name__)
+
 
 class RecordError(Exception):
     pass

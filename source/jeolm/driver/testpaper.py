@@ -3,7 +3,8 @@ from collections import OrderedDict
 from .regular import Driver, DriverError
 
 import logging
-logger = logging.getLogger(__name__) # pylint: disable=invalid-name
+logger = logging.getLogger(__name__)
+
 
 class TestPaperDriver(Driver):
     @processing_target_aspect( aspect='source metabody [testpaper]',

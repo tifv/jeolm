@@ -1,7 +1,8 @@
 import jeolm.local
 
 import logging
-logger = logging.getLogger(__name__) # pylint: disable=invalid-name
+logger = logging.getLogger(__name__)
+
 
 def simple_load_driver(local=None):
     if local is None:

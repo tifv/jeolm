@@ -10,6 +10,10 @@ from jeolm.flags import FlagContainer
 from jeolm.records import RecordNotFoundError
 from jeolm.target import Target
 
+import logging
+logger = logging.getLogger(__name__)
+
+
 class Driver(RegularDriver):
 
     def __init__(self):

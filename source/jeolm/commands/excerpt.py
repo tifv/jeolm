@@ -18,7 +18,7 @@ from jeolm.node_factory import DocumentNode
 _MAX_MTIME = datetime.datetime.max.timestamp()
 
 import logging
-logger = logging.getLogger(__name__) # pylint: disable=invalid-name
+logger = logging.getLogger(__name__)
 
 
 class _ArchiveManager:

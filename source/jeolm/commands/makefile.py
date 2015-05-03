@@ -10,7 +10,7 @@ from jeolm.node.symlink import SymLinkNode, ProxyNode
 from jeolm.node_factory import TargetNode
 
 import logging
-logger = logging.getLogger(__name__) # pylint: disable=invalid-name
+logger = logging.getLogger(__name__)
 
 
 class UnrepresentableNode(Exception):

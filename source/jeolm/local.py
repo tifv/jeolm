@@ -12,7 +12,8 @@ from pathlib import Path, PurePosixPath
 import jeolm
 
 import logging
-logger = logging.getLogger(__name__) # pylint: disable=invalid-name
+logger = logging.getLogger(__name__)
+
 
 # pylint: disable=unbalanced-tuple-unpacking
 

@@ -14,7 +14,7 @@ from .record_path import RecordPath
 from .records import RecordsManager
 
 import logging
-logger = logging.getLogger(__name__) # pylint: disable=invalid-name
+logger = logging.getLogger(__name__)
 
 
 class MetadataManager(RecordsManager):

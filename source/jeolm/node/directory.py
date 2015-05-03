@@ -5,7 +5,7 @@ from stat import S_ISDIR
 from . import BuildablePathNode, Command
 
 import logging
-logger = logging.getLogger(__name__) # pylint: disable=invalid-name
+logger = logging.getLogger(__name__)
 
 
 class MakeDirCommand(Command):

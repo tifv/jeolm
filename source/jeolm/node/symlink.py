@@ -6,7 +6,7 @@ from pathlib import PurePosixPath
 from . import ProductNode, FilelikeNode, _mtime_less
 
 import logging
-logger = logging.getLogger(__name__) # pylint: disable=invalid-name
+logger = logging.getLogger(__name__)
 
 
 def _naive_relative_to(path, root):

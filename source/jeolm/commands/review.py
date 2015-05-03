@@ -1,7 +1,8 @@
 from pathlib import Path, PurePosixPath
 
 import logging
-logger = logging.getLogger(__name__) # pylint: disable=invalid-name
+logger = logging.getLogger(__name__)
+
 
 def review(paths, *, local, metadata, viewpoint=None):
     inpaths = resolve_inpaths(paths,
@@ -22,6 +23,7 @@ def resolve_inpaths(paths, *, source_dir, viewpoint=None):
     for path in paths:
         path = _path_resolve_up_to(path, limit_path=source_dir)
         yield PurePosixPath(path).relative_to(source_dir)
+
 
 def _path_resolve_up_to(path, *, limit_path):
     assert isinstance(path, Path), path

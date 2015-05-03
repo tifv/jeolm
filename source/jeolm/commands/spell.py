@@ -6,7 +6,8 @@ import enchant
 from jeolm.commands.list_sources import list_sources
 
 import logging
-logger = logging.getLogger(__name__) # pylint: disable=invalid-name
+logger = logging.getLogger(__name__)
+
 
 def check_spelling(targets, *, local, driver, context=0, colour=True):
     if colour:

@@ -16,7 +16,7 @@ import threading
 from pathlib import Path
 
 import logging
-logger = logging.getLogger(__name__) # pylint: disable=invalid-name
+logger = logging.getLogger(__name__)
 
 
 class CycleError(RuntimeError):

@@ -1,5 +1,6 @@
 import logging
-logger = logging.getLogger(__name__) # pylint: disable=invalid-name
+logger = logging.getLogger(__name__)
+
 
 def print_source_list(targets, *, local, driver, viewpoint=None,
     source_type='tex'

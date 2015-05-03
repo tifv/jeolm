@@ -5,7 +5,7 @@ import re
 from . import ProductFileNode, SubprocessCommand
 
 import logging
-logger = logging.getLogger(__name__) # pylint: disable=invalid-name
+logger = logging.getLogger(__name__)
 
 
 class _LaTeXCommand(SubprocessCommand):

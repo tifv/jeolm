@@ -3,7 +3,8 @@ import os
 from pathlib import Path
 
 import logging
-logger = logging.getLogger(__name__) # pylint: disable=invalid-name
+logger = logging.getLogger(__name__)
+
 
 def clean_build_links(directory):
     """

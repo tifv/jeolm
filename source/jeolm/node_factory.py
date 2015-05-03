@@ -18,7 +18,7 @@ import jeolm.target
 from jeolm.record_path import RecordPath
 
 import logging
-logger = logging.getLogger(__name__) # pylint: disable=invalid-name
+logger = logging.getLogger(__name__)
 
 
 class TargetNode(jeolm.node.Node):

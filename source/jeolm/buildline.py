@@ -23,7 +23,7 @@ from jeolm.records import RecordNotFoundError
 from jeolm.node import NodeErrorReported
 
 import logging
-logger = logging.getLogger(__name__) # pylint: disable=invalid-name
+logger = logging.getLogger(__name__)
 
 
 class BuildLine:

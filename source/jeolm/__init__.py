@@ -14,7 +14,7 @@ from pathlib import Path
 import logging
 import logging.handlers
 
-logger = logging.getLogger(__name__) # pylint: disable=invalid-name
+logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 logger.addHandler(logging.NullHandler())
 

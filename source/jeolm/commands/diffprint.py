@@ -9,7 +9,8 @@ import jeolm.yaml
 from jeolm.records import RecordsManager
 
 import logging
-logger = logging.getLogger(__name__) # pylint: disable=invalid-name
+logger = logging.getLogger(__name__)
+
 
 class _Dumper(jeolm.yaml.JeolmDumper):
     def represent_Ellipsis(self, data):
