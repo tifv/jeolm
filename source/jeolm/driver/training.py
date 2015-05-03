@@ -1,4 +1,19 @@
-from string import Template
+"""
+Keys recognized in metarecords:
+  $group[+]
+    Only works in toplevel. Declares a group.
+
+  $timetable
+  $delegate$groups
+  $delegate$groups$into
+  $matter$groups
+  $matter$groups$into
+  $authors
+  $caption
+  $source$sections
+
+"""
+
 from collections import OrderedDict
 from functools import partial
 from datetime import date as date_type
@@ -18,7 +33,7 @@ class Driver(RegularDriver):
 
     def __init__(self):
         super().__init__()
-        self._cache.update(groups={})
+        self._cache.update(groups=list())
 
     ##########
     # Generic group-related methods and properties
@@ -26,20 +41,32 @@ class Driver(RegularDriver):
     @property
     def groups(self):
         if self._cache['groups']:
-            return self._cache['groups'].copy()
+            groups, = self._cache['groups']
+        else:
+            groups = self._get_groups()
+            self._cache['groups'].append(groups)
+        return groups
+
+    def _get_groups(self):
         groups = OrderedDict()
         for key, value in self.getitem(RecordPath()).items():
             match = self.flagged_pattern.match(key)
             if match is None or match.group('key') != '$group':
                 continue
-            group_flag, = FlagContainer.split_flags_group(
+            group_flags = FlagContainer.split_flags_group(
                 match.group('flags') )
+            if len(group_flags) > 1:
+                raise RuntimeError(
+                    "Incorrect group definition: {}".format(key) )
+            group_flag, = group_flags
+            if (
+                not isinstance(value, dict) or
+                not (value.keys() >= {'name', 'timetable'})
+            ):
+                raise RuntimeError(
+                    "Group definition must be a dict with (at least) "
+                    "'name' and 'timetable' keys: {}".format(key) )
             groups[group_flag] = value
-            assert isinstance(value, dict)
-            assert value.keys() >= {'name', 'timetable'}
-        assert groups
-        assert isinstance(groups, OrderedDict), type(groups)
-        self._cache['groups'] = groups
         return groups
 
     def list_timetable(self):
@@ -161,7 +188,8 @@ class Driver(RegularDriver):
 #    def select_outname(self, target, metarecord, date=None):
 #        return super().select_outname(target, metarecord, date=None)
 
-    @processing_target_aspect(aspect='auto metabody', wrap_generator=True)
+    @processing_target_aspect( aspect='auto metabody [training]',
+        wrap_generator=True )
     @classifying_items(aspect='metabody', default='verbatim')
     def generate_auto_metabody(self, target, metarecord):
 
@@ -204,7 +232,8 @@ class Driver(RegularDriver):
 
         yield from super().generate_auto_metabody(target, metarecord)
 
-    @processing_target_aspect(aspect='header metabody', wrap_generator=True)
+    @processing_target_aspect( aspect='header metabody [training]',
+        wrap_generator=True )
     @classifying_items(aspect='resolved_metabody', default='verbatim')
     def generate_header_metabody(self, target, metarecord, *, date):
 
@@ -249,7 +278,8 @@ class Driver(RegularDriver):
 
         yield r'\endgroup'
 
-    @processing_target_aspect(aspect='source metabody', wrap_generator=True)
+    @processing_target_aspect( aspect='source metabody [training]',
+        wrap_generator=True )
     @classifying_items(aspect='metabody', default='verbatim')
     def generate_source_metabody(self, target, metarecord):
         if target.flags.issuperset({'addtoc', 'no-header'}):
@@ -269,7 +299,7 @@ class Driver(RegularDriver):
     def _constitute_authors(cls, metarecord, thin_space=r'\,'):
         try:
             authors = metarecord['$authors']
-        except KeyError as exception:
+        except KeyError:
             return None
         if len(authors) > 2:
             abbreviate = partial(cls._abbreviate_author, thin_space=thin_space)

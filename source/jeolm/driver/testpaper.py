@@ -1,4 +1,10 @@
-from collections import OrderedDict
+"""
+Keys recognized in metarecords:
+  $test
+  $test$problem-scores
+  $test$mark-limits
+  $test$duration
+"""
 
 from .regular import Driver, DriverError
 
@@ -18,22 +24,13 @@ class TestPaperDriver(Driver):
         if metarecord.get('$test', False):
             if 'exclude-test' in target.flags:
                 return
-#            yield self.substitute_begingroup()
-#            yield self.substitute_interrobang_section()
-#            yield {'required_package' : 'textcomp'}
             yield from super_matter
             yield from self._generate_test_postword(target, metarecord)
-#            yield self.substitute_endgroup()
         else:
             yield from super_matter
 
-#    begingroup_template = r'\begingroup'
-#    endgroup_template = r'\endgroup'
-#    interrobang_section_template = (
-#        r'\let\oldsection\section' '\n'
-#        r'\def\section#1#2{\oldsection#1{\textinterrobang\ #2}}' )
-
-    @processing_target_aspect(aspect='test postword', wrap_generator=True)
+    @processing_target_aspect( aspect='test postword [testpaper]',
+        wrap_generator=True )
     @classifying_items(aspect='metabody', default='verbatim')
     def _generate_test_postword(self, target, metarecord):
         problem_scores = self._get_problem_scores(metarecord)
@@ -109,7 +106,7 @@ class TestPaperDriver(Driver):
 
     @classmethod
     def _constitute_mark_limits(cls, mark_limits):
-        return r'\({}\)%'.format(',\ '.join(
+        return r'\({}\)%'.format(r',\ '.join(
             r'{score} \mapsto \mathbf{{{mark}}}'.format(mark=mark, score=score)
             for mark, score in sorted(mark_limits.items())
         ))

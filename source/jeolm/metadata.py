@@ -71,8 +71,7 @@ class MetadataManager(RecordsManager):
             metarecords.absorb(metadata, metapath, overwrite=False)
         if warn_dropped_keys:
             for metapath, metarecord in metarecords.items():
-                self.check_dropped_metarecord_keys(
-                    metarecord, origin=metapath )
+                self.check_dropped_metarecord_keys(metarecord, metapath)
         return metarecords
 
     def review(self, inpath):
@@ -326,16 +325,18 @@ class MetadataManager(RecordsManager):
 
     dropped_keys = {
         '$matter' : ('$fluid',),
-        '$build$matter' : ('$manner', '$rigid', ),
-        '$build$style' : ('$manner$style', '$manner$options',
+        '$build$matter' : ('$manner', '$rigid',),
+        '$build$style' : (
+            '$manner$style', '$manner$options',
             '$out$options', '$fluid$opt', '$rigid$opt', '$manner$opt', ),
-        '$delegate' : ('$target$delegate', ),
-        '$target$able' : ('$targetable', ),
-        '$required$packages' : ('$latex$packages', '$tex$packages')
+        '$delegate' : ('$target$delegate',),
+        '$target$able' : ('$targetable',),
+        '$matter: required_package' : (
+            '$required$packages', '$latex$packages', '$tex$packages', )
     }
 
     @classmethod
-    def check_dropped_metarecord_keys(cls, metarecord, origin):
+    def check_dropped_metarecord_keys(cls, metarecord, metapath):
         for modern_key, dropped_keys in cls.dropped_keys.items():
             assert not isinstance(dropped_keys, str), dropped_keys
             for dropped_key in dropped_keys:
@@ -345,10 +346,10 @@ class MetadataManager(RecordsManager):
                         continue
                     logger.warning(
                         'Dropped key <BOLD><RED>{key}<RESET> '
-                        'detected in <BOLD><YELLOW>{origin}<RESET> '
+                        'detected in <BOLD><YELLOW>{metapath}<RESET> '
                         '(replace it with {modern_key})'
                         .format(
-                            key=dropped_key, origin=origin,
+                            key=dropped_key, metapath=metapath,
                             modern_key=modern_key )
                     )
 

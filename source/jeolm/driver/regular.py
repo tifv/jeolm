@@ -17,7 +17,7 @@ Keys recognized in metarecords:
     - set to false by metadata grabber on .tex files with
       $build$special set to 'standalone'
   $source$figures (ordered dict)
-    { alias_name : accessed_path for all accessed paths}
+    { alias_name : accessed_path for all accessed paths }
     - set by metadata grabber
   $figure$able (boolean)
     - if false then raise error on figure_record stage
@@ -43,8 +43,11 @@ Keys recognized in metarecords:
     - in absence of \\ProvidesPackage, borrowed by metadata grabber
       from the filename
 
+  $include
+    list of subpaths for direct metadata inclusion.
+
   $delegate$stop[*]
-    Value is condition.
+    Value: condition to stop delegation at this target.
 
   $delegate[*]
     Values:
@@ -57,12 +60,7 @@ Keys recognized in metarecords:
   $build$matter[*]
     Values are same as of $matter
   $build$style[*]
-    Values are same as of $style and:
-    - font: 10pt
-        # 10pt, 11pt, 12pt are valid alternatives
-        # appended to class options
-    - document_class: article
-      options: [a4paper, landscape, twoside]
+    Values are same as of $style
 
   $matter[*]
     Values expected from metadata:
@@ -77,8 +75,11 @@ Keys recognized in metarecords:
     - verbatim: <string>
     - <delegator>
     - delegate: <delegator>
-#    - package: <package>
-#      options: [option1, option2] # may be omitted
+    - font: 10pt
+        # 10pt, 11pt, 12pt are valid alternatives
+        # appended to class options
+    - document_class: article
+      options: [a4paper, landscape, twoside]
     - scale_font: [10, 12]
         # best used with anyfontsize package
         # only affects font size at the beginning of document
@@ -87,7 +88,9 @@ Keys recognized in metarecords:
     - local_package: <metapath>
 
   $date
-  $required$packages
+
+  $path:
+    Used internally.
 
 """
 
@@ -1009,8 +1012,6 @@ class Driver(RecordsManager, metaclass=DriverMetaclass):
         if not target.flags.intersection(('header', 'no-header')):
             yield target.flags_union({'header'})
             return # recurse
-        for required_package in metarecord.get('$required$packages', ()):
-            yield {'required_package' : required_package}
         yield {'source' : target.path}
         if ( '$date' in metarecord and
             'multidate' in target.flags and
