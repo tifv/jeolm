@@ -126,10 +126,10 @@ class Target:
             ) from error
 
     def __str__(self):
-        return '{self.path!s}{self.flags:optional}'.format(self=self)
+        return '{target.path!s}{target.flags:optional}'.format(target=self)
 
     def __repr__(self):
-        return ( '{self.__class__.__qualname__}'
-            '({self.path!r}, {self.flags!r})'
-            .format(self=self) )
+        return ( '{target.__class__.__name__}'
+            '({target.path!r}, {target.flags!r})'
+            .format(target=self) )
 

@@ -6,46 +6,52 @@ logger = logging.getLogger(__name__)
 
 
 def unique(*iterables):
-    seen = set()
-    unique = list()
+    seen_items = set()
+    unique_items = list()
     for iterable in iterables:
-        for i in iterable:
-            if i not in seen:
-                unique.append(i)
-                seen.add(i)
-    return unique
+        for item in iterable:
+            if item not in seen_items:
+                unique_items.append(item)
+                seen_items.add(item)
+    return unique_items
 
-def natural_keyfunc(s, pattern=re.compile(r'(\d+)')):
-    assert isinstance(s, str), type(s)
+def natural_keyfunc(string, pattern=re.compile(r'(\d+)|\.')):
+    assert isinstance(string, str), type(string)
     return [
-         [
-            int(r) if r.isdigit() else r
-            for r in pattern.split(q)
-        ]
-        for q in s.split('.')
+        int(item) if item.isdigit() else item
+        for item in pattern.split(string)
+        if item is not None
     ]
 
-def dict_is_ordered(d):
-    return isinstance(d, OrderedDict) or len(d) <= 1
+def mapping_is_ordered(mapping):
+    return isinstance(mapping, OrderedDict) or len(mapping) <= 1
 
-def dict_ordered_keys(d, *, keyfunc=None):
-    """Return persistently ordered dictionary keys."""
-    if dict_is_ordered(d):
-        return d.keys()
-    assert type(d) is dict, type(d)
+def mapping_ordered_keys(mapping, *, keyfunc=None):
+    """
+    Return persistently ordered mapping keys.
+
+    Only works with string keys.
+    """
+    if mapping_is_ordered(mapping):
+        return mapping.keys()
+    assert type(mapping) is dict, type(mapping)
     if keyfunc is None:
         keyfunc = natural_keyfunc
-    return sorted(d.keys(), key=keyfunc)
+    return sorted(mapping.keys(), key=keyfunc)
 
-def dict_ordered_items(d, *, keyfunc=None):
-    """Return persistently ordered dictionary items."""
-    if dict_is_ordered(d):
-        return d.items()
-    assert type(d) is dict, type(d)
+def mapping_ordered_items(mapping, *, keyfunc=None):
+    """
+    Return persistently ordered dictionary items.
+
+    Only works with string keys.
+    """
+    if mapping_is_ordered(mapping):
+        return mapping.items()
+    assert type(mapping) is dict, type(mapping)
     if keyfunc is None:
         keyfunc = natural_keyfunc
     def item_keyfunc(item):
-        key, value = item
+        key, value = item # pylint: disable=unused-variable
         return keyfunc(key)
-    return sorted(d.items(), key=item_keyfunc)
+    return sorted(mapping.items(), key=item_keyfunc)
 

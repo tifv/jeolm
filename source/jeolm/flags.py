@@ -37,6 +37,7 @@ class FlagContainer(Container):
         self.flags = flags = frozenset(iterable)
         if any(flag.startswith('-') for flag in flags):
             raise RuntimeError(flags)
+        self._as_frozenset = None
         self.utilized_flags = set()
         self.children = []
         self.origin = origin
@@ -95,11 +96,10 @@ class FlagContainer(Container):
 
     @property
     def as_frozenset(self):
-        try:
-            return self._as_frozenset
-        except AttributeError:
+        as_frozenset = self._as_frozenset
+        if as_frozenset is None:
             as_frozenset = self._as_frozenset = self.reconstruct_as_frozenset()
-            return as_frozenset
+        return as_frozenset
 
     #@property
     #def as_set(self):
@@ -234,11 +234,11 @@ class FlagContainer(Container):
             if not flag:
                 continue
             elif ' ' in flag:
-                raise TargetError("Flag '{}' contains a space".format(piece))
+                raise FlagError("Flag '{}' contains a space".format(piece))
             flag_list.append(flag)
         flags = frozenset(flag_list)
         if len(flags) != len(flag_list):
-            raise TargetError("Duplicated flags detected.")
+            raise FlagError("Duplicated flags detected.")
         return flags
 
     def __format__(self, fmt):
@@ -256,8 +256,8 @@ class FlagContainer(Container):
         ))
 
     def __repr__(self):
-        return ( '{self.__class__.__qualname__}({self._flags_repr})'
-            .format(self=self) )
+        return ( '{flags.__class__.__name__}({flags._flags_repr})'
+            .format(flags=self) )
 
 class ChildFlagContainer(FlagContainer):
     __slots__ = ['parent']
@@ -268,8 +268,8 @@ class ChildFlagContainer(FlagContainer):
         self.parent = parent
 
     def __repr__(self):
-        return ( '{self.parent!r}.{self.constructor_name}({self._flags_repr})'
-            .format(self=self) )
+        return ( '{flags.parent!r}.{flags.constructor_name}({flags._flags_repr})'
+            .format(flags=self) )
 
 class PositiveFlagContainer(ChildFlagContainer):
     __slots__ = []

@@ -2,7 +2,7 @@ import re
 from collections import OrderedDict
 from contextlib import suppress
 
-from .utils import unique, dict_ordered_keys, dict_ordered_items
+from .utils import unique, mapping_ordered_keys, mapping_ordered_items
 
 from .record_path import RecordPath
 from .flags import FlagContainer
@@ -59,7 +59,7 @@ class RecordsManager:
         if not isinstance(omap, OrderedDict):
             raise RuntimeError(type(omap))
         swap = omap.copy()
-        for key in dict_ordered_keys(sample):
+        for key in mapping_ordered_keys(sample):
             omap[key] = swap.pop(key)
         omap.update(swap)
 
@@ -69,7 +69,7 @@ class RecordsManager:
         if not isinstance(data, dict):
             raise RecordError("Only able to absorb a dict, found {!r}"
                 .format(type(data)) )
-        for key, value in dict_ordered_items(data):
+        for key, value in mapping_ordered_items(data):
             self._absorb_item_into(
                 key, value, path, record, overwrite=overwrite )
 
@@ -177,10 +177,12 @@ class RecordsManager:
         """Yield (path, record) pairs."""
         record = self.getitem(path)
         yield path, record
-        for key in dict_ordered_keys(record):
+        for key in mapping_ordered_keys(record):
             if key.startswith('$'):
                 continue
             yield from self.items(path=path/key)
+
+    # pylint: disable=unused-variable
 
     def keys(self, path=RecordPath()):
         """Yield paths."""
@@ -191,6 +193,8 @@ class RecordsManager:
         """Yield paths."""
         for subpath, subrecord in self.items(path=path):
             yield subrecord
+
+    # pylint: enable=unused-variable
 
     def __contains__(self, path):
         try:
@@ -222,8 +226,8 @@ class RecordsManager:
         yield path, record1, record2
 
         keys = unique(
-            dict_ordered_keys(record1 if record1 is not None else {}),
-            dict_ordered_keys(record2 if record2 is not None else {}) )
+            mapping_ordered_keys(record1 if record1 is not None else {}),
+            mapping_ordered_keys(record2 if record2 is not None else {}) )
         for key in keys:
             if key.startswith('$'):
                 continue
