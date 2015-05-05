@@ -74,11 +74,14 @@ class SymLinkNode(ProductNode):
                 raise TypeError(type(self.link_target))
             if os.path.lexists(str(self.path)):
                 self.path.unlink()
-            self.log(logging.INFO, (
-                '<source=<CYAN>{node.source.name}<NOCOLOUR>> '
-                '<GREEN>ln --symbolic {node.link_target} '
-                    '{node.relative_path}<NOCOLOUR>'
-                .format(node=self) ))
+            self.logger.info(
+                "<source=<CYAN>%(source_name)s<NOCOLOUR>> "
+                "<GREEN>ln --symbolic %(link_target)s %(path)s<NOCOLOUR>",
+                dict(
+                    source_name=self.source.name,
+                    link_target=self.link_target,
+                    path=self.relative_path, )
+            )
             os.symlink(self.link_target, str(self.path))
             self.modified = True
         self.set_command(link_command)

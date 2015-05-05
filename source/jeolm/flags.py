@@ -2,6 +2,9 @@ from functools import partial
 from collections.abc import Container
 import traceback
 
+import logging
+logger = logging.getLogger(__name__)
+
 
 class FlagError(Exception):
     pass

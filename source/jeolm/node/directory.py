@@ -29,12 +29,12 @@ class MakeDirCommand(Command):
         parents = self.parents
         if os.path.lexists(str(path)):
             path.unlink()
-        self.log(logging.INFO, (
-            '<GREEN>{command} {node.relative_path}<NOCOLOUR>'
-            .format(
-                node=node,
-                command='mkdir --parents' if parents else 'mkdir' )
-        ))
+        self.logger.info(
+            "<GREEN>%(command)s %(path)s<NOCOLOUR>",
+            dict(
+                command='mkdir --parents' if parents else 'mkdir',
+                path=self.node.relative_path, )
+        )
         # rwxr-xr-x
         path.mkdir(mode=0b111101101, parents=parents)
         node.modified = True

@@ -202,8 +202,7 @@ class Node:
                     except NodeErrorReported:
                         raise
                     except Exception as exception:
-                        self.log( logging.ERROR,
-                            "Exception occured: {}".format(traceback.format_exc()) )
+                        self.logger.exception("Exception occured:")
                         raise NodeErrorReported from exception
             thread = self.thread = CatchingThread(target=wait_and_update)
             thread.start()
@@ -298,38 +297,24 @@ class Node:
                 _seen_nodes=_seen_nodes, _reversed=True )
         yield self
 
-    def log(self, level, message):
-        """
-        Log a message specific for this node.
+    @property
+    def logger(self):
+        return self._LoggerAdapter(logger, node=self)
 
-        Prepend a message with node.name and delegate to module logger.
-        This function expects FancifyingFormatter to be used somewhere
-        in logging facility.
-        """
-        if level <= logging.INFO:
-            bold, reset = '', ''
-        else:
-            bold, reset = '<BOLD>', '<RESET>'
-        msg = '{bold}[{name}] {message}{reset}'.format(
-            bold=bold, reset=reset,
-            name=self.fancified_repr(level), message=message )
-        logger.log(level, msg)
+    class _LoggerAdapter(logging.LoggerAdapter):
+
+        def __init__(self, logger, node):
+            super().__init__(logger, extra=dict(node=node))
+
+        def process(self, msg, kwargs):
+            extra = kwargs.setdefault('extra', {})
+            extra.update(self.extra)
+            return msg, kwargs
 
     def __repr__(self):
         return (
             "{node.__class__.__name__}(name='{node.name}')"
             .format(node=self) )
-
-    def fancified_repr(self, level):
-        if level <= logging.DEBUG:
-            colour = '<CYAN>'
-        elif level <= logging.INFO:
-            colour = '<MAGENTA>'
-        elif level <= logging.WARNING:
-            colour = '<YELLOW>'
-        else:
-            colour = '<RED>'
-        return '{colour}{name}<NOCOLOUR>'.format(colour=colour, name=self.name)
 
 
 class BuildableNode(Node):
@@ -408,8 +393,9 @@ class Command:
     def __call__(self):
         pass
 
-    def log(self, level, message):
-        return self.node.log(level, message)
+    @property
+    def logger(self):
+        return self.node.logger
 
 
 class SubprocessCommand(Command):
@@ -448,7 +434,7 @@ class SubprocessCommand(Command):
         output = self._subprocess_output()
         if not output: # child process didn't write anything
             return
-        self._log_output(output)
+        self._log_output(logging.INFO, output)
 
     def _subprocess_output(self, log_error_output=True):
         """
@@ -478,12 +464,13 @@ class SubprocessCommand(Command):
         else:
             root_relative = PathNode.root_relative
 
-        self.log(logging.INFO, (
-            '<cwd=<CYAN>{cwd}<NOCOLOUR>> <GREEN>{command}<NOCOLOUR>'
-            .format(
+        self.logger.info(
+            "<cwd=<CYAN>%(cwd)s<NOCOLOUR>> "
+            "<GREEN>%(command)s<NOCOLOUR>",
+            dict(
                 cwd=root_relative(self.cwd),
                 command=' '.join(self.callargs), )
-        ))
+        )
 
         try:
             encoded_output = subprocess.check_output(
@@ -491,26 +478,25 @@ class SubprocessCommand(Command):
         except subprocess.CalledProcessError as exception:
             if not log_error_output:
                 raise
-            output = exception.output.decode(errors='replace')
-            self.log(logging.ERROR,
-                "<BOLD>Command {exc.cmd[0]} returned code {exc.returncode}, "
-                    "output:<RESET>\n{output}"
-                "<BOLD>(error output while building "
-                    "<RED>{node.name}<NOCOLOUR>)<RESET>"
-                .format(node=self.node, exc=exception, output=output)
+            self.logger.error(
+                "Command %(prog)s returned code %(returncode)d, output:",
+                dict(
+                    prog=exception.cmd[0],
+                    returncode=exception.returncode, ),
+                extra=dict(
+                    prog_output=exception.output.decode(errors='replace'), )
             )
             raise NodeErrorReported from exception
         else:
             return encoded_output.decode(errors='replace')
 
-    def _log_output(self, output, level=logging.INFO):
-        self.log( level,
-            "Command {prog} output:<RESET>\n{output}"
-            "{bold}(output while building {node_name})"
-            .format(
-                node_name=self.node.fancified_repr(level),
-                prog=self.callargs[0], output=output,
-                bold='<BOLD>' if level >= logging.WARNING else '')
+    def _log_output(self, level, output):
+        self.logger.log( level,
+            "Command %(prog)s output:",
+            dict(
+                prog=self.callargs[0], ),
+            extra=dict(
+                prog_output=output, )
         )
 
 
@@ -742,8 +728,9 @@ class SourceFileNode(FollowingPathNode, FilelikeNode):
     def _update_self(self):
         super()._update_self()
         if self.mtime is None:
-            self.log(logging.ERROR, "Source file is missing")
-            raise MissingTargetError(self.path)
+            self.logger.error( "Source file %(path)s is missing",
+                dict(path=self.relative_path) )
+            raise NodeErrorReported from MissingTargetError(self.path)
 
 
 class FileNode(BuildablePathNode, FilelikeNode):
@@ -766,8 +753,8 @@ class FileNode(BuildablePathNode, FilelikeNode):
             if _mtime_less(prerun_mtime, self.mtime):
                 # Failed command resulted in a file written.
                 # We have to clear it.
-                self.log( logging.ERROR,
-                    'deleting {}'.format(self.relative_path) )
+                self.logger.error( "Deleting %(path)s",
+                    dict(path=self.relative_path) )
                 self.path.unlink()
             raise
 
@@ -785,10 +772,10 @@ class LazyWriteTextCommand(Command):
         text = self.textfunc()
         if not isinstance(text, str):
             raise TypeError(type(text))
-        self.log(logging.INFO, (
-            '<GREEN>Write generated text to {node.relative_path}<NOCOLOUR>'
-            .format(node=self.node)
-        ))
+        self.logger.info(
+            "<GREEN>Write generated text to %(path)s<NOCOLOUR>",
+            dict(path=self.node.relative_path)
+        )
         with self.node.open('w') as text_file:
             text_file.write(text)
 

@@ -60,7 +60,7 @@ def clean_broken_links(directory, *, recursive):
       FileNotFoundError: if the given directory does not exist.
     """
     for path in iter_broken_links(directory, recursive=recursive):
-        logger.info("Removing broken link at '{}'"
-            .format(path) )
+        logger.info( "Removing broken link at %(path)s",
+            dict(path=path) )
         path.unlink()
 

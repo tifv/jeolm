@@ -179,7 +179,8 @@ class LocalManager:
             module_name, str(module_path) )
         self._local_module = loader.load_module()
         self._local_module_loaded = True
-        logger.debug("Loaded '%s' as module '%s'", module_path, module_name)
+        logger.debug( "Loaded '%(path)s' as module '%(name)s'",
+            dict(path=module_path, name=module_name) )
 
     @property
     def driver_class(self):
@@ -203,7 +204,7 @@ class LocalManager:
 
 def report_missing_root():
     logger.critical(
-        "<BOLD>Missing <RED>.jeolm<NOCOLOUR> path "
+        "Missing <RED>.jeolm<NOCOLOUR> path "
         "that would indicate a jeolm project." )
 
 

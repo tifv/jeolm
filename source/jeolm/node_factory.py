@@ -564,8 +564,9 @@ class SourceNodeFactory:
             path=self.local.source_dir/inpath )
         if not source_node.path.exists():
             logger.warning(
-                "Requested source node {} does not exist as file."
-                .format(inpath) )
+                "Requested source node <YELLOW>%(inpath)s<NOCOLOUR> "
+                    "does not exist as file",
+                dict(inpath=inpath) )
         return source_node
 
 
@@ -593,14 +594,14 @@ class TextNode(jeolm.node.FileNode):
             return True
         old_text_hash = self._shelf.get(self._key)
         if self.text_hash != old_text_hash:
-            self.log(logging.INFO, "Change in content detected")
+            self.logger.info("Change in content detected")
             return True
         else:
-            self.log(logging.DEBUG, "No change in content detected")
+            self.logger.debug("No change in content detected")
         return False
 
     def _run_command(self):
         super()._run_command()
         self._shelf[self._key] = self.text_hash
-        self.log(logging.DEBUG, "Text database updated")
+        self.logger.debug("Text database updated")
 

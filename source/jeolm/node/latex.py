@@ -33,12 +33,12 @@ class _LaTeXCommand(SubprocessCommand):
 
         if self._latex_output_requests_rerun(latex_output):
             if reruns < self._max_latex_reruns:
-                self.log( logging.WARNING,
+                self.logger.warning(
                     "LaTeX requests rerun" + '…' * (reruns+1) )
                 return self._subprocess(reruns=reruns+1)
             else:
-                self._log_output(latex_output, level=logging.WARNING)
-                self.log( logging.WARNING,
+                self._log_output(logging.WARNING, latex_output)
+                self.logger.warning(
                     "LaTeX requests rerun too many times in a row." )
         else:
             self._print_latex_log(
@@ -62,7 +62,7 @@ class _LaTeXCommand(SubprocessCommand):
         (if latex_log_path is not None).
         """
         if self._latex_output_is_alarming(latex_output):
-            self._log_output(latex_output, level=logging.WARNING)
+            self._log_output(logging.WARNING, latex_output)
         elif latex_log_path is not None:
             with latex_log_path.open(errors='replace') as latex_log_file:
                 latex_log_text = latex_log_file.read()
@@ -90,8 +90,8 @@ class _LaTeXCommand(SubprocessCommand):
             self._latex_log_overfull_pattern.finditer(latex_log_text) )
         if not matches:
             return
-        header = "<BOLD>Overfulls and underfulls detected by LaTeX:<RESET>"
-        self.node.log( logging.WARNING, '\n'.join(chain(
+        header = "Overfulls and underfulls detected by LaTeX:<RESET>"
+        self.logger.warning('\n'.join(chain(
             (header,),
             ( self._format_overfull(match, page_numberer, file_namer)
                 for match in matches )

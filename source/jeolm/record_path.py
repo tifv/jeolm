@@ -4,6 +4,10 @@ from pathlib import PurePosixPath
 
 from .utils import natural_keyfunc
 
+import logging
+logger = logging.getLogger(__name__)
+
+
 class RecordPath:
     __slots__ = ['_parts', '_parent']
 

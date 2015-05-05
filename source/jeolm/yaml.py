@@ -21,6 +21,10 @@ from yaml import load as original_load, dump as original_dump
 
 from jeolm.record_path import RecordPath
 
+import logging
+logger = logging.getLogger(__name__)
+
+
 class JeolmLoader(the_yaml.loader.SafeLoader):
     def construct_yaml_omap(self, node):
         omap = OrderedDict()

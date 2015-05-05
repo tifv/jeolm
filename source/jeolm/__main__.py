@@ -7,9 +7,10 @@ import jeolm
 import jeolm.local
 import jeolm.target
 import jeolm.commands
+import jeolm.logging
 
-import logging
-from jeolm import logger # use 'jeolm' logger instead of '__main__' one.
+# use 'jeolm' logger instead of '__main__'
+from jeolm import logger
 
 
 def _get_base_arg_parser( prog='jeolm',
@@ -27,23 +28,19 @@ def _get_base_arg_parser( prog='jeolm',
     return parser
 
 def main(args):
-    concurrent = args.command in {'build', 'buildline'} and args.jobs > 1
-    logging_manager = jeolm.LoggingManager(
-        verbose=args.verbose, colour=args.colour, concurrent=concurrent)
-    with logging_manager:
-        if args.command is None:
-            logger.fatal("No command selected.")
-            raise SystemExit(1)
-        if args.command == 'init':
-            # special case: no local expected
-            return main_init(args, logging_manager=logging_manager)
-        try:
-            local = jeolm.local.LocalManager(root=args.root)
-        except jeolm.local.RootNotFoundError:
-            jeolm.local.report_missing_root()
-            raise SystemExit(1)
-        return args.command_func(
-            args, local=local, logging_manager=logging_manager )
+    jeolm.logging.setup_logging(verbose=args.verbose, colour=args.colour)
+    if args.command is None:
+        logger.critical("No command selected.")
+        raise SystemExit(1)
+    if args.command == 'init':
+        # special case: no local expected
+        return main_init(args)
+    try:
+        local = jeolm.local.LocalManager(root=args.root)
+    except jeolm.local.RootNotFoundError:
+        jeolm.local.report_missing_root()
+        raise SystemExit(1)
+    return args.command_func(args, local=local)
 
 
 # pylint: disable=unused-variable,unused-argument
@@ -72,7 +69,7 @@ def _add_build_arg_subparser(subparsers):
         type=int, default=1 )
     parser.set_defaults(command_func=main_build, force=None)
 
-def main_build(args, *, local, logging_manager):
+def main_build(args, *, local):
     from jeolm.node import PathNode, NodeErrorReported
     from jeolm.node_factory import TargetNodeFactory
 
@@ -136,7 +133,7 @@ def _add_buildline_arg_subparser(subparsers):
         type=int, default=1 )
     parser.set_defaults(command_func=main_buildline, force=None)
 
-def main_buildline(args, *, local, logging_manager):
+def main_buildline(args, *, local):
     from jeolm.node import PathNode
     from jeolm.buildline import BuildLine
 
@@ -149,7 +146,7 @@ def main_buildline(args, *, local, logging_manager):
     with local.open_text_node_shelf() as text_node_shelf:
         buildline = BuildLine(
             local=local, text_node_shelf=text_node_shelf,
-            semaphore=semaphore, logging_manager=logging_manager )
+            semaphore=semaphore )
         with buildline.readline_setup():
             return buildline.main()
 
@@ -164,7 +161,7 @@ def _add_review_arg_subparser(subparsers):
         nargs='*', metavar='INPATH' )
     parser.set_defaults(command_func=main_review)
 
-def main_review(args, *, local, logging_manager):
+def main_review(args, *, local):
     from jeolm.commands.review import review
     from jeolm.commands.diffprint import log_metadata_diff
     if not args.inpaths:
@@ -187,7 +184,7 @@ def _add_init_arg_subparser(subparsers):
         nargs='*', metavar='RESOURCE' )
     # command_func default is intentionally not set
 
-def main_init(args, logging_manager):
+def main_init(args):
     root = args.root
     if root is None:
         root = Path.cwd()
@@ -209,7 +206,7 @@ def _add_list_arg_subparser(subparsers):
         dest='source_type', metavar='SOURCE_TYPE' )
     parser.set_defaults(command_func=main_list)
 
-def main_list(args, *, local, logging_manager):
+def main_list(args, *, local):
     from jeolm.commands.list_sources import print_source_list
     if not args.targets:
         logger.warning('No-op: no targets for source list')
@@ -229,7 +226,7 @@ def _add_spell_arg_subparser(subparsers):
         nargs='*', metavar='TARGET', type=jeolm.target.Target.from_string )
     parser.set_defaults(command_func=main_spell)
 
-def main_spell(args, *, local, logging_manager):
+def main_spell(args, *, local):
     from jeolm.commands.spell import check_spelling
     if not args.targets:
         logger.warning('No-op: no targets for spell check')
@@ -255,7 +252,7 @@ def _add_makefile_arg_subparser(subparsers):
             '(and depends on); default is stdout' ) )
     parser.set_defaults(command_func=main_makefile)
 
-def main_makefile(args, *, local, logging_manager):
+def main_makefile(args, *, local):
     from jeolm.commands.makefile import MakefileGenerator
     from jeolm.node import PathNode, NodeErrorReported
     from jeolm.node_factory import TargetNodeFactory
@@ -276,7 +273,7 @@ def main_makefile(args, *, local, logging_manager):
             for node in unbuildable_nodes:
                 node.update()
     for node in unrepresentable_nodes:
-        node.log( logging.WARNING,
+        node.logger.warning(
             "Node has no possible representation in Makefile" )
     with open(args.output_makefile, 'w') as makefile:
         makefile.write(makefile_string)
@@ -316,7 +313,7 @@ def _add_excerpt_arg_subparser(subparsers):
         help='output archive in tar.gz format (default)' )
     parser.set_defaults(command_func=main_excerpt, format='tar.gz')
 
-def main_excerpt(args, *, local, logging_manager):
+def main_excerpt(args, *, local):
     from jeolm.node import PathNode, NodeErrorReported
     from jeolm.node_factory import TargetNodeFactory, DocumentNode
     from jeolm.commands.excerpt import excerpt_document
@@ -352,7 +349,7 @@ def _add_clean_arg_subparser(subparsers):
         help='clean toplevel links to build/**.pdf' )
     parser.set_defaults(command_func=main_clean)
 
-def main_clean(args, *, local, logging_manager):
+def main_clean(args, *, local):
     from jeolm.commands.clean import clean_build_links, clean_broken_links
     clean_build_links(local.root)
     clean_broken_links(local.build_dir, recursive=True)

@@ -3,6 +3,9 @@ import re
 from .record_path import RecordPath
 from .flags import FlagContainer, UnutilizedFlagError
 
+import logging
+logger = logging.getLogger(__name__)
+
 
 class TargetError(Exception):
     pass

@@ -89,8 +89,8 @@ class MetadataManager(RecordsManager):
                 self.delete(metainpath)
             else:
                 logger.warning(
-                    '{} was not recorded and does not exist as file. No-op.'
-                    .format(metainpath) )
+                    "%(inpath)s was not recorded and does not exist as file. No-op.",
+                    dict(inpath=inpath) )
             return
         # path exists
 
@@ -121,20 +121,20 @@ class MetadataManager(RecordsManager):
             subpath = self.local.source_dir/subinpath
             subsuffix = subinpath.suffix
             if subsuffix not in self.source_types:
-                logger.warning('<BOLD><MAGENTA>{}<NOCOLOUR>: '
-                    'suffix of <YELLOW>{}<NOCOLOUR> unrecognized<RESET>'
-                    .format(inpath, subname) )
+                logger.warning( "<MAGENTA>%(inpath)s<NOCOLOUR>: "
+                    "suffix of <YELLOW>%(name)s<NOCOLOUR> unrecognized",
+                    dict(inpath=inpath, name=subname) )
                 continue
             subpath_is_dir = subpath.is_dir()
             if subsuffix != '' and subpath_is_dir:
-                logger.warning('<BOLD><MAGENTA>{}<NOCOLOUR>: '
-                    'directory <YELLOW>{}<NOCOLOUR> has suffix<RESET>'
-                    .format(inpath, subname) )
+                logger.warning( "<MAGENTA>%(inpath)s<NOCOLOUR>: "
+                    "directory <YELLOW>%(name)s<NOCOLOUR> has suffix",
+                    dict(inpath=inpath, name=subname) )
                 continue
             if subsuffix == '' and not subpath_is_dir:
-                logger.warning('<BOLD><MAGENTA>{}<NOCOLOUR>: '
-                    'file <YELLOW>{}<NOCOLOUR> has no suffix<RESET>'
-                    .format(inpath, subname) )
+                logger.warning( "<MAGENTA>%(inpath)s<NOCOLOUR>: "
+                    "file <YELLOW>%(name)s<NOCOLOUR> has no suffix",
+                    dict(inpath=inpath, name=subname) )
                 continue
             self.review(subinpath)
 
@@ -162,9 +162,9 @@ class MetadataManager(RecordsManager):
         elif metadata['$build$special'] == 'standalone':
             metadata.setdefault('$source$able', False)
         else:
-            logger.warning("<BOLD><MAGENTA>{}<NOCOLOUR>: "
-                "<YELLOW>$build$special<NOCOLOUR> value unrecognized<RESET>"
-                .format(inpath) )
+            logger.warning( "<MAGENTA>%(inpath)s<NOCOLOUR>: "
+                "<YELLOW>$build$special<NOCOLOUR> value unrecognized",
+                dict(inpath=inpath) )
         return metadata
 
     def _query_tex_content(self, inpath, tex_content):
@@ -176,9 +176,9 @@ class MetadataManager(RecordsManager):
 
     def _query_tex_figures(self, inpath, tex_content):
         if self.tex_includegraphics_pattern.search(tex_content) is not None:
-            logger.warning("<BOLD><MAGENTA>{}<NOCOLOUR>: "
-                "<YELLOW>\\includegraphics<NOCOLOUR> command found<RESET>"
-                .format(inpath) )
+            logger.warning("<MAGENTA>%(inpath)s<NOCOLOUR>: "
+                "<YELLOW>" r"\includegraphics" "<NOCOLOUR> command found",
+                dict(inpath=inpath) )
         figures = unique(
             match.group('figure')
             for match in self.tex_figure_pattern.finditer(tex_content) )
@@ -222,9 +222,9 @@ class MetadataManager(RecordsManager):
             piece_io.name = inpath
             piece = yaml.load(piece_io)
             if not isinstance(piece, dict) or len(piece) != 1:
-                logger.error("<BOLD><MAGENTA>{}<NOCOLOUR>: "
-                    "unrecognized metadata piece<RESET>"
-                    .format(inpath) )
+                logger.error( "<MAGENTA>%(inpath)s<NOCOLOUR>: "
+                    "unrecognized metadata piece",
+                    dict(inpath=inpath) )
                 raise ValueError(piece)
             (key, value), = piece.items()
             if extend:
@@ -233,9 +233,9 @@ class MetadataManager(RecordsManager):
                 elif isinstance(value, dict):
                     metadata.setdefault(key, {}).update(value)
                 else:
-                    logger.error("<BOLD><MAGENTA>{}<NOCOLOUR>: "
-                        "extending value may be only a list or a dict.<RESET>"
-                        .format(inpath) )
+                    logger.error( "<MAGENTA>%(inpath)s<NOCOLOUR>: "
+                        "extending value may be only a list or a dict",
+                        dict(inpath=inpath) )
                     raise TypeError(value)
             else:
                 metadata[key] = value
@@ -345,11 +345,11 @@ class MetadataManager(RecordsManager):
                     if match.group('key') != dropped_key:
                         continue
                     logger.warning(
-                        'Dropped key <BOLD><RED>{key}<RESET> '
-                        'detected in <BOLD><YELLOW>{metapath}<RESET> '
-                        '(replace it with {modern_key})'
-                        .format(
+                        "Dropped key <RED>%(key)s<NOCOLOUR> "
+                        "detected in <YELLOW>%(metapath)s<NOCOLOUR> "
+                        "(replace it with %(modern_key)s)",
+                        dict(
                             key=dropped_key, metapath=metapath,
-                            modern_key=modern_key )
+                            modern_key=modern_key, )
                     )
 

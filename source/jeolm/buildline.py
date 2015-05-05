@@ -29,12 +29,11 @@ logger = logging.getLogger(__name__)
 class BuildLine:
 
     def __init__(self, *,
-        local, text_node_shelf, semaphore, logging_manager
+        local, text_node_shelf, semaphore
     ):
         self.local = local
         self.text_node_shelf = text_node_shelf
         self.semaphore = semaphore
-        self.logging_manager = logging_manager
         metadata_class = self.local.metadata_class
         if not issubclass(NotifiedMetadataManager, metadata_class):
             metadata_class = type( '_MetadataManager',
@@ -77,17 +76,15 @@ class BuildLine:
 
         with log_metadata_diff(self.metadata, logger=logger):
             for review_path in review_list:
+                inpath, = jeolm.commands.review.resolve_inpaths(
+                    [review_path], source_dir=self.local.source_dir )
                 try:
-                    inpath, = jeolm.commands.review.resolve_inpaths(
-                        [review_path], source_dir=self.local.source_dir )
                     self.metadata.review(inpath)
                 except Exception: # pylint: disable=broad-except
-                    traceback.print_exc()
-                    logger.error(
-                        "<BOLD>Error occured while reviewing "
-                        "<RED>{}<NOCOLOUR>.<RESET>"
-                        .format(review_path.relative_to(self.local.source_dir))
-                    )
+                    logger.exception(
+                        "Error occured while reviewing "
+                            "<RED>%(inpath)s<NOCOLOUR>",
+                        dict(inpath=inpath) )
         self.driver.clear()
         self.metadata.feed_metadata(self.driver)
 
@@ -100,7 +97,6 @@ class BuildLine:
     def mainloop(self):
         targets = []
         while True:
-            self.logging_manager.sync()
             try:
                 targets_string = self.input()
             except (KeyboardInterrupt, EOFError):
@@ -225,8 +221,9 @@ class NotifiedMetadataManager(jeolm.metadata.MetadataManager):
 
         def add(self, mapping):
             for path, descriptor in mapping.items():
-                logger.debug( "Start watching path {path} (wd={descriptor})"
-                    .format(path=path, descriptor=descriptor) )
+                logger.debug(
+                    "Start watching path %(path)s (wd=%(descriptor)d)",
+                    dict(path=path, descriptor=descriptor) )
                 assert path not in self.wd_by_path
                 assert descriptor not in self.path_by_wd
                 self.wd_by_path[path] = descriptor
@@ -235,8 +232,9 @@ class NotifiedMetadataManager(jeolm.metadata.MetadataManager):
         def pop(self, *, path):
             descriptor = self.wd_by_path.pop(path)
             reverse_path = self.path_by_wd.pop(descriptor)
-            logger.debug( "Stop watching path {path} (wd={descriptor})"
-                .format(path=path, descriptor=descriptor) )
+            logger.debug(
+                "Stop watching path %(path)s (wd=%(descriptor)d)",
+                dict(path=path, descriptor=descriptor) )
             assert reverse_path == path
             return descriptor
 

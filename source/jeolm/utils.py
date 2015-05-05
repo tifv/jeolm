@@ -1,6 +1,10 @@
 import re
 from collections import OrderedDict
 
+import logging
+logger = logging.getLogger(__name__)
+
+
 def unique(*iterables):
     seen = set()
     unique = list()
