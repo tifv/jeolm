@@ -383,7 +383,7 @@ class PackageNodeFactory:
 
 
 class FigureNodeFactory:
-    output_figure_formats = frozenset(('eps', 'pdf', '<pdflatex>'))
+    output_figure_formats = frozenset(('<latex>', '<pdflatex>', 'eps', 'pdf'))
 
     def __init__(self, *, local, driver,
         build_dir_node,
@@ -398,7 +398,8 @@ class FigureNodeFactory:
 
     def __call__(self, metapath, *, figure_format):
         assert isinstance(metapath, RecordPath), type(metapath)
-        assert figure_format in self.output_figure_formats, figure_format
+        if figure_format not in self.output_figure_formats:
+            raise RuntimeError(figure_format)
         try:
             node_dict = self.nodes[metapath]
         except KeyError:
