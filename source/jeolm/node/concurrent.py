@@ -3,7 +3,7 @@ from functools import partial
 import threading
 import queue
 
-from . import NodeUpdater, NodeErrorReported
+from . import NodeUpdater, NodeErrorReported, BuildableNode
 
 class ConcurrentNodeUpdater(NodeUpdater):
 
@@ -42,23 +42,20 @@ class ConcurrentNodeUpdater(NodeUpdater):
             node = ready_for_update.pop()
             if self.needs_map.pop(node):
                 raise RuntimeError
-            try:
-                concurrency = node.wants_concurrency
-            except AttributeError:
-                concurrency = False
-            if not concurrency:
+            if ( not isinstance(node, BuildableNode) or
+                not node.wants_concurrency
+            ):
                 try:
                     self._update_node_self(node)
                 except NodeErrorReported:
                     error_occured = True
                 else:
                     ready_for_update.update(self._reverse_needs_pop(node))
-            else:
-                thread = updates_threads[node] = threading.Thread(
-                    target=partial(
-                        self._update_node_self_put, node, updates_finished )
-                )
-                thread.start()
+                continue
+            thread = updates_threads[node] = threading.Thread(target=partial(
+                self._update_node_self_put, node, updates_finished
+            ))
+            thread.start()
         if error_occured:
             raise NodeErrorReported
         self._check_finished_update()

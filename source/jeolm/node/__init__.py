@@ -179,8 +179,6 @@ class Node:
     def update_self(self):
         self.updated = True
 
-    wants_concurrency = False
-
     def append_needs(self, node):
         """
         Append a node to the needs list.
