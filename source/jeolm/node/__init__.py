@@ -19,10 +19,6 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-class CycleError(RuntimeError):
-    """Node dependencies formed a cycle."""
-    pass
-
 class MissingTargetError(FileNotFoundError):
     """Missing target file after execution of build commands."""
     pass
@@ -30,47 +26,108 @@ class MissingTargetError(FileNotFoundError):
 class NodeErrorReported(ValueError):
     pass
 
-class NodeMultipleExceptions(NodeErrorReported):
-    def __init__(self, exceptions):
-        assert isinstance(exceptions, set)
-        self.exceptions = exceptions
+
+class NodeUpdater:
+
+    def __init__(self):
+        self.needs_map = dict()
+        self.reverse_needs_map = dict()
         super().__init__()
 
-class CatchingThread(threading.Thread):
-    def __init__(self, *, target=None):
-        super().__init__(target=target)
-        assert not hasattr(self, 'exception')
-        self.exc_info = None, None, None
+    def clear(self):
+        """Must be called before reusing the updater."""
+        self.needs_map.clear()
+        self.reverse_needs_map.clear()
 
-    def run(self):
-        """
-        Extension.
+    def update(self, node):
+        if node.updated:
+            return
+        self._add_node(node)
+        self._update_added_nodes()
 
-        Catch and save any exception occured (normal exception, i. e.
-        Exception instance).
-        """
+    def _add_node(self, node, *, _rev_need=None):
+        assert not node.updated
+
         try:
-            return super().run()
-        except Exception: # pylint: disable=broad-except
-            self.exc_info = sys.exc_info()
+            rev_needs = self.reverse_needs_map[node]
+        except KeyError:
+            already_added = False
+            rev_needs = self.reverse_needs_map[node] = set()
+        else:
+            already_added = True
+        if _rev_need is not None:
+            rev_needs.add(_rev_need)
+        if already_added:
+            return
 
-    def join(self, timeout=None):
-        """
-        Extension.
+        assert node not in self.needs_map
+        needs = self.needs_map[node] = set()
+        for need in node.needs:
+            if need.updated:
+                continue
+            self._add_node(need, _rev_need=node)
+            needs.add(need)
 
-        Raise any exception catched by run().
-        """
-        super().join(timeout=timeout)
-        # pylint: disable=unused-variable
-        exc_type, exc_value, exc_traceback = self.exc_info
-        # pylint: enable=unused-variable
-        if exc_type is not None:
-            raise exc_value # pylint: disable=raising-bad-type
+    def _update_added_nodes(self):
+        ready_for_update = { node
+            for node, needs in self.needs_map.items()
+            if not needs }
+        while ready_for_update:
+            node = ready_for_update.pop()
+            if self.needs_map.pop(node):
+                raise RuntimeError
+            self._update_node_self(node)
+            ready_for_update.update(self._reverse_needs_pop(node))
+        self._check_finished_update()
+
+    @staticmethod
+    def _update_node_self(node):
+        try:
+            assert not node.updated
+            assert all(need.updated for need in node.needs)
+            node.update_self()
+            assert node.updated
+        except NodeErrorReported:
+            raise
+        except Exception as exception:
+            node.logger.exception("Exception occured:")
+            raise NodeErrorReported from exception
+
+    def _reverse_needs_pop(self, node):
+        """Yield nodes that has no unupdated dependencies left."""
+        for rev_need in self.reverse_needs_map.pop(node):
+            rev_need_needs = self.needs_map[rev_need]
+            assert node in rev_need_needs
+            rev_need_needs.discard(node)
+            if not rev_need_needs:
+                yield rev_need
+
+    def _check_finished_update(self):
+        if self.needs_map:
+            raise RuntimeError( "Node dependencies formed a cycle:\n{}"
+                .format('\n'.join(
+                    repr(node) for node in self._find_needs_cycle()
+                )) )
+        if self.reverse_needs_map:
+            raise RuntimeError
+
+    def _find_needs_cycle(self):
+        seen_nodes_map = dict()
+        seen_nodes_list = list()
+        assert self.needs_map
+        node = next(iter(self.needs_map)) # arbitrary node
+        while True:
+            if node in seen_nodes_map:
+                return seen_nodes_list[seen_nodes_map[node]:]
+            seen_nodes_map[node] = len(seen_nodes_list)
+            seen_nodes_list.append(node)
+            assert self.needs_map[node]
+            node = next(iter(self.needs_map[node]))
 
 
 def _mtime_less(mtime, other):
     if other is None:
-        raise ValueError
+        return False
     if mtime is None:
         return True
     return mtime < other
@@ -87,11 +144,13 @@ class Node:
         needs (list of Node):
             prerequisites of this node.
             Should not be populated directly.
+        updated (bool):
+            if the node was updated. If equal to True, node will never be
+            rebuilt.
         modified (bool):
-            if the node was modified. If equal to True, will cause any
-            dependent nodes to be rebuilt.
-        thread (CatchingThread or None):
-            if not None, thread responsible for updating the node.
+            if the node was modified. If equal to True, will cause most
+            dependent nodes to be rebuilt. (Although some Node subclasses
+            may ignore it.)
     """
 
     def __init__(self, *, name=None, needs=()):
@@ -110,137 +169,17 @@ class Node:
             self.name = str(id(self))
         self.needs = list(needs)
 
+        self.updated = False
         self.modified = False
-
-        # _updated (bool): if the node was updated, i.e. if node.update or
-        # node.update_start method has ever completed.
-        self._updated = False
-        # _locked (bool): dependency cycle protection.
-        self._locked = False
-
-        self.thread = None
 
     def __hash__(self):
         return hash(id(self))
 
-    def update(self, *, semaphore=None):
-        """
-        Update the node, first recursively updating needs.
+    # Should be only called by NodeUpdater
+    def update_self(self):
+        self.updated = True
 
-        Args:
-            semaphore (threading.BoundedSemaphore or None, optional):
-                if not None, the node.update_start method will be called
-                prior to normal update process, allowing concurrent execution.
-                Default is None.
-
-        Returns None.
-        """
-
-        if semaphore is not None:
-            self.update_start(semaphore=semaphore)
-        with self._check_for_cycle():
-            if self._updated:
-                if self.thread is not None:
-                    assert isinstance(self.thread, CatchingThread)
-                    self.thread.join()
-                return
-            for need in self.needs:
-                need.update()
-            self._update_self()
-            self._updated = True
-            return
-
-    def update_start(self, *, semaphore):
-        """
-        Create a thread that will update the node.
-
-        Creates a thread that will update the node after waiting for
-        prerequisites (all the required thread are also created).
-        Stores thread object in self.thread.
-
-        The number of concurrently running build commands is limited by
-        provided semaphore.
-
-        Args:
-            semaphore (threading.BoundedSemaphore):
-                semaphore that limits concurrent execution of build commands.
-
-        Returns None.
-
-        Finalization of update process should be ensured by subsequent call
-        to node.update method.
-        """
-
-        if not isinstance(semaphore, threading.BoundedSemaphore):
-            raise TypeError(type(semaphore))
-
-        with self._check_for_cycle():
-            if self._updated:
-                return
-            for need in self.needs:
-                need.update_start(semaphore=semaphore)
-            def wait_and_update():
-                subthreads = iter( need.thread
-                    for need in self.needs
-                    if need.thread is not None )
-                exceptions = set()
-                for subthread in subthreads:
-                    assert isinstance(subthread, CatchingThread)
-                    try:
-                        subthread.join()
-                    except NodeMultipleExceptions as exception:
-                        exceptions.update(exception.exceptions)
-                    except NodeErrorReported as exception:
-                        exceptions.add(exception)
-                if exceptions:
-                    assert all( isinstance(exc, NodeErrorReported)
-                        for exc in exceptions ), exceptions
-                    raise NodeMultipleExceptions(exceptions)
-                with semaphore:
-                    try:
-                        self._update_self()
-                    except NodeErrorReported:
-                        raise
-                    except Exception as exception:
-                        self.logger.exception("Exception occured:")
-                        raise NodeErrorReported from exception
-            thread = self.thread = CatchingThread(target=wait_and_update)
-            thread.start()
-            self._updated = True
-
-    @contextmanager
-    def _check_for_cycle(self):
-        if self._locked:
-            raise CycleError(self.name)
-        self._locked = True
-        try:
-            yield
-        except CycleError as exception:
-            exception.args += (self.name,)
-            raise
-        finally:
-            self._locked = False
-
-    # Should be only called by node.update method or by thread created by
-    # node.update_start method.
-    def _update_self(self):
-        pass
-
-    # This will only get used by BuildableNode and subclasses.
-    def _needs_build(self):
-        """
-        If the node needs to be (re)built.
-
-        Node needs to be rebuilt in the following case:
-          - any of needed nodes are modified.
-        Subclasses may introduce different conditions.
-
-        Returns:
-            bool: True if the node needs to be rebuilt, False otherwise.
-        """
-        if any(node.modified for node in self.needs):
-            return True
-        return False
+    wants_concurrency = False
 
     def append_needs(self, node):
         """
@@ -266,8 +205,6 @@ class Node:
             self._append_needs(node)
 
     def _append_needs(self, node):
-        if self._updated:
-            raise RuntimeError
         if not isinstance(node, Node):
             raise TypeError(node)
         self.needs.append(node)
@@ -339,10 +276,32 @@ class BuildableNode(Node):
         super().__init__(name=name, needs=needs, **kwargs)
         self.command = None
 
-    def _update_self(self):
-        super()._update_self()
+    def update_self(self):
+        super().update_self()
         if self._needs_build():
             self._run_command()
+
+    @property
+    def wants_concurrency(self):
+        try:
+            return self.command.wants_concurrency
+        except AttributeError:
+            return False
+
+    def _needs_build(self):
+        """
+        If the node needs to be (re)built.
+
+        Node needs to be rebuilt in the following case:
+          - any of needed nodes are modified.
+        Subclasses may introduce different conditions.
+
+        Returns:
+            bool: True if the node needs to be rebuilt, False otherwise.
+        """
+        if any(node.modified for node in self.needs):
+            return True
+        return False
 
     def force(self):
         """
@@ -350,7 +309,7 @@ class BuildableNode(Node):
         """
         force_node = Node(name='{}:force'.format(self.name))
         self.needs.insert(0, force_node)
-        force_node.update()
+        force_node.updated = True
         force_node.modified = True
 
     def set_command(self, command):
@@ -374,7 +333,7 @@ class BuildableNode(Node):
             callargs, cwd=cwd, **kwargs ))
 
     def _run_command(self):
-        # Should be only called by self._update_self()
+        # Should be only called by self.update_self()
         if self.command is None:
             raise ValueError(
                 "Node {node} cannot be rebuilt due to the lack of command"
@@ -389,6 +348,8 @@ class Command:
         if not isinstance(node, Node):
             raise RuntimeError(type(node))
         self.node = node
+
+    wants_concurrency = False
 
     def __call__(self):
         pass
@@ -412,6 +373,8 @@ class SubprocessCommand(Command):
         self.cwd = cwd
         kwargs.setdefault('stderr', subprocess.STDOUT)
         self.kwargs = kwargs
+
+    wants_concurrency = True
 
     def __call__(self):
         super().__call__()
@@ -520,9 +483,24 @@ class DatedNode(Node):
         super().__init__(name=name, needs=needs, **kwargs)
         self.mtime = None
 
-    def _update_self(self):
+    def update_self(self):
         self._load_mtime()
-        super()._update_self()
+        super().update_self()
+
+    def _load_mtime(self):
+        """
+        Set node.mtime attribute to appropriate value.
+
+        No-op here. Subclasses may introduce appropriate behavior.
+        """
+        pass
+
+    def touch(self):
+        """Set node.mtime to the current time."""
+        self.mtime = int(time.time() * (10**9))
+
+
+class BuildableDatedNode(DatedNode, BuildableNode):
 
     def _needs_build(self):
         """
@@ -542,24 +520,14 @@ class DatedNode(Node):
         mtime = self.mtime
         if mtime is None:
             return True
-        for node in self.needs:
-            if not isinstance(node, DatedNode):
+        for need in self.needs:
+            if not isinstance(need, DatedNode):
                 continue
-            if _mtime_less(mtime, node.mtime):
+            if need.mtime is None:
+                raise RuntimeError
+            if _mtime_less(mtime, need.mtime):
                 return True
         return False
-
-    def _load_mtime(self):
-        """
-        Set node.mtime attribute to appropriate value.
-
-        No-op here. Subclasses may introduce appropriate behavior.
-        """
-        pass
-
-    def touch(self):
-        """Set node.mtime to the current time."""
-        self.mtime = int(time.time() * (10**9))
 
 
 class PathNode(DatedNode):
@@ -649,7 +617,7 @@ class PathNode(DatedNode):
         return path.relative_to(cls.root)
 
 
-class BuildablePathNode(PathNode, BuildableNode):
+class BuildablePathNode(PathNode, BuildableDatedNode):
 
     def _run_command(self):
         prerun_mtime = self.mtime
@@ -725,8 +693,8 @@ class FilelikeNode(PathNode):
 class SourceFileNode(FollowingPathNode, FilelikeNode):
     """Represents a source file."""
 
-    def _update_self(self):
-        super()._update_self()
+    def update_self(self):
+        super().update_self()
         if self.mtime is None:
             self.logger.error( "Source file %(path)s is missing",
                 dict(path=self.relative_path) )

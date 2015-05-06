@@ -29,11 +29,11 @@ logger = logging.getLogger(__name__)
 class BuildLine:
 
     def __init__(self, *,
-        local, text_node_shelf, semaphore
+        local, text_node_shelf, node_updater
     ):
         self.local = local
         self.text_node_shelf = text_node_shelf
-        self.semaphore = semaphore
+        self.node_updater = node_updater
         metadata_class = self.local.metadata_class
         if not issubclass(NotifiedMetadataManager, metadata_class):
             metadata_class = type( '_MetadataManager',
@@ -120,8 +120,7 @@ class BuildLine:
             if not targets:
                 continue
             try:
-                with suppress(NodeErrorReported):
-                    self.build(targets)
+                self.build(targets)
             except Exception: # pylint: disable=broad-except
                 traceback.print_exc()
 
@@ -144,7 +143,9 @@ class BuildLine:
             local=self.local, driver=self.driver,
             text_node_shelf=self.text_node_shelf )
         target_node = target_node_factory(targets, delegate=True)
-        target_node.update(semaphore=self.semaphore)
+        self.node_updater.clear()
+        with suppress(NodeErrorReported):
+            self.node_updater.update(target_node)
 
 class NotifiedMetadataManager(jeolm.metadata.MetadataManager):
 

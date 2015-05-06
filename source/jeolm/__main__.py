@@ -27,6 +27,15 @@ def _get_base_arg_parser( prog='jeolm',
         action='store_false', dest='colour' )
     return parser
 
+def _jobs_arg(arg):
+    try:
+        jobs = int(arg)
+    except ValueError:
+        jobs = 0
+    if jobs < 1:
+        raise argparse.ArgumentTypeError("positive integer expected")
+    return jobs
+
 def main(args):
     jeolm.logging.setup_logging(verbose=args.verbose, colour=args.colour)
     if args.command is None:
@@ -66,7 +75,7 @@ def _add_build_arg_subparser(subparsers):
         action='store_false', dest='delegate' )
     parser.add_argument( '-j', '--jobs',
         help='number of parallel jobs',
-        type=int, default=1 )
+        type=_jobs_arg, default=1 )
     parser.set_defaults(command_func=main_build, force=None)
 
 def main_build(args, *, local):
@@ -76,10 +85,7 @@ def main_build(args, *, local):
     if not args.targets:
         logger.warning('No-op: no targets for building')
     PathNode.root = local.root
-    if args.jobs < 1:
-        raise argparse.ArgumentTypeError(
-            "Positive integral number of jobs is required." )
-    semaphore = _build_get_semaphore(args.jobs)
+    node_updater = _build_get_node_updater(args.jobs)
     driver = jeolm.commands.simple_load_driver(local)
 
     with local.open_text_node_shelf() as text_node_shelf:
@@ -96,7 +102,7 @@ def main_build(args, *, local):
         else:
             raise RuntimeError(args.force)
         with suppress(NodeErrorReported):
-            target_node.update(semaphore=semaphore)
+            node_updater.update(target_node)
 
 def _build_force_latex(target_node):
     from jeolm.node.latex import LaTeXNode
@@ -113,13 +119,16 @@ def _build_force_generate(target_node):
         ):
             node.source.force()
 
-def _build_get_semaphore(jobs):
+def _build_get_node_updater(jobs):
     assert isinstance(jobs, int), type(jobs)
     if jobs > 1:
-        import threading
-        return threading.BoundedSemaphore(value=jobs)
+        from jeolm.node.concurrent import ConcurrentNodeUpdater
+        return ConcurrentNodeUpdater(jobs=jobs)
+    elif jobs == 1:
+        from jeolm.node import NodeUpdater
+        return NodeUpdater()
     else:
-        return None
+        raise RuntimeError
 
 
 ####################
@@ -130,7 +139,7 @@ def _add_buildline_arg_subparser(subparsers):
         help='start an interactive build shell' )
     parser.add_argument( '-j', '--jobs',
         help='number of parallel jobs',
-        type=int, default=1 )
+        type=_jobs_arg, default=1 )
     parser.set_defaults(command_func=main_buildline, force=None)
 
 def main_buildline(args, *, local):
@@ -138,15 +147,12 @@ def main_buildline(args, *, local):
     from jeolm.buildline import BuildLine
 
     PathNode.root = local.root
-    if args.jobs < 1:
-        raise argparse.ArgumentTypeError(
-            "Positive integral number of jobs is required." )
-    semaphore = _build_get_semaphore(args.jobs)
+    node_updater = _build_get_node_updater(args.jobs)
 
     with local.open_text_node_shelf() as text_node_shelf:
         buildline = BuildLine(
             local=local, text_node_shelf=text_node_shelf,
-            semaphore=semaphore )
+            node_updater=node_updater, )
         with buildline.readline_setup():
             return buildline.main()
 
@@ -260,6 +266,7 @@ def main_makefile(args, *, local):
     if not args.targets:
         logger.warning('No-op: no targets for makefile generation')
     PathNode.root = local.root
+    node_updater = _build_get_node_updater(jobs=1)
     driver = jeolm.commands.simple_load_driver(local)
 
     with local.open_text_node_shelf() as text_node_shelf:
@@ -271,7 +278,7 @@ def main_makefile(args, *, local):
                 viewpoint=local.root )
         with suppress(NodeErrorReported):
             for node in unbuildable_nodes:
-                node.update()
+                node_updater.update(node)
     for node in unrepresentable_nodes:
         node.logger.warning(
             "Node has no possible representation in Makefile" )
@@ -299,6 +306,9 @@ def _add_excerpt_arg_subparser(subparsers):
         metavar='TARGET', type=jeolm.target.Target.from_string,
         help='target to create an archive for; '
             'no delegation will be performed on it' )
+    parser.add_argument( '-j', '--jobs',
+        help='number of parallel jobs',
+        type=_jobs_arg, default=1 )
     parser.add_argument( '-o', '--output',
         help='output file; default is stdout')
     parser.add_argument( '--include-pdf',
@@ -319,6 +329,8 @@ def main_excerpt(args, *, local):
     from jeolm.commands.excerpt import excerpt_document
 
     PathNode.root = local.root
+    node_updater = _build_get_node_updater(args.jobs)
+
     driver = jeolm.commands.simple_load_driver(local)
     with local.open_text_node_shelf() as text_node_shelf:
         target_node_factory = TargetNodeFactory(
@@ -331,14 +343,16 @@ def main_excerpt(args, *, local):
         else:
             from sys import stdout
             output_file = stdout.buffer
-        with suppress(NodeErrorReported):
-            try:
-                excerpt_document( document_node, stream=output_file,
-                    include_pdf=args.include_pdf, archive_format=args.format,
-                    figure_node_factory=figure_node_factory )
-            finally:
-                if args.output is not None:
-                    output_file.close()
+        try:
+            excerpt_document( document_node, stream=output_file,
+                include_pdf=args.include_pdf, archive_format=args.format,
+                figure_node_factory=figure_node_factory,
+                node_updater=node_updater )
+        except NodeErrorReported:
+            pass
+        finally:
+            if args.output is not None:
+                output_file.close()
 
 
 ####################

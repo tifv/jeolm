@@ -7,8 +7,7 @@ from stat import S_ISREG as stat_is_regular_file
 import tarfile
 import zipfile
 
-from jeolm.node import (
-    FilelikeNode, FollowingPathNode,
+from jeolm.node import ( Node, FilelikeNode,
     FileNode, LazyWriteTextCommand, )
 from jeolm.node.symlink import SymLinkedFileNode
 from jeolm.node.directory import DirectoryNode
@@ -41,11 +40,7 @@ class _ArchiveManager:
 
     def add_member_node(self, path, node):
 
-        while isinstance(node, SymLinkedFileNode):
-            node = node.source
         if not isinstance(node, FilelikeNode):
-            raise RuntimeError(node)
-        if not isinstance(node, (FollowingPathNode, FileNode)):
             raise RuntimeError(node)
 
         if (isinstance(node, FileNode) and
@@ -53,7 +48,7 @@ class _ArchiveManager:
             return self.add_member_str(
                 path, node.command.textfunc(), time.time() )
 
-        node.update()
+        assert node.updated
         node_stat = node.stat(follow_symlinks=True)
         assert stat_is_regular_file(node_stat.st_mode)
         with node.open(mode='rb') as content_stream:
@@ -120,7 +115,7 @@ class _ZipArchiveManager(_ArchiveManager):
 
 
 def excerpt_document( document_node, *, stream, include_pdf=False,
-    figure_node_factory,
+    figure_node_factory, node_updater,
     archive_format='tar.gz'
 ):
     """Return None."""
@@ -139,7 +134,7 @@ def excerpt_document( document_node, *, stream, include_pdf=False,
         if isinstance(node, LaTeXNode)
         if node.path.parent == build_dir]
 
-    archived_nodes = list()
+    archive_node = Node(name='archive:{}'.format(document_node.name))
     for node in latex_node.needs:
         if isinstance(node, DirectoryNode):
             continue
@@ -147,18 +142,19 @@ def excerpt_document( document_node, *, stream, include_pdf=False,
             raise RuntimeError(node)
         if build_dir != node.path.parent:
             raise RuntimeError(node)
-        archived_nodes.append(node)
+        archive_node.append_needs(node)
     for node in document_node.figure_nodes:
-        archived_nodes.extend(
+        archive_node.extend_needs(
             _get_other_figure_formats( node,
                 figure_node_factory=figure_node_factory,
                 build_dir_node=build_dir_node )
         )
     if include_pdf:
-        archived_nodes.append(document_node)
+        archive_node.append_needs(document_node)
 
+    node_updater.update(archive_node)
     with archive_manager:
-        for member_node in archived_nodes:
+        for member_node in archive_node.needs:
             archive_manager.add_member_node(
                 path=str(member_node.path.relative_to(build_dir)),
                 node=member_node )

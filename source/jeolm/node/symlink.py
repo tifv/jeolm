@@ -74,7 +74,7 @@ class SymLinkNode(ProductNode):
                 raise TypeError(type(self.link_target))
             if os.path.lexists(str(self.path)):
                 self.path.unlink()
-            self.logger.info(
+            self.logger.debug(
                 "<source=<CYAN>%(source_name)s<NOCOLOUR>> "
                 "<GREEN>ln --symbolic %(link_target)s %(path)s<NOCOLOUR>",
                 dict(
@@ -85,6 +85,8 @@ class SymLinkNode(ProductNode):
             os.symlink(self.link_target, str(self.path))
             self.modified = True
         self.set_command(link_command)
+
+    wants_concurrency = False
 
     def _load_mtime(self):
         """
@@ -100,7 +102,8 @@ class SymLinkNode(ProductNode):
             return
         source = self.source
         source_mtime = source.mtime
-        assert source_mtime is not None, self
+        if source_mtime is None:
+            raise RuntimeError
         if _mtime_less(mtime, source_mtime):
             self.mtime = source_mtime
         if source.modified:
@@ -164,10 +167,13 @@ class ProxyNode(ProductNode):
         super().__init__( source=source, path=source.path,
             name=name, **kwargs )
 
+    wants_concurrency = False
+
     # Override
-    def _update_self(self):
+    def update_self(self):
         self._load_mtime()
         self.modified = self.source.modified
+        super().update_self()
 
     def _load_mtime(self):
         self.mtime = self.source.mtime

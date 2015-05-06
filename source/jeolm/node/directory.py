@@ -66,6 +66,8 @@ class DirectoryNode(BuildablePathNode):
         super().__init__(path=path, name=name, needs=needs, **kwargs)
         self.set_command(self._Command(self, parents=parents))
 
+    wants_concurrency = False
+
     def _load_mtime(self):
         """
         Set node.mtime attribute to appropriate value.
