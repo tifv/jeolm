@@ -56,7 +56,7 @@ done
 if [[ $COMP_CWORD == $inspected_index ]];
 then
     COMPREPLY=( $(compgen \
-        -W 'build buildline review init list spell makefile clean' -- $inspected) )
+        -W 'build buildline review init list spell makefile excerpt clean' -- $inspected) )
     return 0
 fi
 
@@ -70,7 +70,7 @@ case $inspected in
     review)
         COMPREPLY=( $(compgen -o filenames -A file -- "$current") )
         return 0 ;;
-    build|list|spell|makefile)
+    build|list|spell|makefile|excerpt)
         ;;
     *)
         return 1 ;;
