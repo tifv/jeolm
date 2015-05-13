@@ -473,7 +473,7 @@
 % \begin{macro}{\claim}
 %    \begin{macrocode}
 \newcommand\claim[1]{\claim@format{#1}}
-\newcommand\claim@format[1]{\noindent\textbf{#1.\ }\ignorespaces}
+\newcommand\claim@format[1]{\noindent\textbf{#1.\enspace}\ignorespaces}
 %    \end{macrocode}
 % \end{macro}
 %
@@ -483,8 +483,6 @@
 %    \begin{macrocode}
 \newcommand\theorem{\claim{Теорема}}
 \newcommand\theoremof[1]{\claim{Теорема #1}}
-\newcounter{theorem}
-\newcommand\theoremnum{\refstepcounter{theorem}\claim{Теорема \thetheorem}}
 %    \end{macrocode}
 % \end{macro}
 % \end{macro}
@@ -499,23 +497,9 @@
 \newcommand\definition{\claim{Определение}}
 \newcommand\lemma{\claim{Лемма}}
 \newcommand\statement{\claim{Утверждение}}
-\newcommand\proposition{\claim{Предложение}}
-\newcommand\corollary{\claim{Следствие}}
 %    \end{macrocode}
 % \end{macro}
 % \end{macro}
-% \end{macro}
-% \end{macro}
-% \end{macro}
-%
-% \begin{macro}{\observation}
-% \begin{macro}{\example}
-% \begin{macro}{\solution}
-%    \begin{macrocode}
-\newcommand\observation{\claim{Замечание}}
-\newcommand\example{\claim{Пример}}
-\newcommand\solution{\claim{Решение}}
-%    \end{macrocode}
 % \end{macro}
 % \end{macro}
 % \end{macro}
