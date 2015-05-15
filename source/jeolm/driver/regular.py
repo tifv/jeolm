@@ -189,15 +189,15 @@ class DriverError(Exception):
 class DriverMetaclass(Substitutioner, Decorationer):
     pass
 
-class Driver(RecordsManager, metaclass=DriverMetaclass):
+class RegularDriver(RecordsManager, metaclass=DriverMetaclass):
 
     driver_errors = (DriverError, TargetError, RecordError, FlagError)
 
     def __init__(self):
         super().__init__()
         self._cache.update(
-            outrecords={}, figure_records={}, package_records={},
-            delegated_targets={} )
+            outrecords=dict(), figure_records=dict(), package_records=dict(),
+            delegated_targets=dict() )
 
     ##########
     # Advanced error reporting
@@ -932,9 +932,9 @@ class Driver(RecordsManager, metaclass=DriverMetaclass):
     @classifying_items(aspect='resolved_metabody', default='verbatim')
     def generate_header_metabody(self, target, metarecord, *, date):
         if not target.flags.intersection({'multidate', 'no-date'}):
-            yield self.constitute_datedef(date=date)
+            yield self._constitute_date_def(date=date)
         else:
-            yield self.constitute_datedef(date=None)
+            yield self._constitute_date_def(date=None)
         yield self.substitute_jeolmheader()
         yield self.substitute_resetproblem()
 
@@ -1018,7 +1018,7 @@ class Driver(RecordsManager, metaclass=DriverMetaclass):
             'no-date' not in target.flags
         ):
             date = metarecord['$date']
-            yield self.constitute_datedef(date=date)
+            yield self._constitute_date_def(date=date)
             yield self.substitute_datestamp()
 
     @fetching_metarecord
@@ -1177,7 +1177,7 @@ class Driver(RecordsManager, metaclass=DriverMetaclass):
         figure_record['source_format'] = figure_format
 
         if figure_format == 'asy':
-            accessed_items = list(self.trace_asy_accessed(figure_path))
+            accessed_items = list(self._trace_asy_accessed(figure_path))
             accessed = figure_record['accessed_sources'] = dict(accessed_items)
             if len(accessed) != len(accessed_items):
                 raise DriverError(
@@ -1224,7 +1224,7 @@ class Driver(RecordsManager, metaclass=DriverMetaclass):
         return figure_format, inpath
         # pylint: enable=undefined-loop-variable
 
-    def trace_asy_accessed(self, figure_path, *, seen_paths=frozenset()):
+    def _trace_asy_accessed(self, figure_path, *, seen_paths=frozenset()):
         """Yield (alias_name, inpath) pairs."""
         if figure_path in seen_paths:
             raise DriverError(figure_path)
@@ -1234,7 +1234,7 @@ class Driver(RecordsManager, metaclass=DriverMetaclass):
         for alias_name, accessed_path_s in accessed_paths.items():
             inpath = PurePosixPath(accessed_path_s)
             yield alias_name, inpath
-            yield from self.trace_asy_accessed(
+            yield from self._trace_asy_accessed(
                 RecordPath.from_inpath(inpath.with_suffix('')),
                 seen_paths=seen_paths )
 
@@ -1400,13 +1400,13 @@ class Driver(RecordsManager, metaclass=DriverMetaclass):
     jeolmfiguremap_template = r'\jeolmfiguremap{$ref}{$alias}'
 
     @classmethod
-    def constitute_datedef(cls, date):
+    def _constitute_date_def(cls, date):
         if date is None:
-            return cls.substitute_dateundef()
-        return cls.substitute_datedef(date=cls.constitute_date(date))
+            return cls.substitute_date_undef()
+        return cls.substitute_date_def(date=cls.constitute_date(date))
 
-    datedef_template = r'\def\jeolmdate{$date}'
-    dateundef_template = r'\let\jeolmdate\relax'
+    date_def_template = r'\def\jeolmdate{$date}'
+    date_undef_template = r'\let\jeolmdate\relax'
 
     @classmethod
     def constitute_date(cls, date):

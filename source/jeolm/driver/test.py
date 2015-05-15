@@ -6,30 +6,35 @@ Keys recognized in metarecords:
   $test$duration
 """
 
-from .regular import Driver, DriverError
+from jeolm.driver.regular import RegularDriver, DriverError
 
 import logging
 logger = logging.getLogger(__name__)
 
 
-class TestPaperDriver(Driver):
-    @processing_target_aspect( aspect='source metabody [testpaper]',
+class TestDriver(RegularDriver):
+
+    @processing_target_aspect( aspect='source metabody [test]',
         wrap_generator=True )
     @classifying_items(aspect='metabody', default='verbatim')
     def generate_source_metabody(self, target, metarecord):
-        super_matter = super().generate_source_metabody(target, metarecord)
+        super_metabody = super().generate_source_metabody(target, metarecord)
         if 'no-header' not in target.flags:
-            yield from super_matter
+            yield from super_metabody
             return
-        if metarecord.get('$test', False):
-            if 'exclude-test' in target.flags:
-                return
-            yield from super_matter
-            yield from self._generate_test_postword(target, metarecord)
-        else:
-            yield from super_matter
+        if not metarecord.get('$test', False):
+            yield from super_metabody
+            return
+        if 'exclude-test' in target.flags:
+            return
+        if 'no-test-postword' in target.flags:
+            yield from super_metabody
+            return
 
-    @processing_target_aspect( aspect='test postword [testpaper]',
+        yield target.flags_union({'no-test-postword'})
+        yield from self._generate_test_postword(target, metarecord)
+
+    @processing_target_aspect( aspect='test postword [test]',
         wrap_generator=True )
     @classifying_items(aspect='metabody', default='verbatim')
     def _generate_test_postword(self, target, metarecord):

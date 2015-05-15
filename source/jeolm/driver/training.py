@@ -8,28 +8,25 @@ Keys recognized in metarecords:
   $delegate$groups$into
   $matter$groups
   $matter$groups$into
-  $authors
   $caption
   $source$sections
 
 """
 
 from collections import OrderedDict
-from functools import partial
 from datetime import date as date_type
 
-from jeolm.driver.regular import Driver as RegularDriver, DriverError
+from jeolm.driver.regular import RegularDriver, DriverError
 
 from jeolm.record_path import RecordPath
 from jeolm.flags import FlagContainer
-from jeolm.records import RecordNotFoundError
 from jeolm.target import Target
 
 import logging
 logger = logging.getLogger(__name__)
 
 
-class Driver(RegularDriver):
+class TrainingDriver(RegularDriver):
 
     def __init__(self):
         super().__init__()
@@ -239,11 +236,6 @@ class Driver(RegularDriver):
 
         yield r'\begingroup'
 
-        authors=self._constitute_authors(metarecord)
-        if authors is not None:
-            assert isinstance(authors, str), type(authors)
-            yield self.substitute_authorsdef(authors=authors)
-
         group_flags = target.flags.intersection(self.groups)
         if group_flags:
             if len(group_flags) > 1:
@@ -296,23 +288,6 @@ class Driver(RegularDriver):
     # LaTeX-level functions
 
     @classmethod
-    def _constitute_authors(cls, metarecord, thin_space=r'\,'):
-        try:
-            authors = metarecord['$authors']
-        except KeyError:
-            return None
-        if len(authors) > 2:
-            abbreviate = partial(cls._abbreviate_author, thin_space=thin_space)
-        else:
-            abbreviate = lambda author: author
-        return ', '.join(abbreviate(author) for author in authors)
-
-    @staticmethod
-    def _abbreviate_author(author, thin_space=r'\,'):
-        *names, last = author.split(' ')
-        return thin_space.join([name[0] + '.' for name in names] + [last])
-
-    @classmethod
     def _constitute_caption(cls, metarecord):
         if '$caption' in metarecord:
             return metarecord['$caption']
@@ -321,7 +296,6 @@ class Driver(RegularDriver):
         else:
             return None
 
-    authorsdef_template = r'\def\jeolmauthors{$authors}'
     groupnamedef_template = r'\def\jeolmgroupname{$group_name}'
     period_template = r'$date, пара $period'
     addtoc_template = r'\addcontentsline{toc}{section}{$line}'

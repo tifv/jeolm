@@ -49,7 +49,8 @@ class LocalManager:
       local_module (module or None):
         local module of jeolm project, loaded from '.jeolm/local.py'.
       driver_class (type):
-        Either Driver class from local module or a jeolm.driver.regular.Driver.
+        Either Driver class from local module or
+        jeolm.driver.regular.RegularDriver.
     """
 
     def __init__(self, root=None):
@@ -186,8 +187,8 @@ class LocalManager:
     def driver_class(self):
         with suppress(AttributeError):
             return self.local_module.Driver
-        from jeolm.driver.regular import Driver
-        return Driver
+        from jeolm.driver.regular import RegularDriver
+        return RegularDriver
 
     @property
     def metadata_class(self):
