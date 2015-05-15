@@ -1,9 +1,9 @@
 _jeolm_completion() {
 
-if [[ -z $PYTHON ]];
+if [[ -z $JEOLM_PYTHON ]];
 then
-    local PYTHON
-    PYTHON=python
+    local JEOLM_PYTHON
+    JEOLM_PYTHON=python
 fi
 
 local current
@@ -56,7 +56,8 @@ done
 if [[ $COMP_CWORD == $inspected_index ]];
 then
     COMPREPLY=( $(compgen \
-        -W 'build buildline review init list spell makefile excerpt clean' -- $inspected) )
+        -W 'build buildline review init list spell makefile excerpt clean' \
+        -- $inspected) )
     return 0
 fi
 
@@ -65,7 +66,8 @@ case $inspected in
         return 0 ;;
     init)
         COMPREPLY=( $(compgen \
-            -W "$($PYTHON -m jeolm.scripts.print_resource_list)" -- "$current") )
+            -W "$($JEOLM_PYTHON -m jeolm.scripts.print_resource_list)" \
+            -- "$current" ) )
         return 0 ;;
     review)
         COMPREPLY=( $(compgen -o filenames -A file -- "$current") )
@@ -104,7 +106,7 @@ if [[ "$targets_cache" -ot "$metadata_cache" ]];
 then
     # Rebuild completion database
     ( cd "$jeolm_root";
-        $PYTHON -m jeolm.scripts.print_target_list > "$targets_cache"
+        $JEOLM_PYTHON -m jeolm.scripts.print_target_list > "$targets_cache"
     ) || { rm -f "$targets_cache"; return 1; }
 fi
 
