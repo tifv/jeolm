@@ -1,0 +1,5 @@
+[MESSAGES CONTROL]
+disable=locally-disabled,locally-enabled,bad-whitespace,bad-continuation,missing-docstring,unbalanced-tuple-unpacking,star-args,too-few-public-methods,too-many-ancestors
+good-names=logger
+[REPORTS]
+reports=no
