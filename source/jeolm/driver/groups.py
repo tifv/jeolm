@@ -1,15 +1,13 @@
 """
 Keys recognized in metarecords:
-  $group[+]
+  $groups[+]
     Only works in toplevel. Declares a group.
 
   $timetable
-  $delegate$groups
-  $delegate$groups$into
-  $matter$groups
-  $matter$groups$into
-  $caption
-  $source$sections
+  $groups$delegate
+  $groups$delegate$into
+  $groups$matter
+  $groups$matter$into
 
 """
 
@@ -21,12 +19,13 @@ from jeolm.driver.regular import RegularDriver, DriverError
 from jeolm.record_path import RecordPath
 from jeolm.flags import FlagContainer
 from jeolm.target import Target
+from jeolm.utils import natural_keyfunc
 
 import logging
 logger = logging.getLogger(__name__)
 
 
-class TrainingDriver(RegularDriver):
+class GroupsDriver(RegularDriver):
 
     def __init__(self):
         super().__init__()
@@ -48,7 +47,7 @@ class TrainingDriver(RegularDriver):
         groups = OrderedDict()
         for key, value in self.getitem(RecordPath()).items():
             match = self.flagged_pattern.match(key)
-            if match is None or match.group('key') != '$group':
+            if match is None or match.group('key') != '$groups':
                 continue
             group_flags = FlagContainer.split_flags_group(
                 match.group('flags') )
@@ -113,10 +112,10 @@ class TrainingDriver(RegularDriver):
     # Record extension
 
     def _derive_attributes(self, parent_record, child_record, name):
-        child_record.setdefault('$delegate$groups',
-            parent_record.get('$delegate$groups', True) )
-        child_record.setdefault('$matter$groups',
-            parent_record.get('$matter$groups', True) )
+        child_record.setdefault('$groups$delegate',
+            parent_record.get('$groups$delegate', True) )
+        child_record.setdefault('$groups$matter',
+            parent_record.get('$groups$matter', True) )
         super()._derive_attributes(parent_record, child_record, name)
 
     ##########
@@ -128,7 +127,7 @@ class TrainingDriver(RegularDriver):
         try:
             yield from super().generate_delegators(target, metarecord)
         except self.NoDelegators:
-            delegate_groups = metarecord['$delegate$groups']
+            delegate_groups = metarecord['$groups$delegate']
             if not target.flags.check_condition(delegate_groups):
                 raise
             if '$timetable' not in metarecord:
@@ -139,7 +138,7 @@ class TrainingDriver(RegularDriver):
                     if not subrecord.get('$target$able', True):
                         continue
                     delegate_groups_able = subrecord.get(
-                        '$delegate$groups$into', True )
+                        '$groups$delegate$into', True )
                     if not target.flags.check_condition(delegate_groups_able):
                         continue
                     yield target.path_derive(subname)
@@ -163,34 +162,12 @@ class TrainingDriver(RegularDriver):
     ##########
     # Record-level functions (outrecord)
 
-#    def select_outname(self, target, metarecord, date=None):
-#        no_group = ( not target.flags.intersection(self.groups) or
-#            '$timetable' not in metarecord or date is None)
-#        if no_group:
-#            return super().select_outname(target, metarecord, date=date)
-#
-#        group_flag, = target.flags.intersection(self.groups)
-#        first_date, first_period = self.extract_first_period(
-#            target, metarecord, group_flag )
-#        date_prefix = (
-#            '{0.year:04}-'
-#            '{0.month:02}-'
-#            '{0.day:02}-'
-#            'p{1}'
-#        ).format(first_date, first_period)
-#        outname = date_prefix + '-' + '{target:outname}'.format(target=target)
-#
-#        return outname
-#
-#    def select_outname(self, target, metarecord, date=None):
-#        return super().select_outname(target, metarecord, date=None)
-
     @processing_target_aspect( aspect='auto metabody [training]',
         wrap_generator=True )
     @classifying_items(aspect='metabody', default='verbatim')
     def generate_auto_metabody(self, target, metarecord):
 
-        matter_groups = metarecord['$matter$groups']
+        matter_groups = metarecord['$groups$matter']
         if not target.flags.check_condition(matter_groups):
             yield from super().generate_auto_metabody(target, metarecord)
             return
@@ -204,7 +181,7 @@ class TrainingDriver(RegularDriver):
                 if subname.startswith('$'):
                     continue
                 subrecord = self[target.path/subname]
-                matter_groups_able = subrecord.get('$matter$groups$into', True)
+                matter_groups_able = subrecord.get('$groups$matter$into', True)
                 if not target.flags.check_condition(matter_groups_able):
                     continue
                 yield target.path_derive(subname)
@@ -229,74 +206,44 @@ class TrainingDriver(RegularDriver):
 
         yield from super().generate_auto_metabody(target, metarecord)
 
-    @processing_target_aspect( aspect='header metabody [training]',
-        wrap_generator=True )
-    @classifying_items(aspect='resolved_metabody', default='verbatim')
-    def generate_header_metabody(self, target, metarecord, *, date):
-
-        yield r'\begingroup'
+    def _generate_header_def_metabody(self, target, metarecord, *, date):
 
         group_flags = target.flags.intersection(self.groups)
         if group_flags:
-            if len(group_flags) > 1:
-                raise DriverError(
-                    "Multiple group flags in {target}"
-                    .format(target=target) )
-            group_flag, = group_flags
-            if '$timetable' not in metarecord:
-                raise DriverError(
-                    "Group flag present in target {}, "
-                    "but there is no timetable to generate header."
-                    .format(target) )
-            if group_flag not in metarecord['$timetable']:
-                raise DriverError(
-                    "Group flag present in target {}, "
-                    "but the timetable does not contain it"
-                    .format(target) )
-            yield self.substitute_groupnamedef(
-                group_name=self.groups[group_flag]['name'] )
-            first_date, first_period = self.extract_first_period(
-                target, metarecord, group_flag )
-            if first_date is not None:
-                if first_period is not None:
-                    date = self.substitute_period(
-                        date=self.constitute_date(first_date),
-                        period=first_period )
-                else:
-                    date = first_date
+            yield self.substitute_groupname_def(
+                group_name=', '.join(
+                    self.groups[group_flag]['name']
+                    for group_flag in sorted(group_flags, key=natural_keyfunc)
+                ) )
 
-        yield from super().generate_header_metabody(
+        yield from super()._generate_header_def_metabody(
             target, metarecord, date=date )
 
-        yield r'\endgroup'
+    def _find_date(self, target, metarecord, group_flag=None):
+        if group_flag is None:
+            group_flags = target.flags.intersection(self.groups)
+            if not group_flags or '$timetable' not in metarecord:
+                return super()._find_date(target, metarecord)
+            if len(group_flags) > 1:
+                date = self.min_date(
+                    self._find_date(target, metarecord, group_flag=group_flag)
+                    for group_flag in group_flags )
+                if date is None:
+                    return super()._find_date(target, metarecord)
+                else:
+                    return date
+            group_flag, = group_flags
+        first_date, first_period = self.extract_first_period(
+            target, metarecord, group_flag )
+        if first_date is not None:
+            if first_period is not None:
+                return self.substitute_period(
+                    date=self.constitute_date(first_date),
+                    period=first_period )
+            else:
+                return first_date
+        return super()._find_date(target, metarecord)
 
-    @processing_target_aspect( aspect='source metabody [training]',
-        wrap_generator=True )
-    @classifying_items(aspect='metabody', default='verbatim')
-    def generate_source_metabody(self, target, metarecord):
-        if target.flags.issuperset({'addtoc', 'no-header'}):
-            caption = self._constitute_caption(metarecord)
-            if caption is None:
-                raise DriverError("Failed to retrieve caption for toc")
-            assert isinstance(caption, str), type(caption)
-            yield self.substitute_addtoc(line=caption)
-            yield target.flags_difference({'addtoc'})
-        else:
-            yield from super().generate_source_metabody(target, metarecord)
-
-    ##########
-    # LaTeX-level functions
-
-    @classmethod
-    def _constitute_caption(cls, metarecord):
-        if '$caption' in metarecord:
-            return metarecord['$caption']
-        elif '$source$sections' in metarecord:
-            return '; '.join(metarecord['$source$sections'])
-        else:
-            return None
-
-    groupnamedef_template = r'\def\jeolmgroupname{$group_name}'
+    groupname_def_template = r'\def\jeolmgroupname{$group_name}'
     period_template = r'$date, пара $period'
-    addtoc_template = r'\addcontentsline{toc}{section}{$line}'
 

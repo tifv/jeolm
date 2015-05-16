@@ -9,21 +9,18 @@ from jeolm.driver.regular import RegularDriver, DriverError
 
 class AuthorsDriver(RegularDriver):
 
-    @processing_target_aspect( aspect='header metabody [authors]',
-        wrap_generator=True )
-    @classifying_items(aspect='resolved_metabody', default='verbatim')
-    def generate_header_metabody(self, target, metarecord, *, date):
-        yield self._constitute_authors_def(metarecord.get('$authors'))
-        yield from super().generate_header_metabody(
+    def _generate_header_def_metabody(self, target, metarecord, *, date):
+        author_list = metarecord.get('$authors')
+        if author_list is not None:
+            yield self._constitute_authors_def(author_list)
+        yield from super()._generate_header_def_metabody(
             target, metarecord, date=date )
 
     ##########
     # LaTeX-level functions
 
     def _constitute_authors_def(cls, author_list):
-        if author_list is None:
-            return cls.substitute_authors_undef()
-        elif isinstance(author_list, list):
+        if isinstance(author_list, list):
             return cls.substitute_authors_def(
                 authors=cls._constitute_authors(author_list))
         else:

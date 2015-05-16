@@ -896,26 +896,26 @@ class RegularDriver(RecordsManager, metaclass=DriverMetaclass):
         """
         if matter is not None:
             seen_targets -= {target}
-        if '$date' in metarecord:
-            date_set.add(metarecord['$date'])
+        date = self._find_date(target, metarecord)
+        if date is not None:
+            date_set.add(date)
             date_set = set()
 
         if 'header' in target.flags:
             date_subset = set()
             # exhaust iterator to find date_subset
             metabody = list(self.generate_resolved_metabody(
-                target
-                    .flags_difference({'header'})
-                    .flags_union({'no-header'}),
+                target.flags_delta(
+                    difference={'header'},
+                    union={'no-header'} ),
                 metarecord,
                 date_set=date_subset, matter_key=matter_key, matter=matter,
                 seen_targets=seen_targets ))
-            yield from self.generate_header_metabody(
-                target, metarecord,
+            yield from self.generate_header_metabody( target, metarecord,
                 date=self.min_date(date_subset) )
             yield from metabody
             date_set.update(date_subset)
-            return # recurse
+            return
 
         metabody_generator = self.generate_matter_metabody(
             target, metarecord, matter=matter, matter_key=matter_key )
@@ -930,13 +930,22 @@ class RegularDriver(RecordsManager, metaclass=DriverMetaclass):
 
     @processing_target_aspect(aspect='header metabody', wrap_generator=True)
     @classifying_items(aspect='resolved_metabody', default='verbatim')
-    def generate_header_metabody(self, target, metarecord, *, date):
-        if not target.flags.intersection({'multidate', 'no-date'}):
-            yield self._constitute_date_def(date=date)
-        else:
-            yield self._constitute_date_def(date=None)
-        yield self.substitute_jeolmheader()
+    def generate_header_metabody( self, target, metarecord, *,
+        date, resetproblem=True
+    ):
+        yield self.substitute_jeolmheader_begin()
+        yield from self._generate_header_def_metabody( target, metarecord,
+            date=date )
+        yield self.substitute_jeolmheader_end()
         yield self.substitute_resetproblem()
+
+    def _generate_header_def_metabody(self, target, metarecord, *, date):
+        if not target.flags.intersection({'multidate', 'no-date'}):
+            if date is not None:
+                yield self._constitute_date_def(date=date)
+
+    def _find_date(self, target, metarecord):
+        return metarecord.get('$date')
 
     @processing_target_aspect(aspect='matter metabody', wrap_generator=True)
     @classifying_items(aspect='metabody', default='verbatim')
@@ -1013,13 +1022,17 @@ class RegularDriver(RecordsManager, metaclass=DriverMetaclass):
             yield target.flags_union({'header'})
             return # recurse
         yield {'source' : target.path}
-        if ( '$date' in metarecord and
-            'multidate' in target.flags and
-            'no-date' not in target.flags
-        ):
-            date = metarecord['$date']
-            yield self._constitute_date_def(date=date)
-            yield self.substitute_datestamp()
+        if 'multidate' in target.flags:
+            yield from self._generate_source_datestamp_metabody(
+                target, metarecord )
+
+    def _generate_source_datestamp_metabody(self, target, metarecord):
+        if 'no-date' in target.flags:
+            return
+        date = self._find_date(target, metarecord)
+        if date is None:
+            return
+        yield self.substitute_datestamp(date=date)
 
     @fetching_metarecord
     @processing_target_aspect(aspect='metapreamble', wrap_generator=True)
@@ -1402,11 +1415,10 @@ class RegularDriver(RecordsManager, metaclass=DriverMetaclass):
     @classmethod
     def _constitute_date_def(cls, date):
         if date is None:
-            return cls.substitute_date_undef()
+            raise RuntimeError
         return cls.substitute_date_def(date=cls.constitute_date(date))
 
     date_def_template = r'\def\jeolmdate{$date}'
-    date_undef_template = r'\let\jeolmdate\relax'
 
     @classmethod
     def constitute_date(cls, date):
@@ -1429,11 +1441,12 @@ class RegularDriver(RecordsManager, metaclass=DriverMetaclass):
     clearpage_template = '\n' r'\clearpage' '\n'
     emptypage_template = r'\strut\clearpage'
     resetproblem_template = r'\resetproblem'
-    jeolmheader_template = r'\jeolmheader'
+    jeolmheader_begin_template = r'\jeolmheader{'
+    jeolmheader_end_template = r'}'
     datestamp_template = (
-        r'    \begin{flushright}\small' '\n'
-        r'    \jeolmdate' '\n'
-        r'    \end{flushright}'
+        r'\begin{flushright}\small' '\n'
+        r'    $date' '\n'
+        r'\end{flushright}'
     )
 
     ##########
@@ -1450,7 +1463,8 @@ class RegularDriver(RecordsManager, metaclass=DriverMetaclass):
 
     @staticmethod
     def min_date(date_set):
-        datetime_date_set = {date for date in date_set
+        datetime_date_set = { date
+            for date in date_set
             if isinstance(date, datetime.date) }
         if datetime_date_set:
             return min(datetime_date_set)

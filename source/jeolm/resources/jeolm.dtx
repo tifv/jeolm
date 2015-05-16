@@ -308,7 +308,7 @@
 % It is advised to define it as
 % |\jeolmheadertemplate|\marg{institution}\marg{daterange}\marg{group}.
 %    \begin{macrocode}
-\newcommand\jeolmheadertemplate[3]{%
+\newcommand\jeolmheadertemplate[4]{\begingroup#4%
     {\Large\vspace{4ex}}\par%
     \begingroup\small\sffamily%
         \strut\hfill{\bfseries#1}\hfill\strut\nopagebreak\\%
@@ -317,7 +317,8 @@
         \hfill\strut\nopagebreak\\%
         \rule[1ex]{\textwidth}{0.5pt} %
     \endgroup%
-    {\vspace{-1ex}\Large\vspace{-4ex}\vspace{-\parskip}}}
+    {\vspace{-1ex}\Large\vspace{-4ex}\vspace{-\parskip}}
+\endgroup}
 \let\jeolmdate\relax
 %    \end{macrocode}
 % \end{macro}

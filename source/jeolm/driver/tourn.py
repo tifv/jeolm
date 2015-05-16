@@ -114,10 +114,10 @@ class TournDriver(RegularDriver):
             single_problem and 'blank' in target.flags )
         if 'no-header' not in target.flags and not is_regatta_blank:
             if no_league:
-                yield self.constitute_leaguedef(None)
+                yield self._constitute_league_def(None)
             else:
                 league = self._find_league(metarecord)
-                yield self.constitute_leaguedef(
+                yield self._constitute_league_def(
                     self._find_name(league, metarecord['$language']) )
                 if not single_problem:
                     target = target.flags_union({'league-contained'})
@@ -336,7 +336,7 @@ class TournDriver(RegularDriver):
         if 'blank' in target.flags:
             assert 'itemized' not in target.flags, target
             assert 'league-contained' not in target.flags, target
-            yield self.constitute_leaguedef(
+            yield self._constitute_league_def(
                 self._find_name(league, metarecord['$language']) )
             yield self.substitute_jeolmtournheader_nospace()
             yield self.substitute_regatta_blank_caption(
@@ -571,13 +571,13 @@ class TournDriver(RegularDriver):
         return cls.substitute_begin_tourn_problems(select=select)
 
     @classmethod
-    def constitute_leaguedef(cls, league_name):
+    def _constitute_league_def(cls, league_name):
         if league_name is None:
-            return cls.substitute_leagueundef()
-        return cls.substitute_leaguedef(league=league_name)
+            return cls.substitute_league_undef()
+        return cls.substitute_league_def(league=league_name)
 
-    leagueundef_template = r'\let\jeolmleague\relax'
-    leaguedef_template = r'\def\jeolmleague{$league}'
+    league_undef_template = r'\let\jeolmleague\relax'
+    league_def_template = r'\def\jeolmleague{$league}'
 
     begin_tourn_problems_template = r'\begin{tourn-problems}{$select}'
     end_tourn_problems_template = r'\end{tourn-problems}'

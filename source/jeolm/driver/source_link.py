@@ -37,9 +37,7 @@ class SourceLinkDriver(RegularDriver):
             yield from super_metabody
             return
         if 'source-link' not in target.flags:
-            if ( self.source_link_default and
-                'no-source-link' not in target.flags
-            ):
+            if (source_link_default and 'no-source-link' not in target.flags):
                 yield target.flags_union({'source-link'})
                 return
             else:
