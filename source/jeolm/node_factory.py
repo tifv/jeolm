@@ -183,7 +183,7 @@ class DocumentNodeFactory:
             for alias, inpath in recipe['sources'].items() ]
 
         dvi_node = jeolm.node.latex.LaTeXNode(
-            name='document:{}:dvi'.format(target),
+            name='document:{}:main.dvi'.format(target),
             source=main_tex_node,
             path=build_dir/'Main.dvi',
             needs=chain( package_nodes, source_nodes, figure_nodes,
@@ -202,7 +202,7 @@ class DocumentNodeFactory:
             source=source_node, path=build_dir/'Main.tex',
             needs=(build_dir_node,) )
         dvi_node = jeolm.node.latex.LaTeXNode(
-            name='document:{}:dvi'.format(target),
+            name='document:{}:main.dvi'.format(target),
             source=tex_node, path=build_dir/'Main.dvi',
             needs=(build_dir_node,) )
         dvi_node.figure_nodes = []
@@ -244,7 +244,7 @@ class DocumentNodeFactory:
             needs=(build_dir_node,) )
 
         dvi_node = jeolm.node.latex.LaTeXNode(
-            name='document:{}:dvi'.format(target),
+            name='document:{}:main.dvi'.format(target),
             source=drv_node,
             path=build_dir/'Main.dvi',
             needs=(sty_node, dtx_node, build_dir_node,) )
