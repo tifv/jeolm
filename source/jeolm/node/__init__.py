@@ -214,7 +214,8 @@ class Node:
         Yields:
             Node instances: all needs of this node, recursively, including
             this node (first). No repeats (they are skipped).
-            Every node is guaranteed to come before all of its prerequisites.
+            Every node is guaranteed to come before all of its prerequisites,
+            given that nodes do not form a cycle.
         """
         if not _reversed:
             if _seen_nodes is not None:
