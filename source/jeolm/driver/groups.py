@@ -185,7 +185,7 @@ class GroupsDriver(RegularDriver):
                 if not target.flags.check_condition(matter_groups_able):
                     continue
                 yield target.path_derive(subname)
-                yield self.substitute_clearpage()
+                yield self.ClearPageBodyItem()
             return
         timetable = metarecord['$timetable']
 

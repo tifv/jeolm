@@ -355,7 +355,7 @@ class TournDriver(RegularDriver):
         )
         if 'blank' in target.flags:
             yield self.substitute_hrule()
-            yield self.substitute_clearpage()
+            yield self.ClearPageBodyItem()
 
     class ProblemBodyItem(RegularDriver.SourceBodyItem):
         __slots__ = ['number']

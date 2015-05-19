@@ -620,13 +620,19 @@ class RegularDriver(RecordsManager, metaclass=DriverMetaclass):
             super().__init__()
 
     class VerbatimBodyItem(MetabodyItem):
+        """These items represent a piece of LaTeX code."""
         __slots__ = ['verbatim']
 
         def __init__(self, verbatim):
             self.verbatim = str(verbatim)
             super().__init__()
 
+    class ControlBodyItem(MetabodyItem):
+        """These items has no representation in document body."""
+        __slots__ = []
+
     class SourceBodyItem(MetabodyItem):
+        """These items represent inclusion of a source file."""
         __slots__ = ['metapath', 'alias', 'figure_map']
 
         def __init__(self, metapath):
@@ -639,7 +645,19 @@ class RegularDriver(RecordsManager, metaclass=DriverMetaclass):
         def inpath(self):
             return self.metapath.as_inpath(suffix='.tex')
 
-    class RequiredPackageBodyItem(MetabodyItem):
+    class ClearPageBodyItem(VerbatimBodyItem):
+        __slots__ = []
+
+        def __init__(self, verbatim=r'\clearpage'):
+            super().__init__(verbatim=verbatim)
+
+    class EmptyPageBodyItem(VerbatimBodyItem):
+        __slots__ = []
+
+        def __init__(self, verbatim=r'\strut\clearpage'):
+            super().__init__(verbatim=verbatim)
+
+    class RequiredPackageBodyItem(ControlBodyItem):
         __slots__ = ['package_name']
 
         def __init__(self, package_name):
@@ -983,14 +1001,14 @@ class RegularDriver(RecordsManager, metaclass=DriverMetaclass):
                 raise DriverError(
                     "Matter is allowed to have two folding levels at most" )
             if not matter_item:
-                yield self.substitute_emptypage()
+                yield self.EmptyPageBodyItem()
             else:
                 for item in matter_item:
                     yield from self.generate_matter_item_metabody(
                         target, metarecord,
                         matter_key=matter_key, matter_item=item,
                         recursed=True )
-                yield self.substitute_clearpage()
+                yield self.ClearPageBodyItem()
             return
         if not isinstance(matter_item, dict):
             raise DriverError(
@@ -1126,9 +1144,22 @@ class RegularDriver(RecordsManager, metaclass=DriverMetaclass):
         Extend sources, figure_paths, required_packages.
         """
         required_package_set = set()
+        page_cleared = True
         for item in metabody:
             assert isinstance(item, self.MetabodyItem), type(item)
-            if isinstance(item, self.SourceBodyItem):
+            if isinstance(item, self.ClearPageBodyItem):
+                if not page_cleared:
+                    page_cleared = True
+                    yield item
+            elif isinstance(item, self.EmptyPageBodyItem):
+                if not page_cleared:
+                    yield self.ClearPageBodyItem()
+                    page_cleared = True
+                yield item
+            elif isinstance(item, self.VerbatimBodyItem):
+                page_cleared = False
+                yield item
+            elif isinstance(item, self.SourceBodyItem):
                 inpath = item.inpath
                 metarecord = self.getitem(item.metapath)
                 if not metarecord.get('$source$able', False):
@@ -1145,13 +1176,17 @@ class RegularDriver(RecordsManager, metaclass=DriverMetaclass):
                         figure_path.as_inpath(suffix='.eps'), suffix='')
                     figure_map[figure_ref] = figure_alias
                     self.check_and_set(figure_paths, figure_alias, figure_path)
+                page_cleared = False
+                yield item
             elif isinstance(item, self.RequiredPackageBodyItem):
                 name = item.package_name
                 if name not in required_package_set:
                     required_packages.append(name)
                     required_package_set.add(name)
-                continue # skip yield
-            yield item
+            elif isinstance(item, self.ControlBodyItem):
+                yield item
+            else:
+                raise RuntimeError(type(item))
 
     def digest_metapreamble(self, metapreamble, required_packages, *,
         package_paths
@@ -1389,6 +1424,10 @@ class RegularDriver(RecordsManager, metaclass=DriverMetaclass):
             return cls.constitute_body_input(
                 inpath=item.inpath, alias=item.alias,
                 figure_map=item.figure_map )
+        elif isinstance(item, cls.ControlBodyItem):
+            raise RuntimeError(
+                "Control body items must be handled somewhere earlier: {}"
+                .format(type(item)) )
         else:
             raise RuntimeError(type(item))
 
@@ -1438,8 +1477,6 @@ class RegularDriver(RecordsManager, metaclass=DriverMetaclass):
     selectfont_template = (
         r'\AtBeginDocument{\fontsize{$size}{$skip}\selectfont}' )
     usepackage_template = r'\usepackage$options{$package}'
-    clearpage_template = '\n' r'\clearpage' '\n'
-    emptypage_template = r'\strut\clearpage'
     resetproblem_template = r'\resetproblem'
     jeolmheader_begin_template = r'\jeolmheader{'
     jeolmheader_end_template = r'}'
