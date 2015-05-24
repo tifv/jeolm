@@ -519,7 +519,7 @@ class TournDriver(RegularDriver):
         if isinstance(item, cls.ProblemBodyItem):
             return cls._constitute_body_problem(
                 alias=item.alias, number=item.number,
-                figure_map=item.figure_map
+                figure_map=item.figure_map,
                 metapath=item.metapath, inpath=item.inpath, )
         return super()._constitute_body_item(item)
 
