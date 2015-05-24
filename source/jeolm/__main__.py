@@ -191,11 +191,12 @@ def _add_init_arg_subparser(subparsers):
     # command_func default is intentionally not set
 
 def main_init(args):
-    root = args.root
-    if root is None:
+    if args.root is None:
         root = Path.cwd()
+    else:
+        root = Path(args.root)
     jeolm.local.InitLocalManager(
-        root=args.root, resources=args.resources )
+        root=root, resources=args.resources )
 
 
 ####################
