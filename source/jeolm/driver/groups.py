@@ -65,8 +65,8 @@ class GroupsDriver(RegularDriver):
             groups[group_flag] = value
         return groups
 
-    def list_timetable(self):
-        for metapath, metarecord in self.items():
+    def list_timetable(self, path=RecordPath()):
+        for metapath, metarecord in self.items(path=path):
             with self.process_target_aspect(
                 Target(metapath, ()), aspect="timetable"
             ):
@@ -96,8 +96,11 @@ class GroupsDriver(RegularDriver):
                         raise DriverError(period_value)
                     yield metapath, metarecord, group_flag, date, period
 
-    def extract_first_period(self, target, metarecord, group_flag):
-        group_timetable = metarecord['$timetable'][group_flag]
+    def _extract_first_period(self, target, metarecord, group_flag):
+        try:
+            group_timetable = metarecord['$timetable'][group_flag]
+        except KeyError as error:
+            return None, None
         if group_timetable:
             first_date = min(group_timetable)
         else:
@@ -184,6 +187,7 @@ class GroupsDriver(RegularDriver):
                 matter_groups_able = subrecord.get('$groups$matter$into', True)
                 if not target.flags.check_condition(matter_groups_able):
                     continue
+                yield self.ClearPageBodyItem()
                 yield target.path_derive(subname)
                 yield self.ClearPageBodyItem()
             return
@@ -233,7 +237,7 @@ class GroupsDriver(RegularDriver):
                 else:
                     return date
             group_flag, = group_flags
-        first_date, first_period = self.extract_first_period(
+        first_date, first_period = self._extract_first_period(
             target, metarecord, group_flag )
         if first_date is not None:
             if first_period is not None:
