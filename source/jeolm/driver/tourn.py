@@ -360,16 +360,22 @@ class TournDriver(RegularDriver):
     class ProblemBodyItem(RegularDriver.SourceBodyItem):
         __slots__ = ['number']
 
-        def __init__(self, problem, number):
-            super().__init__(metapath=problem)
+        def __init__(self, metapath, number):
+            super().__init__(metapath=metapath)
             self.number = number
 
     # Extenstion
     @classmethod
     def classify_resolved_metabody_item(cls, item, *, default):
-        if isinstance(item, dict) and item.keys() == {'problem', 'number'}:
-            return cls.ProblemBodyItem(**item)
-        return super().classify_resolved_metabody_item(item, default=default)
+        if not isinstance(item, dict):
+            return super().classify_resolved_metabody_item( item,
+                default=default )
+        if item.keys() == {'source', 'problem_number'}:
+            return cls.ProblemBodyItem(
+                metapath=item['source'], number=item['problem_number'] )
+        else:
+            return super().classify_resolved_metabody_item( item,
+                default=default )
 
     @classifying_items(aspect='metabody', default='verbatim')
     def _generate_tourn_problem_matter(self, target, metarecord,
@@ -387,8 +393,8 @@ class TournDriver(RegularDriver):
             yield self.constitute_begin_tourn_problems(
                 target.flags.intersection(self.tourn_problem_flags) )
         yield {
-            'problem' : target.path,
-            'number' : number }
+            'source' : target.path,
+            'problem_number' : number }
         if has_criteria:
             yield self.substitute_criteria(criteria=metarecord['$criteria'])
         if has_problem_source:
@@ -401,8 +407,6 @@ class TournDriver(RegularDriver):
                 source=metarecord['$problem-source$www'] )
         if 'itemized' not in target.flags:
             yield self.substitute_end_tourn_problems()
-        for required_package in metarecord.get('$required$packages', ()):
-            yield {'required_package' : required_package}
 
     def _find_contest(self, metarecord):
         contest_key = metarecord['$contest$key']
@@ -511,28 +515,30 @@ class TournDriver(RegularDriver):
 
     # Extenstion
     @classmethod
-    def constitute_body_item(cls, item):
+    def _constitute_body_item(cls, item):
         if isinstance(item, cls.ProblemBodyItem):
-            return cls.constitute_body_problem(
-                inpath=item.inpath, number=item.number,
-                alias=item.alias, figure_map=item.figure_map )
-        return super().constitute_body_item(item)
+            return cls._constitute_body_problem(
+                alias=item.alias, number=item.number,
+                figure_map=item.figure_map
+                metapath=item.metapath, inpath=item.inpath, )
+        return super()._constitute_body_item(item)
 
     # Extension
     @classmethod
-    def constitute_body_problem(cls, inpath,
-        *, number, alias, figure_map
+    def _constitute_body_problem( cls, *,
+        alias, number, figure_map, metapath, inpath
     ):
         assert number is not None
         body = cls.substitute_tourn_problem(
-            number=number, filename=alias, inpath=inpath )
+            number=number, filename=alias,
+            inpath=inpath, metapath=metapath )
         if figure_map:
             body = cls.constitute_figure_map(figure_map) + '\n' + body
         return body
 
     tourn_problem_template = (
         r'\tournproblem{$number}%' '\n'
-        r'\input{$filename}% $inpath' )
+        r'\input{$filename}% $metapath' )
 
     @classmethod
     def constitute_section(cls, *names, flags):

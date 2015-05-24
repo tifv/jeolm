@@ -47,7 +47,7 @@ class SourceLinkDriver(RegularDriver):
         yield target.flags_delta(
             difference={'source-link'},
             union=( {'no-source-link'} if source_link_default else {} ))
-        yield {'required_package' : 'hyperref'}
+        yield self.RequirePackageBodyItem(package='hyperref')
         yield self.substitute_source_link(
             target=( str(self.source_link_root) +
                 str(target.path.as_inpath(suffix='.tex')) ),
@@ -64,6 +64,6 @@ class SourceLinkDriver(RegularDriver):
 
     source_link_template = (
         r'\begin{flushright}\ttfamily\small' '\n'
-        r'\href{$target}{$text}' '\n'
+        r'\href{$target}{source:$text}' '\n'
         r'\end{flushright}' )
 
