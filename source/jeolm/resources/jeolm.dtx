@@ -433,9 +433,9 @@
 \settowidth{\@subproblem@letter@width}{m}%
 (%
     \hspace{0.5\@subproblem@letter@width}%
-    \clap{#1}%
+    \clap{#1\rlap{#2}}%
     \hspace{0.5\@subproblem@letter@width}%
-    #2%
+    \phantom{#2}%
 )%
 \endgroup}
 %    \end{macrocode}
