@@ -89,20 +89,26 @@ class MetadataManager(RecordsManager):
                 self.delete(metainpath)
             else:
                 logger.warning(
-                    "%(inpath)s was not recorded and does not exist as file. No-op.",
+                    "Reviewed path was not recorded and does not exist "
+                    "as file: %(inpath)s",
                     dict(inpath=inpath) )
             return
         # path exists
 
         suffix = inpath.suffix
         is_dir = path.is_dir()
+        if len(inpath.suffixes) > 1:
+            raise ValueError( "Reviewed path has multiple suffixes: {}"
+                .format(inpath) )
         if not suffix in self.source_types:
-            raise ValueError("Path suffix unrecognized: {}".format(inpath))
+            raise ValueError( "Reviewed path suffix unrecognized: {}"
+                .format(inpath) )
         if suffix == '' and not is_dir:
-            raise ValueError("Reviewed file has no suffix: {}".format(inpath))
+            raise ValueError( "Reviewed file has no suffix: {}"
+                .format(inpath) )
         if suffix != '' and is_dir:
-            raise ValueError(
-                "Reviewed directory has suffix: {}".format(inpath) )
+            raise ValueError( "Reviewed directory has suffix: {}"
+                .format(inpath) )
         assert is_dir == (suffix == ''), (is_dir, suffix)
         if is_dir and recorded:
             self.clear(metainpath)
@@ -120,9 +126,14 @@ class MetadataManager(RecordsManager):
             subinpath = inpath/subname
             subpath = self.local.source_dir/subinpath
             subsuffix = subinpath.suffix
+            if len(subinpath.suffixes) > 1:
+                logger.warning( "<MAGENTA>%(inpath)s<NOCOLOUR>: "
+                    "path <YELLOW>%(name)s<NOCOLOUR> has multiple suffixes",
+                    dict(inpath=inpath, name=subname) )
+                continue
             if subsuffix not in self.source_types:
                 logger.warning( "<MAGENTA>%(inpath)s<NOCOLOUR>: "
-                    "suffix of <YELLOW>%(name)s<NOCOLOUR> unrecognized",
+                    "path <YELLOW>%(name)s<NOCOLOUR> suffix is unrecognized",
                     dict(inpath=inpath, name=subname) )
                 continue
             subpath_is_dir = subpath.is_dir()
@@ -196,6 +207,8 @@ class MetadataManager(RecordsManager):
     tex_includegraphics_pattern = re.compile(
         r'\\includegraphics')
 
+    # pylint: disable=unused-argument
+
     def _query_tex_sections(self, inpath, tex_content):
         sections = [
             match.group('section')
@@ -204,6 +217,8 @@ class MetadataManager(RecordsManager):
 
     tex_section_pattern = re.compile(
         r'\\section\*?\{(?P<section>[^\{\}]*?)\}' )
+
+    # pylint: enable=unused-argument
 
     def _query_tex_metadata(self, inpath, tex_content):
         metadata = OrderedDict()
