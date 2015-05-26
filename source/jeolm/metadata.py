@@ -331,7 +331,7 @@ class MetadataManager(RecordsManager):
             '$out$options', '$fluid$opt', '$rigid$opt', '$manner$opt', ),
         '$delegate' : ('$target$delegate',),
         '$target$able' : ('$targetable',),
-        '$matter: required_package' : (
+        '$matter: preamble package' : (
             '$required$packages', '$latex$packages', '$tex$packages', )
     }
 

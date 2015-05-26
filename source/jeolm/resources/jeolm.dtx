@@ -185,10 +185,7 @@
 % For |\theorem|.
 %
 % \theoremof{ван Обеля}
-% For |\theoremof{ван Обеля}|, referencing next theorem \ref{a theorem}.
-%
-% \theoremnum\label{a theorem}%
-% For |\theoremnum|.
+% For |\theoremof{ван Обеля}|.
 %
 % \claim{Лемма Фату}
 % For |\claim{Лемма Фату}|.
@@ -425,11 +422,22 @@
 \newlength\problem@space@length
 \problem@space@length=1em
 \newcommand\problem@space{\hspace{\problem@space@length}\ignorespaces}
-\newcommand\problem@format[2]{\textbf{#1.\rlap{\!#2}}}
+\newcommand\problem@format[2]{\begingroup\bfseries
+    #1.\rlap{\!#2}%
+\endgroup}
 \newlength\subproblem@space@length
+\newlength\@subproblem@letter@width
 \subproblem@space@length=0.5em
 \newcommand\subproblem@space{\hspace{\subproblem@space@length}\ignorespaces}
-\newcommand\subproblem@format[2]{{\bfseries({\ttfamily#1}#2)}}
+\newcommand\subproblem@format[2]{\begingroup\bfseries
+\settowidth{\@subproblem@letter@width}{m}%
+(%
+    \hspace{0.5\@subproblem@letter@width}%
+    \clap{#1\rlap{#2}}%
+    \hspace{0.5\@subproblem@letter@width}%
+    \phantom{#2}%
+)%
+\endgroup}
 %    \end{macrocode}
 % \end{macro}
 % \end{macro}
@@ -480,27 +488,21 @@
 %
 % \begin{macro}{\theorem}
 % \begin{macro}{\theoremof}
-% \begin{macro}{\theoremnum}
 %    \begin{macrocode}
 \newcommand\theorem{\claim{Теорема}}
 \newcommand\theoremof[1]{\claim{Теорема #1}}
 %    \end{macrocode}
 % \end{macro}
 % \end{macro}
-% \end{macro}
 %
 % \begin{macro}{\definition}
 % \begin{macro}{\lemma}
 % \begin{macro}{\statement}
-% \begin{macro}{\proposition}
-% \begin{macro}{\corollary}
 %    \begin{macrocode}
 \newcommand\definition{\claim{Определение}}
 \newcommand\lemma{\claim{Лемма}}
 \newcommand\statement{\claim{Утверждение}}
 %    \end{macrocode}
-% \end{macro}
-% \end{macro}
 % \end{macro}
 % \end{macro}
 % \end{macro}

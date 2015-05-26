@@ -43,6 +43,10 @@ Keys recognized in metarecords:
     - in absence of \\ProvidesPackage, borrowed by metadata grabber
       from the filename
 
+  $build$compiler$default
+    - string, name of default 'compiler' value in outrecords
+      (e. g. 'latex')
+
   $include
     list of subpaths for direct metadata inclusion.
 
@@ -51,8 +55,9 @@ Keys recognized in metarecords:
 
   $delegate[*]
     Values:
-    - <delegator>
-    - delegate: <delegator>
+    - <delegator (string)>
+    - delegate: <delegator (string)>
+    Non-string values may be extended with conditions.
 
   $build$options[*]
     Contents is included in protorecord
@@ -65,27 +70,35 @@ Keys recognized in metarecords:
   $matter[*]
     Values expected from metadata:
     - verbatim: <string>
-    - <delegator>
-    - delegate: <delegator>
-    - required_package: <package_name>
+    - <delegator (string)>
+    - delegate: <delegator (string)>
+    - preamble verbatim: <string>
+      provide: <key (string)>
+    - preamble package: <package name>
+    - preamble package: <package name>
+      options: [<package options>]
     Values generated internally:
-    - source: <inpath>
+    - source: <metapath>
+    Non-string values may be extended with conditions.
   $style[*]
     Values expected from metadata:
     - verbatim: <string>
-    - <delegator>
-    - delegate: <delegator>
-    - font: 10pt
-        # 10pt, 11pt, 12pt are valid alternatives
-        # appended to class options
-    - document_class: article
-      options: [a4paper, landscape, twoside]
-    - scale_font: [10, 12]
+    - verbatim: <string>
+      provide: <key (string)>
+    - <delegator (string)>
+    - delegate: <delegator (string)>
+    - document class: <LaTeX class name>
+      options: [<LaTeX class options>]
+    - package: <package name>
+    - package: <package name>
+      options: [<package options>]
+    - resize font: [<size>, <skip>]
         # best used with anyfontsize package
         # only affects font size at the beginning of document
         # (like, any size command including \\normalsize will undo this)
     Values generated internally:
-    - local_package: <metapath>
+    - local package: <metapath>
+    Non-string values may be extended with conditions.
 
   $date
 
@@ -365,6 +378,8 @@ class RegularDriver(RecordsManager, metaclass=DriverMetaclass):
             string
         'type'
             one of 'regular', 'standalone', 'latexdoc'
+        'compiler'
+            one of 'latex', 'pdflatex', 'xelatex', 'lualatex'
 
         regular outrecord must also contain fields:
         'sources'
@@ -395,16 +410,25 @@ class RegularDriver(RecordsManager, metaclass=DriverMetaclass):
         outrecord = self._cache['outrecords'][target] = \
             self.generate_outrecord(target)
         keys = outrecord.keys()
-        assert keys >= {'outname', 'type'}
-        assert outrecord['type'] in {'regular', 'standalone', 'latexdoc'}
-        assert outrecord['type'] not in {'regular'} or \
-            keys >= {'sources', 'figure_paths', 'document'}
-        assert outrecord['type'] not in {'regular', 'latexdoc'} or \
-            keys >= {'package_paths'}
-        assert outrecord['type'] not in {'standalone', 'latexdoc'} or \
-            keys >= {'source'}
-        assert outrecord['type'] not in {'latexdoc'} or \
-            keys >= {'name'}
+        if not keys >= {'outname', 'type', 'compiler'}:
+            raise RuntimeError
+        if outrecord['type'] not in {'regular', 'standalone', 'latexdoc'}:
+            raise RuntimeError
+        if outrecord['type'] in {'regular'}:
+            if not keys >= {'sources', 'figure_paths', 'document'}:
+                raise RuntimeError
+        if outrecord['type'] in {'regular', 'latexdoc'}:
+            if 'package_paths' not in keys:
+                raise RuntimeError
+        if outrecord['type'] in {'standalone', 'latexdoc'}:
+            if 'source' not in keys:
+                raise RuntimeError
+        if outrecord['type'] in {'latexdoc'}:
+            if 'name' not in keys:
+                raise RuntimeError
+        if outrecord['compiler'] not in {
+                'latex', 'pdflatex', 'xelatex', 'lualatex' }:
+            raise RuntimeError
         return outrecord
 
     @folding_driver_errors(wrap_generator=False)
@@ -488,12 +512,13 @@ class RegularDriver(RecordsManager, metaclass=DriverMetaclass):
 
     def _derive_attributes(self, parent_record, child_record, name):
         super()._derive_attributes(parent_record, child_record, name)
+        path = child_record['$path']
         child_record.setdefault('$target$able',
             parent_record.get('$target$able', True) )
         child_record.setdefault('$build$able',
             parent_record.get('$build$able', True) )
+        self._derive_compiler_default(parent_record, child_record, path=path)
         if '$include' in child_record:
-            path = child_record['$path']
             already_included = set()
             included_paths = [
                 RecordPath(path, include_name)
@@ -512,6 +537,24 @@ class RegularDriver(RecordsManager, metaclass=DriverMetaclass):
                         in reversed(included_value.pop('$include')) )
                 self._include_dict(child_record, included_value)
                 already_included.add(included_path)
+
+    @classmethod
+    def _derive_compiler_default( cls, parent_record, child_record, *, path,
+        _compiler_default_key = '$build$compiler$default'
+    ):
+        if _compiler_default_key not in child_record:
+            if _compiler_default_key not in parent_record:
+                compiler_default = 'latex'
+                logger.warning(
+                    "No <MAGENTA>{key}<NOCOLOUR> key set "
+                    "at {path}, asserting '<CYAN>{compiler}<NOCOLOUR>'"
+                    .format(
+                        key=_compiler_default_key, path=path,
+                        compiler=compiler_default )
+                )
+            else:
+                compiler_default = parent_record[_compiler_default_key]
+            child_record[_compiler_default_key] = compiler_default
 
     @classmethod
     def _include_dict(cls, dest_dict, source_dict):
@@ -612,7 +655,7 @@ class RegularDriver(RecordsManager, metaclass=DriverMetaclass):
     ##########
     # Metabody and metapreamble items
 
-    class MetabodyItem(metaclass=abc.ABCMeta):
+    class MetabodyItem:
         __slots__ = []
 
         @abc.abstractmethod
@@ -620,13 +663,19 @@ class RegularDriver(RecordsManager, metaclass=DriverMetaclass):
             super().__init__()
 
     class VerbatimBodyItem(MetabodyItem):
-        __slots__ = ['verbatim']
+        """These items represent a piece of LaTeX code."""
+        __slots__ = ['value']
 
-        def __init__(self, verbatim):
-            self.verbatim = str(verbatim)
+        def __init__(self, value):
+            self.value = str(value)
             super().__init__()
 
+    class ControlBodyItem(MetabodyItem):
+        """These items has no representation in document body."""
+        __slots__ = []
+
     class SourceBodyItem(MetabodyItem):
+        """These items represent inclusion of a source file."""
         __slots__ = ['metapath', 'alias', 'figure_map']
 
         def __init__(self, metapath):
@@ -639,11 +688,36 @@ class RegularDriver(RecordsManager, metaclass=DriverMetaclass):
         def inpath(self):
             return self.metapath.as_inpath(suffix='.tex')
 
-    class RequiredPackageBodyItem(MetabodyItem):
-        __slots__ = ['package_name']
+    class ClearPageBodyItem(VerbatimBodyItem):
+        __slots__ = []
 
-        def __init__(self, package_name):
-            self.package_name = str(package_name)
+        def __init__(self, value=r'\clearpage'):
+            super().__init__(value=value)
+
+    class EmptyPageBodyItem(VerbatimBodyItem):
+        __slots__ = []
+
+        def __init__(self, value=r'\strut\clearpage'):
+            super().__init__(value=value)
+
+    class RequirePreambleBodyItem(ControlBodyItem):
+        __slots__ = ['key', 'value']
+
+        def __init__(self, key, value):
+            self.key = key
+            self.value = value
+            super().__init__()
+
+    class RequirePackageBodyItem(ControlBodyItem):
+        __slots__ = ['package', 'options']
+
+        def __init__(self, package, options=()):
+            self.package = str(package)
+            if isinstance(options, str):
+                raise DriverError(
+                    "Package options must not be a single string, "
+                    "but a sequence." )
+            self.options = [str(item) for item in options]
             super().__init__()
 
     @classmethod
@@ -651,20 +725,26 @@ class RegularDriver(RecordsManager, metaclass=DriverMetaclass):
         assert default in {None, 'verbatim'}, default
         if isinstance(item, cls.MetabodyItem):
             return item
-        if isinstance(item, str):
+        elif isinstance(item, str):
             if default == 'verbatim':
-                return cls.VerbatimBodyItem(item)
+                return cls.VerbatimBodyItem(value=item)
             else:
                 raise RuntimeError(item)
-        if not isinstance(item, dict):
+        elif not isinstance(item, dict):
             raise RuntimeError(item)
-        if item.keys() == {'verbatim'}:
-            return cls.VerbatimBodyItem(verbatim=item['verbatim'])
-        if item.keys() == {'source'}:
+        elif item.keys() == {'verbatim'}:
+            return cls.VerbatimBodyItem(value=item['verbatim'])
+        elif item.keys() == {'source'}:
             return cls.SourceBodyItem(metapath=item['source'])
-        if item.keys() == {'required_package'}:
-            return cls.RequiredPackageBodyItem(
-                package_name=item['required_package'] )
+        elif item.keys() == {'preamble verbatim', 'provide'}:
+            return cls.RequirePreambleBodyItem(
+                value=item['preamble verbatim'], key=item['provide'] )
+        elif item.keys() == {'preamble package'}:
+            return cls.RequirePackageBodyItem(
+                package=item['preamble package'] )
+        elif item.keys() == {'preamble package', 'options'}:
+            return cls.RequirePackageBodyItem(
+                package=item['preamble package'], options=item['options'] )
         else:
             raise DriverError(item)
 
@@ -672,9 +752,11 @@ class RegularDriver(RecordsManager, metaclass=DriverMetaclass):
     def classify_metabody_item(cls, item, *, default):
         if isinstance(item, Target):
             return item
-        return cls.classify_resolved_metabody_item(item, default=default)
+        else:
+            return cls.classify_resolved_metabody_item( item,
+                default=default )
 
-    class MetapreambleItem(metaclass=abc.ABCMeta):
+    class MetapreambleItem:
         __slots__ = []
 
         @abc.abstractmethod
@@ -682,10 +764,10 @@ class RegularDriver(RecordsManager, metaclass=DriverMetaclass):
             super().__init__()
 
     class VerbatimPreambleItem(MetapreambleItem):
-        __slots__ = ['verbatim']
+        __slots__ = ['value']
 
-        def __init__(self, verbatim):
-            self.verbatim = str(verbatim)
+        def __init__(self, value):
+            self.value = str(value)
             super().__init__()
 
     class DocumentClassItem(MetapreambleItem):
@@ -693,16 +775,11 @@ class RegularDriver(RecordsManager, metaclass=DriverMetaclass):
 
         def __init__(self, document_class, options=()):
             self.document_class = str(document_class)
-            self.options = [str(o) for o in options]
-            super().__init__()
-
-    class DocumentFontItem(MetapreambleItem):
-        __slots__ = ['font']
-
-        def __init__(self, font):
-            if font not in {'10pt', '11pt', '12pt'}:
-                raise DriverError(font)
-            self.font = font
+            if isinstance(options, str):
+                raise DriverError(
+                    "Class options must not be a single string, "
+                    "but a sequence." )
+            self.options = [str(item) for item in options]
             super().__init__()
 
     class LocalPackagePreambleItem(MetapreambleItem):
@@ -714,33 +791,66 @@ class RegularDriver(RecordsManager, metaclass=DriverMetaclass):
             self.package_path = package_path
             super().__init__()
 
+    class ProvidePreamblePreambleItem(VerbatimPreambleItem):
+        __slots__ = ['key']
+
+        def __init__(self, key, value):
+            assert isinstance(key, str), type(key)
+            self.key = key
+            super().__init__(value=value)
+
+    class ProvidePackagePreambleItem(MetapreambleItem):
+        __slots__ = ['package', 'options']
+
+        def __init__(self, package, options=()):
+            self.package = str(package)
+            if isinstance(options, str):
+                raise DriverError(
+                    "Package options must not be a single string, "
+                    "but a sequence." )
+            self.options = [str(item) for item in options]
+            super().__init__()
+
     @classmethod
     def classify_resolved_metapreamble_item(cls, item, *, default):
         assert default in {None, 'verbatim'}, default
         if isinstance(item, cls.MetapreambleItem):
             return item
-        if isinstance(item, str):
+        elif isinstance(item, str):
             if default == 'verbatim':
-                return cls.VerbatimPreambleItem(item)
+                return cls.VerbatimPreambleItem(value=item)
             else:
                 raise RuntimeError(item)
-        if not isinstance(item, dict):
+        elif not isinstance(item, dict):
             raise RuntimeError(item)
-        if item.keys() == {'verbatim'}:
-            return cls.VerbatimPreambleItem(verbatim=item['verbatim'])
-        if item.keys() == {'scale_font'}:
-            size, skip = item['scale_font']
+        elif item.keys() == {'verbatim'}:
             return cls.VerbatimPreambleItem(
-                verbatim=cls.substitute_selectfont(
+                value=item['verbatim'] )
+        elif item.keys() == {'verbatim', 'provide'}:
+            return cls.ProvidePreamblePreambleItem(
+                value=item['verbatim'], key=item['provide'] )
+        elif item.keys() == {'package'}:
+            return cls.ProvidePackagePreambleItem(
+                package=item['package'] )
+        elif item.keys() == {'package', 'options'}:
+            return cls.ProvidePackagePreambleItem(
+                package=item['package'], options=item['options'] )
+        elif item.keys() == {'resize font'}:
+            size, skip = item['font size']
+            return cls.ProvidePreamblePreambleItem(
+                value=cls.substitute_selectfont(
                     size=float(size), skip=float(skip)
-                ) )
-        if item.keys() == {'font'}:
-            return cls.DocumentFontItem(font=item['font'])
-        if {'document_class'} <= item.keys() <= {'document_class', 'options'}:
-            return cls.DocumentClassItem(**item)
-        if item.keys() == {'local_package'}:
+                ), key='AtBeginDocument:fontsize' )
+        elif item.keys() == {'document class'}:
+            return cls.DocumentClassItem(
+                document_class=item['document class'] )
+        elif item.keys() == {'document class', 'options'}:
+            return cls.DocumentClassItem(
+                document_class=item['document class'],
+                options=item['options'] )
+        elif item.keys() == {'local package'}:
             return cls.LocalPackagePreambleItem(
-                package_path=item['local_package'] )
+                package_path=item['local package'] )
         else:
             raise DriverError(item)
 
@@ -789,6 +899,7 @@ class RegularDriver(RecordsManager, metaclass=DriverMetaclass):
             raise DriverError(
                 "Unknown type of special '{}'".format(special_type) )
         outrecord = {'type' : special_type}
+        self._set_outrecord_compiler(target, metarecord, outrecord=outrecord)
         outrecord['outname'] = outrecord['buildname'] = \
             self.select_outname(target, metarecord, date=None)
         suffix = {'latexdoc' : '.dtx', 'standalone' : '.tex'}[special_type]
@@ -805,35 +916,44 @@ class RegularDriver(RecordsManager, metaclass=DriverMetaclass):
         Return protorecord.
         """
         date_set = set()
+        additional_flags = set()
 
         outrecord = {'type' : 'regular'}
-        outrecord.update(self.find_build_options(target, metarecord))
+        outrecord.update(self._find_build_options(target, metarecord))
+        additional_flags.update(
+            self._set_outrecord_compiler( target, metarecord,
+                outrecord=outrecord )
+        )
+        extended_target = target.flags_union(additional_flags)
+        extended_target.flags.utilize(additional_flags)
+
         # We must exhaust generate_metabody() to fill date_set
         metabody = list(self.generate_metabody(
-            target, metarecord, date_set=date_set ))
+            extended_target, metarecord, date_set=date_set ))
         metapreamble = list(self.generate_metapreamble(
-            target, metarecord ))
+            extended_target, metarecord ))
 
         sources = outrecord['sources'] = OrderedDict()
         figure_paths = outrecord['figure_paths'] = OrderedDict()
         package_paths = outrecord['package_paths'] = OrderedDict()
-        required_packages = list()
         outrecord.setdefault('date', self.min_date(date_set))
 
         metabody = list(self.digest_metabody(
             metabody,
             sources=sources, figure_paths=figure_paths,
-            required_packages=required_packages ))
+            metapreamble=metapreamble ))
         metapreamble = list(self.digest_metapreamble(
-            metapreamble, required_packages,
+            metapreamble,
             package_paths=package_paths ))
 
         target.check_unutilized_flags()
 
-        outrecord.setdefault('outname', self.select_outname(
-            target, metarecord, date=outrecord['date'] ))
-        outrecord.setdefault('buildname', self.select_outname(
-            target, metarecord, date=None ))
+        if 'outname' not in outrecord:
+            outrecord['outname'] = self.select_outname(
+                target, metarecord, date=outrecord['date'] )
+        if 'buildname' not in outrecord:
+            outrecord['buildname'] = self.select_outname(
+                target, metarecord, date=None )
 
         with self.process_target_aspect(target, 'document'):
             outrecord['document'] = self.constitute_document(
@@ -841,7 +961,7 @@ class RegularDriver(RecordsManager, metaclass=DriverMetaclass):
                 metapreamble=metapreamble, metabody=metabody, )
         return outrecord
 
-    def find_build_options(self, target, metarecord):
+    def _find_build_options(self, target, metarecord):
         options_key, options = self.select_flagged_item(
             metarecord, '$build$options', target.flags )
         if options is None:
@@ -856,6 +976,17 @@ class RegularDriver(RecordsManager, metaclass=DriverMetaclass):
                     'figure_paths', 'package_paths', }:
                 raise DriverError("Bad options {}".format(options) )
             return options
+
+    @processing_target_aspect(aspect='outrecord compiler')
+    def _set_outrecord_compiler(self, target, metarecord, *, outrecord):
+        """Yield additional flags for the target."""
+        if 'compiler' not in outrecord:
+            outrecord['compiler'] = metarecord['$build$compiler$default']
+        if outrecord['compiler'] not in {
+                'latex', 'pdflatex', 'xelatex', 'lualatex' }:
+            raise DriverError( "Unknown compiler detected: {}"
+                .format(outrecord['compiler']) )
+        yield 'compiler:{}'.format(outrecord['compiler'])
 
     def select_outname(self, target, metarecord, date=None):
         outname_pieces = []
@@ -983,14 +1114,14 @@ class RegularDriver(RecordsManager, metaclass=DriverMetaclass):
                 raise DriverError(
                     "Matter is allowed to have two folding levels at most" )
             if not matter_item:
-                yield self.substitute_emptypage()
+                yield self.EmptyPageBodyItem()
             else:
                 for item in matter_item:
                     yield from self.generate_matter_item_metabody(
                         target, metarecord,
                         matter_key=matter_key, matter_item=item,
                         recursed=True )
-                yield self.substitute_clearpage()
+                yield self.ClearPageBodyItem()
             return
         if not isinstance(matter_item, dict):
             raise DriverError(
@@ -1114,21 +1245,34 @@ class RegularDriver(RecordsManager, metaclass=DriverMetaclass):
     @classifying_items(aspect='metapreamble', default='verbatim')
     def generate_auto_metapreamble(self, target, metarecord):
         if '$package$able' in metarecord:
-            yield {'local_package' : target.path}
+            yield {'local package' : target.path}
         else:
             yield target.path_derive('..')
 
     def digest_metabody(self, metabody, *,
-        sources, figure_paths, required_packages
+        sources, figure_paths,
+        metapreamble
     ):
         """
         Yield metabody items.
-        Extend sources, figure_paths, required_packages.
+        Extend sources, figure_paths, metapreamble.
         """
-        required_package_set = set()
+        page_cleared = True
         for item in metabody:
             assert isinstance(item, self.MetabodyItem), type(item)
-            if isinstance(item, self.SourceBodyItem):
+            if isinstance(item, self.ClearPageBodyItem):
+                if not page_cleared:
+                    page_cleared = True
+                    yield item
+            elif isinstance(item, self.EmptyPageBodyItem):
+                if not page_cleared:
+                    yield self.ClearPageBodyItem()
+                    page_cleared = True
+                yield item
+            elif isinstance(item, self.VerbatimBodyItem):
+                page_cleared = False
+                yield item
+            elif isinstance(item, self.SourceBodyItem):
                 inpath = item.inpath
                 metarecord = self.getitem(item.metapath)
                 if not metarecord.get('$source$able', False):
@@ -1145,17 +1289,21 @@ class RegularDriver(RecordsManager, metaclass=DriverMetaclass):
                         figure_path.as_inpath(suffix='.eps'), suffix='')
                     figure_map[figure_ref] = figure_alias
                     self.check_and_set(figure_paths, figure_alias, figure_path)
-            elif isinstance(item, self.RequiredPackageBodyItem):
-                name = item.package_name
-                if name not in required_package_set:
-                    required_packages.append(name)
-                    required_package_set.add(name)
-                continue # skip yield
-            yield item
+                page_cleared = False
+                yield item
+            elif isinstance(item, self.RequirePreambleBodyItem):
+                metapreamble.append(self.ProvidePreamblePreambleItem(
+                    key=item.key, value=item.value ))
+            elif isinstance(item, self.RequirePackageBodyItem):
+                metapreamble.append(self.ProvidePackagePreambleItem(
+                    package=item.package, options=item.options ))
+            elif isinstance(item, self.ControlBodyItem):
+                # should be handled by superclass
+                yield item
+            else:
+                raise RuntimeError(type(item))
 
-    def digest_metapreamble(self, metapreamble, required_packages, *,
-        package_paths
-    ):
+    def digest_metapreamble(self, metapreamble, *, package_paths):
         """
         Yield metapreamble items.
         Extend package_paths.
@@ -1167,12 +1315,14 @@ class RegularDriver(RecordsManager, metaclass=DriverMetaclass):
                 metarecord = self.getitem(package_path)
                 package_name = item.package_name = metarecord['$package$name']
                 self.check_and_set(package_paths, package_name, package_path)
-            yield item
-        for package_name in required_packages:
-            yield self.VerbatimPreambleItem(
-                verbatim=self.substitute_usepackage(
-                    package=package_name, options=''
-                ) )
+                yield item
+            elif isinstance(item, self.ProvidePackagePreambleItem):
+                key = 'usepackage:{}'.format(item.package)
+                value = self.substitute_usepackage( package=item.package,
+                    options=self.constitute_options(item.options) )
+                yield self.ProvidePreamblePreambleItem(key=key, value=value)
+            else:
+                yield item
 
 
     ##########
@@ -1324,31 +1474,25 @@ class RegularDriver(RecordsManager, metaclass=DriverMetaclass):
 
     @classmethod
     def constitute_preamble(cls, outrecord, metapreamble):
-        preamble_items = []
-        font_option = None
-        document_class = None
-        class_options = None
+        preamble_lines = [None]
+        provided_preamble = {}
         for item in metapreamble:
-            if isinstance(item, cls.DocumentFontItem):
-                if font_option is not None:
-                    continue
-                font_option = item.font
-            elif isinstance(item, cls.DocumentClassItem):
-                if document_class is not None:
-                    continue
-                document_class = item.document_class
-                class_options = item.options
-                assert isinstance(class_options, list), type(class_options)
-            else:
-                preamble_items.append(cls.constitute_preamble_item(item))
-        if document_class is None:
+            if isinstance(item, cls.DocumentClassItem):
+                if preamble_lines[0] is not None:
+                    raise DriverError(
+                        "Multiple definitions of document class" )
+                preamble_lines[0] = cls.substitute_documentclass(
+                    document_class=item.document_class,
+                    options=cls.constitute_options(item.options) )
+                continue
+            if isinstance(item, cls.ProvidePreamblePreambleItem):
+                if not cls.check_and_set( provided_preamble,
+                    item.key, item.value ):
+                        continue
+            preamble_lines.append(cls.constitute_preamble_item(item))
+        if preamble_lines[0] is None:
             raise DriverError("No document class provided")
-        if font_option is not None:
-            class_options.append(font_option)
-        preamble_items.insert(0, cls.substitute_documentclass(
-            document_class=document_class,
-            options=cls.constitute_options(class_options) ))
-        return '\n'.join(preamble_items)
+        return '\n'.join(preamble_lines)
 
     documentclass_template = r'\documentclass$options{$document_class}'
 
@@ -1356,7 +1500,7 @@ class RegularDriver(RecordsManager, metaclass=DriverMetaclass):
     def constitute_preamble_item(cls, item):
         assert isinstance(item, cls.MetapreambleItem), type(item)
         if isinstance(item, cls.VerbatimPreambleItem):
-            return item.verbatim
+            return item.value
         elif isinstance(item, cls.LocalPackagePreambleItem):
             return cls.substitute_uselocalpackage(
                 package=item.package_name, package_path=item.package_path )
@@ -1377,31 +1521,38 @@ class RegularDriver(RecordsManager, metaclass=DriverMetaclass):
     def constitute_body(cls, outrecord, metabody):
         body_items = []
         for item in metabody:
-            body_items.append(cls.constitute_body_item(item))
+            body_items.append(cls._constitute_body_item(item))
         return '\n'.join(body_items)
 
     @classmethod
-    def constitute_body_item(cls, item):
+    def _constitute_body_item(cls, item):
         assert isinstance(item, cls.MetabodyItem), item
         if isinstance(item, cls.VerbatimBodyItem):
-            return item.verbatim
+            return item.value
         elif isinstance(item, cls.SourceBodyItem):
-            return cls.constitute_body_input(
-                inpath=item.inpath, alias=item.alias,
-                figure_map=item.figure_map )
+            return cls._constitute_body_input(
+                alias=item.alias,
+                figure_map=item.figure_map,
+                inpath=item.inpath, metapath=item.metapath )
+        elif isinstance(item, cls.ControlBodyItem):
+            raise RuntimeError(
+                "Control body items must be handled somewhere earlier: {}"
+                .format(type(item)) )
         else:
             raise RuntimeError(type(item))
 
     @classmethod
-    def constitute_body_input(cls, inpath,
-        *, alias, figure_map
+    def _constitute_body_input( cls, *,
+        alias, figure_map, metapath, inpath
     ):
-        body = cls.substitute_input(filename=alias, inpath=inpath )
+        body = cls.substitute_input(
+            filename=alias,
+            metapath=metapath, inpath=inpath )
         if figure_map:
             body = cls.constitute_figure_map(figure_map) + '\n' + body
         return body
 
-    input_template = r'\input{$filename}% $inpath'
+    input_template = r'\input{$filename}% $metapath'
 
     @classmethod
     def constitute_figure_map(cls, figure_map):
@@ -1438,8 +1589,6 @@ class RegularDriver(RecordsManager, metaclass=DriverMetaclass):
     selectfont_template = (
         r'\AtBeginDocument{\fontsize{$size}{$skip}\selectfont}' )
     usepackage_template = r'\usepackage$options{$package}'
-    clearpage_template = '\n' r'\clearpage' '\n'
-    emptypage_template = r'\strut\clearpage'
     resetproblem_template = r'\resetproblem'
     jeolmheader_begin_template = r'\jeolmheader{'
     jeolmheader_end_template = r'}'
@@ -1476,11 +1625,21 @@ class RegularDriver(RecordsManager, metaclass=DriverMetaclass):
 
     @staticmethod
     def check_and_set(mapping, key, value):
+        """
+        Set mapping[key] to value if key is not in mapping.
+
+        Return True if key is not present in mapping.
+        Return False if key is present and values was the same.
+        Raise DriverError if key is present, but value is different.
+        """
+        assert value is not None
         other = mapping.get(key)
         if other is None:
             mapping[key] = value
+            return True
         elif other == value:
-            pass
+            return False
         else:
-            raise DriverError("{} clashed with {}".format(value, other))
+            raise DriverError( "Key {} has clashing values: {} and {}"
+                .format(key, value, other) )
 
