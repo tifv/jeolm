@@ -139,6 +139,8 @@ class DocumentNodeFactory:
             prebuild_dvi_method = self._prebuild_dvi_standalone
         elif document_type == 'latexdoc':
             prebuild_dvi_method = self._prebuild_dvi_latexdoc
+        if recipe['compiler'] != 'latex':
+            raise ValueError("No compilers except 'latex' are supported yet")
         dvi_node = prebuild_dvi_method( target, recipe,
             build_dir=build_subdir, build_dir_node=build_subdir_node )
         pdf_node = self._prebuild_pdf( target, recipe, dvi_node,

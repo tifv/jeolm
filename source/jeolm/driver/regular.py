@@ -43,6 +43,10 @@ Keys recognized in metarecords:
     - in absence of \\ProvidesPackage, borrowed by metadata grabber
       from the filename
 
+  $build$compiler$default
+    - string, name of default 'compiler' value in outrecords
+      (e. g. 'latex')
+
   $include
     list of subpaths for direct metadata inclusion.
 
@@ -374,6 +378,8 @@ class RegularDriver(RecordsManager, metaclass=DriverMetaclass):
             string
         'type'
             one of 'regular', 'standalone', 'latexdoc'
+        'compiler'
+            one of 'latex', 'pdflatex', 'xelatex', 'lualatex'
 
         regular outrecord must also contain fields:
         'sources'
@@ -404,16 +410,25 @@ class RegularDriver(RecordsManager, metaclass=DriverMetaclass):
         outrecord = self._cache['outrecords'][target] = \
             self.generate_outrecord(target)
         keys = outrecord.keys()
-        assert keys >= {'outname', 'type'}
-        assert outrecord['type'] in {'regular', 'standalone', 'latexdoc'}
-        assert outrecord['type'] not in {'regular'} or \
-            keys >= {'sources', 'figure_paths', 'document'}
-        assert outrecord['type'] not in {'regular', 'latexdoc'} or \
-            keys >= {'package_paths'}
-        assert outrecord['type'] not in {'standalone', 'latexdoc'} or \
-            keys >= {'source'}
-        assert outrecord['type'] not in {'latexdoc'} or \
-            keys >= {'name'}
+        if not keys >= {'outname', 'type', 'compiler'}:
+            raise RuntimeError
+        if outrecord['type'] not in {'regular', 'standalone', 'latexdoc'}:
+            raise RuntimeError
+        if outrecord['type'] in {'regular'}:
+            if not keys >= {'sources', 'figure_paths', 'document'}:
+                raise RuntimeError
+        if outrecord['type'] in {'regular', 'latexdoc'}:
+            if 'package_paths' not in keys:
+                raise RuntimeError
+        if outrecord['type'] in {'standalone', 'latexdoc'}:
+            if 'source' not in keys:
+                raise RuntimeError
+        if outrecord['type'] in {'latexdoc'}:
+            if 'name' not in keys:
+                raise RuntimeError
+        if outrecord['compiler'] not in {
+                'latex', 'pdflatex', 'xelatex', 'lualatex' }:
+            raise RuntimeError
         return outrecord
 
     @folding_driver_errors(wrap_generator=False)
@@ -497,12 +512,13 @@ class RegularDriver(RecordsManager, metaclass=DriverMetaclass):
 
     def _derive_attributes(self, parent_record, child_record, name):
         super()._derive_attributes(parent_record, child_record, name)
+        path = child_record['$path']
         child_record.setdefault('$target$able',
             parent_record.get('$target$able', True) )
         child_record.setdefault('$build$able',
             parent_record.get('$build$able', True) )
+        self._derive_compiler_default(parent_record, child_record, path=path)
         if '$include' in child_record:
-            path = child_record['$path']
             already_included = set()
             included_paths = [
                 RecordPath(path, include_name)
@@ -521,6 +537,24 @@ class RegularDriver(RecordsManager, metaclass=DriverMetaclass):
                         in reversed(included_value.pop('$include')) )
                 self._include_dict(child_record, included_value)
                 already_included.add(included_path)
+
+    @classmethod
+    def _derive_compiler_default( cls, parent_record, child_record, *, path,
+        _compiler_default_key = '$build$compiler$default'
+    ):
+        if _compiler_default_key not in child_record:
+            if _compiler_default_key not in parent_record:
+                compiler_default = 'latex'
+                logger.warning(
+                    "No <MAGENTA>{key}<NOCOLOUR> key set "
+                    "at {path}, asserting '<CYAN>{compiler}<NOCOLOUR>'"
+                    .format(
+                        key=_compiler_default_key, path=path,
+                        compiler=compiler_default )
+                )
+            else:
+                compiler_default = parent_record[_compiler_default_key]
+            child_record[_compiler_default_key] = compiler_default
 
     @classmethod
     def _include_dict(cls, dest_dict, source_dict):
@@ -865,6 +899,7 @@ class RegularDriver(RecordsManager, metaclass=DriverMetaclass):
             raise DriverError(
                 "Unknown type of special '{}'".format(special_type) )
         outrecord = {'type' : special_type}
+        self._set_outrecord_compiler(target, metarecord, outrecord=outrecord)
         outrecord['outname'] = outrecord['buildname'] = \
             self.select_outname(target, metarecord, date=None)
         suffix = {'latexdoc' : '.dtx', 'standalone' : '.tex'}[special_type]
@@ -881,14 +916,22 @@ class RegularDriver(RecordsManager, metaclass=DriverMetaclass):
         Return protorecord.
         """
         date_set = set()
+        additional_flags = set()
 
         outrecord = {'type' : 'regular'}
-        outrecord.update(self.find_build_options(target, metarecord))
+        outrecord.update(self._find_build_options(target, metarecord))
+        additional_flags.update(
+            self._set_outrecord_compiler( target, metarecord,
+                outrecord=outrecord )
+        )
+        extended_target = target.flags_union(additional_flags)
+        extended_target.flags.utilize(additional_flags)
+
         # We must exhaust generate_metabody() to fill date_set
         metabody = list(self.generate_metabody(
-            target, metarecord, date_set=date_set ))
+            extended_target, metarecord, date_set=date_set ))
         metapreamble = list(self.generate_metapreamble(
-            target, metarecord ))
+            extended_target, metarecord ))
 
         sources = outrecord['sources'] = OrderedDict()
         figure_paths = outrecord['figure_paths'] = OrderedDict()
@@ -905,10 +948,12 @@ class RegularDriver(RecordsManager, metaclass=DriverMetaclass):
 
         target.check_unutilized_flags()
 
-        outrecord.setdefault('outname', self.select_outname(
-            target, metarecord, date=outrecord['date'] ))
-        outrecord.setdefault('buildname', self.select_outname(
-            target, metarecord, date=None ))
+        if 'outname' not in outrecord:
+            outrecord['outname'] = self.select_outname(
+                target, metarecord, date=outrecord['date'] )
+        if 'buildname' not in outrecord:
+            outrecord['buildname'] = self.select_outname(
+                target, metarecord, date=None )
 
         with self.process_target_aspect(target, 'document'):
             outrecord['document'] = self.constitute_document(
@@ -916,7 +961,7 @@ class RegularDriver(RecordsManager, metaclass=DriverMetaclass):
                 metapreamble=metapreamble, metabody=metabody, )
         return outrecord
 
-    def find_build_options(self, target, metarecord):
+    def _find_build_options(self, target, metarecord):
         options_key, options = self.select_flagged_item(
             metarecord, '$build$options', target.flags )
         if options is None:
@@ -931,6 +976,17 @@ class RegularDriver(RecordsManager, metaclass=DriverMetaclass):
                     'figure_paths', 'package_paths', }:
                 raise DriverError("Bad options {}".format(options) )
             return options
+
+    @processing_target_aspect(aspect='outrecord compiler')
+    def _set_outrecord_compiler(self, target, metarecord, *, outrecord):
+        """Yield additional flags for the target."""
+        if 'compiler' not in outrecord:
+            outrecord['compiler'] = metarecord['$build$compiler$default']
+        if outrecord['compiler'] not in {
+                'latex', 'pdflatex', 'xelatex', 'lualatex' }:
+            raise DriverError( "Unknown compiler detected: {}"
+                .format(outrecord['compiler']) )
+        yield 'compiler:{}'.format(outrecord['compiler'])
 
     def select_outname(self, target, metarecord, date=None):
         outname_pieces = []
