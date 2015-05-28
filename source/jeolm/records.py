@@ -19,6 +19,8 @@ class RecordNotFoundError(RecordError, LookupError):
 
 class RecordsManager:
     Dict = OrderedDict
+    Path = RecordPath
+    name_pattern = re.compile(r'^(?:\w+-)*\w+$')
 
     def __init__(self):
         self.records = self.Dict()
@@ -29,24 +31,28 @@ class RecordsManager:
         for cache_piece in self._cache.values():
             cache_piece.clear()
 
-    def absorb(self, data, path=RecordPath(), *, overwrite=True):
-        if not isinstance(path, RecordPath):
+    def absorb(self, data, path=None, *, overwrite=True):
+        if path is None:
+            path = self.Path()
+        if not isinstance(path, self.Path):
             raise TypeError(type(path))
         for part in reversed(path.parts):
             data = {part : data}
-        self._absorb_into(data, RecordPath(), self.records, overwrite=overwrite)
+        self._absorb_into(data, self.Path(), self.records, overwrite=overwrite)
         self._clear_cache()
 
     def delete(self, path):
-        if not isinstance(path, RecordPath):
+        if not isinstance(path, self.Path):
             raise TypeError(type(path))
         if path.is_root():
             raise RuntimeError("Deleting root is impossible")
         self._delete_record(path)
         self._clear_cache()
 
-    def clear(self, path=RecordPath()):
-        if not isinstance(path, RecordPath):
+    def clear(self, path=None):
+        if path is None:
+            path = self.Path()
+        if not isinstance(path, self.Path):
             raise TypeError(type(path))
         self._clear_record(path)
         self._clear_cache()
@@ -81,7 +87,7 @@ class RecordsManager:
             if key.startswith('/'):
                 raise ValueError(key)
             data = value
-            for part in reversed(RecordPath(key).parts):
+            for part in reversed(self.Path(key).parts):
                 data = {part : data}
             return self._absorb_into(data, path, record, overwrite=overwrite)
 
@@ -99,6 +105,10 @@ class RecordsManager:
                 value, path/key, child_record, overwrite=overwrite )
 
     def _create_record(self, path, parent_record, key):
+        if not self.name_pattern.match(key):
+            raise ValueError(
+                "Refusing to add record with name {name} (path {path})"
+                .format(name=key, path=path) )
         record = parent_record[key] = self.Dict()
         return record
 
@@ -119,7 +129,7 @@ class RecordsManager:
         self._clear_record(path, popped_record)
 
     def getitem(self, path, *, original=False):
-        if not isinstance(path, RecordPath):
+        if not isinstance(path, self.Path):
             raise TypeError(type(path))
         use_cache = not original
         if use_cache:
@@ -168,13 +178,15 @@ class RecordsManager:
     def _derive_attributes(self, parent_record, child_record, name):
         parent_path = parent_record.get('$path')
         if parent_path is None:
-            path = RecordPath()
+            path = self.Path()
         else:
             path = parent_path / name
         child_record['$path'] = path
 
-    def items(self, path=RecordPath()):
+    def items(self, path=None):
         """Yield (path, record) pairs."""
+        if path is None:
+            path = self.Path()
         record = self.getitem(path)
         yield path, record
         for key in mapping_ordered_keys(record):
@@ -184,13 +196,17 @@ class RecordsManager:
 
     # pylint: disable=unused-variable
 
-    def keys(self, path=RecordPath()):
+    def keys(self, path=None):
         """Yield paths."""
+        if path is None:
+            path = self.Path()
         for subpath, subrecord in self.items(path=path):
             yield subpath
 
-    def values(self, path=RecordPath()):
+    def values(self, path=None):
         """Yield paths."""
+        if path is None:
+            path = self.Path()
         for subpath, subrecord in self.items(path=path):
             yield subrecord
 
@@ -214,12 +230,14 @@ class RecordsManager:
             return default
 
     @classmethod
-    def compare_items(cls, records1, records2, path=RecordPath(),
+    def compare_items(cls, records1, records2, path=None,
         *, original=False
     ):
         """
         Yield (path, record1, record2) triples.
         """
+        if path is None:
+            path = cls.Path()
 
         record1 = records1.get(path, original=original)
         record2 = records2.get(path, original=original)

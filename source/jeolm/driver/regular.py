@@ -23,9 +23,9 @@ Keys recognized in metarecords:
     - if false then raise error on figure_record stage
     - assumed false by default
     - set to true by metadata grabber on .asy, .svg and .eps files
-  $figure$format$asy, $figure$format$svg, $figure$format$eps (boolean)
-    - set to true by metadata grabber on respectively .asy, .svg and
-      .eps files
+  $figure$type$* (boolean)
+    - set to true by metadata grabber on respectively .asy, .svg, .pdf,
+      .eps, .png and .jpg files
   $figure$asy$accessed (dict)
     - set by metadata grabber
   $package$able (boolean)
@@ -77,8 +77,6 @@ Keys recognized in metarecords:
     - preamble package: <package name>
     - preamble package: <package name>
       options: [<package options>]
-    Values generated internally:
-    - source: <metapath>
     Non-string values may be extended with conditions.
   $style[*]
     Values expected from metadata:
@@ -112,17 +110,19 @@ from contextlib import contextmanager, suppress
 from collections import OrderedDict
 from string import Template
 import datetime
-import abc
+import re
 
 from pathlib import PurePosixPath
 
-from ..record_path import RecordPath
-from ..target import Target
-from ..records import RecordsManager
+from jeolm.record_path import RecordPath
+from jeolm.target import Target
+from jeolm.records import RecordsManager
 
-from ..flags import FlagError
-from ..target import TargetError
-from ..records import RecordError, RecordNotFoundError
+from jeolm.flags import FlagError
+from jeolm.target import TargetError
+from jeolm.records import RecordError, RecordNotFoundError
+
+from jeolm.utils import check_and_set
 
 import logging
 logger = logging.getLogger(__name__)
@@ -386,8 +386,8 @@ class RegularDriver(RecordsManager, metaclass=DriverMetaclass):
             {alias_name : inpath for each inpath}
             where alias_name is a filename with '.tex' extension, and inpath
             also has '.tex' extension.
-        'figure_paths'
-            {alias_name : figure_path for each figure}
+        'figures'
+            {alias_name : (figure_path, figure_type) for each figure}
         'document'
             LaTeX document as a string
 
@@ -410,13 +410,17 @@ class RegularDriver(RecordsManager, metaclass=DriverMetaclass):
         outrecord = self._cache['outrecords'][target] = \
             self.generate_outrecord(target)
         keys = outrecord.keys()
-        if not keys >= {'outname', 'type', 'compiler'}:
+        if not keys >= {'outname', 'buildname', 'type', 'compiler'}:
             raise RuntimeError
         if outrecord['type'] not in {'regular', 'standalone', 'latexdoc'}:
             raise RuntimeError
         if outrecord['type'] in {'regular'}:
-            if not keys >= {'sources', 'figure_paths', 'document'}:
+            if not keys >= {'sources', 'figures', 'document'}:
                 raise RuntimeError
+            for figure_path, figure_type in outrecord['figures'].values():
+                if figure_type not in { None,
+                        'asy', 'svg', 'eps', 'pdf', 'png', 'jpg'}:
+                    raise RuntimeError(figure_type)
         if outrecord['type'] in {'regular', 'latexdoc'}:
             if 'package_paths' not in keys:
                 raise RuntimeError
@@ -432,35 +436,41 @@ class RegularDriver(RecordsManager, metaclass=DriverMetaclass):
         return outrecord
 
     @folding_driver_errors(wrap_generator=False)
-    def produce_figure_record(self, figure_path):
+    def produce_figure_records(self, figure_path):
         """
-        Return figure_record.
+        Return {figure_type : figure_record} dictionary.
 
         Each figure_record must contain the following fields:
-        'buildname'
-            string; valid filename without extension
+        'type':
+            one of 'asy', 'svg', 'pdf', 'eps', 'png', 'jpg'
         'source'
-            inpath with '.asy', '.svg' or '.eps' extension
-        'source_format'
-            one of 'asy', 'svg', 'eps'
+            inpath
 
-        In case of Asymptote file ('asy' format), figure_record must also
+        In case of Asymptote file ('asy' type), figure_record must also
         contain:
         'accessed_sources'
             {accessed_name : inpath for each accessed inpath}
-            where used_name is a filename with '.asy' extension,
+            where accessed_name is a filename with '.asy' extension,
             and inpath has '.asy' extension
         """
+        assert isinstance(figure_path, RecordPath), type(figure_path)
         with suppress(KeyError):
             return self._cache['figure_records'][figure_path]
-        figure_record = self._cache['figure_records'][figure_path] = \
-            self._generate_figure_record(figure_path)
-        keys = figure_record.keys()
-        assert keys >= {'buildname', 'source', 'source_format'}
-        assert figure_record['source_format'] in {'asy', 'svg', 'eps'}
-        assert ( figure_record['source_format'] not in {'asy'} or
-            keys >= {'accessed_sources'} )
-        return figure_record
+        figure_records = self._cache['figure_records'][figure_path] = \
+            dict(self._generate_figure_records(figure_path))
+        # QA
+        for figure_type, figure_record in figure_records.items():
+            keys = figure_record.keys()
+            if not keys >= {'type', 'source'}:
+                raise RuntimeError(keys)
+            if figure_type not in {'asy', 'svg', 'eps'}:
+                raise RuntimeError(figure_type)
+            if figure_record['type'] != figure_type:
+                raise RuntimeError
+            if figure_record['type'] == 'asy':
+                if 'accessed_sources' not in keys:
+                    raise RuntimeError
+        return figure_records
 
     @folding_driver_errors(wrap_generator=False)
     def produce_package_record(self, package_path):
@@ -501,11 +511,21 @@ class RegularDriver(RecordsManager, metaclass=DriverMetaclass):
                     if inpath.suffix == '.tex':
                         yield inpath
             elif inpath_type == 'asy':
-                for figpath in outrecord['figure_paths'].values():
-                    figure_record = self.produce_figure_record(figpath)
-                    if figure_record['source_format'] == 'asy':
-                        yield figure_record['source']
+                yield from self._list_inpaths_asy(target, outrecord)
 
+    def _list_inpaths_asy(self, target, outrecord):
+        for figure_path, figure_type in outrecord['figures'].values():
+            if figure_type != 'asy':
+                continue
+            for figure_record in self.produce_figure_records(figure_path):
+                if figure_record['type'] != 'asy':
+                    continue
+                yield figure_record['source']
+                break
+            else:
+                raise DriverError(
+                    "No 'asy' type figure found for {path} in {target}"
+                    .format(path=figure_path, target=target) )
 
     ##########
     # Record extension
@@ -546,9 +566,9 @@ class RegularDriver(RecordsManager, metaclass=DriverMetaclass):
             if _compiler_default_key not in parent_record:
                 compiler_default = 'latex'
                 logger.warning(
-                    "No <MAGENTA>{key}<NOCOLOUR> key set "
-                    "at {path}, asserting '<CYAN>{compiler}<NOCOLOUR>'"
-                    .format(
+                    "No <MAGENTA>%(key)s<NOCOLOUR> key set "
+                    "at %(path)s, asserting '<CYAN>%(compiler)s<NOCOLOUR>'",
+                    extra=dict(
                         key=_compiler_default_key, path=path,
                         compiler=compiler_default )
                 )
@@ -658,10 +678,6 @@ class RegularDriver(RecordsManager, metaclass=DriverMetaclass):
     class MetabodyItem:
         __slots__ = []
 
-        @abc.abstractmethod
-        def __init__(self):
-            super().__init__()
-
     class VerbatimBodyItem(MetabodyItem):
         """These items represent a piece of LaTeX code."""
         __slots__ = ['value']
@@ -734,8 +750,6 @@ class RegularDriver(RecordsManager, metaclass=DriverMetaclass):
             raise RuntimeError(item)
         elif item.keys() == {'verbatim'}:
             return cls.VerbatimBodyItem(value=item['verbatim'])
-        elif item.keys() == {'source'}:
-            return cls.SourceBodyItem(metapath=item['source'])
         elif item.keys() == {'preamble verbatim', 'provide'}:
             return cls.RequirePreambleBodyItem(
                 value=item['preamble verbatim'], key=item['provide'] )
@@ -759,7 +773,6 @@ class RegularDriver(RecordsManager, metaclass=DriverMetaclass):
     class MetapreambleItem:
         __slots__ = []
 
-        @abc.abstractmethod
         def __init__(self):
             super().__init__()
 
@@ -934,16 +947,16 @@ class RegularDriver(RecordsManager, metaclass=DriverMetaclass):
             extended_target, metarecord ))
 
         sources = outrecord['sources'] = OrderedDict()
-        figure_paths = outrecord['figure_paths'] = OrderedDict()
+        figures = outrecord['figures'] = OrderedDict()
         package_paths = outrecord['package_paths'] = OrderedDict()
         outrecord.setdefault('date', self.min_date(date_set))
 
-        metabody = list(self.digest_metabody(
-            metabody,
-            sources=sources, figure_paths=figure_paths,
+        metabody = list(self._digest_metabody(
+            extended_target, metabody,
+            sources=sources, figures=figures,
             metapreamble=metapreamble ))
-        metapreamble = list(self.digest_metapreamble(
-            metapreamble,
+        metapreamble = list(self._digest_metapreamble(
+            extended_target, metapreamble,
             package_paths=package_paths ))
 
         target.check_unutilized_flags()
@@ -973,7 +986,7 @@ class RegularDriver(RecordsManager, metaclass=DriverMetaclass):
                     .format(type(options).__name__) )
             if options.keys() & {
                     'type', 'document', 'sources',
-                    'figure_paths', 'package_paths', }:
+                    'figures', 'package_paths', }:
                 raise DriverError("Bad options {}".format(options) )
             return options
 
@@ -1068,7 +1081,8 @@ class RegularDriver(RecordsManager, metaclass=DriverMetaclass):
         yield from self._generate_header_def_metabody( target, metarecord,
             date=date )
         yield self.substitute_jeolmheader_end()
-        yield self.substitute_resetproblem()
+        if resetproblem:
+            yield self.substitute_resetproblem()
 
     def _generate_header_def_metabody(self, target, metarecord, *, date):
         if not target.flags.intersection({'multidate', 'no-date'}):
@@ -1152,7 +1166,7 @@ class RegularDriver(RecordsManager, metaclass=DriverMetaclass):
         if not target.flags.intersection(('header', 'no-header')):
             yield target.flags_union({'header'})
             return # recurse
-        yield {'source' : target.path}
+        yield self.SourceBodyItem(metapath=target.path)
         if 'multidate' in target.flags:
             yield from self._generate_source_datestamp_metabody(
                 target, metarecord )
@@ -1249,13 +1263,11 @@ class RegularDriver(RecordsManager, metaclass=DriverMetaclass):
         else:
             yield target.path_derive('..')
 
-    def digest_metabody(self, metabody, *,
-        sources, figure_paths,
-        metapreamble
+    def _digest_metabody(self, target, metabody, *,
+        sources, figures, metapreamble
     ):
         """
-        Yield metabody items.
-        Extend sources, figure_paths, metapreamble.
+        Yield metabody items. Extend sources, figures, metapreamble.
         """
         page_cleared = True
         for item in metabody:
@@ -1273,22 +1285,8 @@ class RegularDriver(RecordsManager, metaclass=DriverMetaclass):
                 page_cleared = False
                 yield item
             elif isinstance(item, self.SourceBodyItem):
-                inpath = item.inpath
-                metarecord = self.getitem(item.metapath)
-                if not metarecord.get('$source$able', False):
-                    raise DriverError( "Path {path} is not sourceable"
-                        .format(path=item.metapath) )
-                alias = item.alias = self.select_alias(
-                    inpath, suffix='.in.tex' )
-                self.check_and_set(sources, alias, inpath)
-                figure_map = item.figure_map = OrderedDict()
-                recorded_figures = metarecord.get('$source$figures', {})
-                for figure_ref, figure_path_s in recorded_figures.items():
-                    figure_path = RecordPath(figure_path_s)
-                    figure_alias = self.select_alias(
-                        figure_path.as_inpath(suffix='.eps'), suffix='')
-                    figure_map[figure_ref] = figure_alias
-                    self.check_and_set(figure_paths, figure_alias, figure_path)
+                self._digest_metabody_source_item( target, item,
+                    sources=sources, figures=figures )
                 page_cleared = False
                 yield item
             elif isinstance(item, self.RequirePreambleBodyItem):
@@ -1303,7 +1301,44 @@ class RegularDriver(RecordsManager, metaclass=DriverMetaclass):
             else:
                 raise RuntimeError(type(item))
 
-    def digest_metapreamble(self, metapreamble, *, package_paths):
+    def _digest_metabody_source_item(self, target, item,
+        *, sources, figures
+    ):
+        assert isinstance(item, self.SourceBodyItem)
+        metarecord = self.getitem(item.metapath)
+        if not metarecord.get('$source$able', False):
+            raise RuntimeError( "Path {path} is not sourceable"
+                .format(path=item.metapath) )
+        item.alias = self.select_alias(item.inpath, suffix='.tex')
+        self.check_and_set(sources, item.alias, item.inpath)
+        item.figure_map = OrderedDict()
+        figure_refs = metarecord.get('$source$figures', ())
+        for figure_ref in figure_refs:
+            match = self._figure_ref_pattern.match(figure_ref)
+            if match is None:
+                raise RuntimeError(figure_ref)
+            figure = match.group('figure')
+            figure_type = match.group('figure_type')
+            figure_path = RecordPath(item.metapath, figure)
+            figure_alias = self.select_alias(figure_path.as_inpath())
+            with self.process_target_aspect(item.metapath, 'figure_map'):
+                self.check_and_set(item.figure_map, figure_ref, figure_alias)
+            with self.process_target_aspect(target, 'figures'):
+                self.check_and_set( figures,
+                    figure_alias, (figure_path, figure_type) )
+
+    _figure_ref_pattern = re.compile( r'^'
+        r'(?P<figure>'
+            r'/?'
+            r'(?:(?:\w+-)\w+/|../)*'
+            r'(?:\w+-)*\w+'
+        r')'
+        r'(?:\.(?P<figure_type>asy|svg|pdf|eps|png|jpg))?'
+    r'$')
+
+    def _digest_metapreamble(self, target, metapreamble,
+        *, package_paths
+    ):
         """
         Yield metapreamble items.
         Extend package_paths.
@@ -1328,78 +1363,71 @@ class RegularDriver(RecordsManager, metaclass=DriverMetaclass):
     ##########
     # Record-level functions (figure_record)
 
-    def _generate_figure_record(self, figure_path):
-        assert isinstance(figure_path, RecordPath), type(figure_path)
-        figure_format, inpath = self._find_figure_info(figure_path)
-        assert isinstance(inpath, PurePosixPath), type(inpath)
-        assert not inpath.is_absolute(), inpath
-
-        figure_record = dict()
-        figure_record['buildname'] = '-'.join(figure_path.parts)
-        figure_record['source'] = inpath
-        figure_record['source_format'] = figure_format
-
-        if figure_format == 'asy':
-            accessed_items = list(self._trace_asy_accessed(figure_path))
-            accessed = figure_record['accessed_sources'] = dict(accessed_items)
-            if len(accessed) != len(accessed_items):
-                raise DriverError(
-                    "Clash in accessed asy file names in figure {}"
-                    .format(figure_path), accessed_items )
-
-        return figure_record
-
-    # listed in priority order
-    _figure_format_suffixes = OrderedDict((
-        ('asy', '.asy'),
-        ('svg', '.svg'),
-        ('eps', '.eps'),
-    ))
-    _figure_format_keys = OrderedDict((
-        ('asy', '$figure$format$asy'),
-        ('svg', '$figure$format$svg'),
-        ('eps', '$figure$format$eps'),
-    ))
-
-    def _find_figure_info(self, figure_path):
-        """
-        Return (figure_format, inpath).
-        figure_format is one of 'asy', 'eps', 'svg'.
-        """
+    def _generate_figure_records(self, figure_path):
         try:
-            assert figure_path.suffix == '', figure_path
-            assert figure_path.parent.suffix == '', figure_path
             metarecord = self.getitem(figure_path)
         except RecordNotFoundError as error:
             raise DriverError('Figure not found') from error
         if not metarecord.get('$figure$able', False):
             raise DriverError("Figure '{}' not found".format(figure_path))
 
-        for figure_format, key in self._figure_format_keys.items():
-            if metarecord.get(key, False):
-                break
-        else:
-            raise RuntimeError( "Found $figure$able key, "
-                "but none of $figure$format$* keys." )
-        # pylint: disable=undefined-loop-variable
-        suffix = self._figure_format_suffixes[figure_format]
-        inpath = figure_path.as_inpath(suffix=suffix)
-        return figure_format, inpath
-        # pylint: enable=undefined-loop-variable
+        for figure_type, key in self._figure_type_keys.items():
+            if not metarecord.get(key, False):
+                continue
+            suffix = self._figure_type_suffixes[figure_type]
+            inpath = figure_path.as_inpath(suffix=suffix)
 
-    def _trace_asy_accessed(self, figure_path, *, seen_paths=frozenset()):
-        """Yield (alias_name, inpath) pairs."""
-        if figure_path in seen_paths:
-            raise DriverError(figure_path)
-        seen_paths |= {figure_path}
-        metarecord = self.getitem(figure_path)
+            figure_record = {
+                'type' : figure_type,
+                'source' : inpath }
+            if figure_type == 'asy':
+                figure_record['accessed_sources'] = \
+                    self._find_figure_asy_sources(figure_path, metarecord)
+            yield figure_type, figure_record
+
+    _figure_type_keys = OrderedDict((
+        ('asy', '$figure$type$asy'),
+        ('svg', '$figure$type$svg'),
+        ('pdf', '$figure$type$pdf'),
+        ('eps', '$figure$type$eps'),
+        ('png', '$figure$type$png'),
+        ('jpg', '$figure$type$jpg'),
+    ))
+    _figure_type_suffixes = OrderedDict((
+        ('asy', '.asy'),
+        ('svg', '.svg'),
+        ('pdf', '.pdf'),
+        ('eps', '.eps'),
+        ('png', '.png'),
+        ('jpg', '.jpg'),
+    ))
+
+    def _find_figure_asy_sources(self, figure_path, metarecord):
+        accessed_sources = dict()
+        for accessed_name, inpath in (
+            self._trace_figure_asy_sources(figure_path, metarecord)
+        ):
+            self.check_and_set(accessed_sources, accessed_name, inpath)
+        return accessed_sources
+
+    def _trace_figure_asy_sources(self, figure_path, metarecord,
+        *, seen_items=None
+    ):
+        """Yield (accessed_name, inpath) pairs."""
+        if seen_items is None:
+            seen_items = set()
         accessed_paths = metarecord.get('$figure$asy$accessed', {})
-        for alias_name, accessed_path_s in accessed_paths.items():
-            inpath = PurePosixPath(accessed_path_s)
-            yield alias_name, inpath
-            yield from self._trace_asy_accessed(
-                RecordPath.from_inpath(inpath.with_suffix('')),
-                seen_paths=seen_paths )
+        for accessed_name, accessed_path_s in accessed_paths.items():
+            accessed_path = RecordPath(figure_path, accessed_path_s)
+            if (accessed_name, accessed_path) in seen_items:
+                continue
+            else:
+                seen_items.add((accessed_name, accessed_path))
+            inpath = accessed_path.as_inpath(suffix='.asy')
+            yield accessed_name, inpath
+            yield from self._trace_figure_asy_sources(
+                figure_path, metarecord, seen_items=seen_items )
+
 
     ##########
     # Record-level functions (package_record)
@@ -1487,8 +1515,8 @@ class RegularDriver(RecordsManager, metaclass=DriverMetaclass):
                 continue
             if isinstance(item, cls.ProvidePreamblePreambleItem):
                 if not cls.check_and_set( provided_preamble,
-                    item.key, item.value ):
-                        continue
+                        item.key, item.value ):
+                    continue
             preamble_lines.append(cls.constitute_preamble_item(item))
         if preamble_lines[0] is None:
             raise DriverError("No document class provided")
@@ -1604,7 +1632,7 @@ class RegularDriver(RecordsManager, metaclass=DriverMetaclass):
     @staticmethod
     def select_alias(*parts, suffix=None):
         path = PurePosixPath(*parts)
-        assert len(path.suffixes) == 1, path
+        assert len(path.suffixes) <= 1, path
         if suffix is not None:
             path = path.with_suffix(suffix)
         assert not path.is_absolute(), path
@@ -1632,14 +1660,5 @@ class RegularDriver(RecordsManager, metaclass=DriverMetaclass):
         Return False if key is present and values was the same.
         Raise DriverError if key is present, but value is different.
         """
-        assert value is not None
-        other = mapping.get(key)
-        if other is None:
-            mapping[key] = value
-            return True
-        elif other == value:
-            return False
-        else:
-            raise DriverError( "Key {} has clashing values: {} and {}"
-                .format(key, value, other) )
+        return check_and_set(mapping, key, value, error_class=DriverError)
 

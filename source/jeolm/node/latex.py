@@ -33,7 +33,7 @@ class _LaTeXCommand(SubprocessCommand):
 
         if self._latex_output_requests_rerun(latex_output):
             if reruns < self._max_latex_reruns:
-                self.logger.warning(
+                self.logger.info(
                     "LaTeX requests rerun" + '…' * (reruns+1) )
                 return self._subprocess(reruns=reruns+1)
             else:
@@ -91,7 +91,7 @@ class _LaTeXCommand(SubprocessCommand):
         if not matches:
             return
         header = "Overfulls and underfulls detected by LaTeX:<RESET>"
-        self.logger.warning('\n'.join(chain(
+        self.logger.info('\n'.join(chain(
             (header,),
             ( self._format_overfull(match, page_numberer, file_namer)
                 for match in matches )

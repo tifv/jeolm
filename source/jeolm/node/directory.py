@@ -23,21 +23,19 @@ class MakeDirCommand(Command):
         self.parents = parents
 
     def __call__(self):
-        super().__call__()
-        node = self.node
-        path = node.path
-        parents = self.parents
+        path = self.node.path
         if os.path.lexists(str(path)):
             path.unlink()
-        self.logger.info(
+        self.logger.debug(
             "<GREEN>%(command)s %(path)s<NOCOLOUR>",
             dict(
-                command='mkdir --parents' if parents else 'mkdir',
+                command='mkdir --parents' if self.parents else 'mkdir',
                 path=self.node.relative_path, )
         )
         # rwxr-xr-x
-        path.mkdir(mode=0b111101101, parents=parents)
-        node.modified = True
+        path.mkdir(mode=0b111101101, parents=self.parents)
+        self.node.modified = True
+        super().__call__()
 
 
 class DirectoryNode(BuildablePathNode):

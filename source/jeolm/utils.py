@@ -4,8 +4,30 @@ from collections import OrderedDict
 import logging
 logger = logging.getLogger(__name__)
 
+def check_and_set(mapping, key, value, *, error_class=ValueError):
+    """
+    Set mapping[key] to value if key is not in mapping.
+
+    Return True if key is not present in mapping.
+    Return False if key is present and values was the same.
+    Raise DriverError if key is present, but value is different.
+    """
+    assert value is not None
+    other = mapping.get(key)
+    if other is None:
+        mapping[key] = value
+        return True
+    elif other == value:
+        return False
+    else:
+        raise error_class( "Key {} has clashing values: {} and {}"
+            .format(key, value, other) )
+
 
 def unique(*iterables):
+    """
+    Return list of unique values from iterables.
+    """
     seen_items = set()
     unique_items = list()
     for iterable in iterables:

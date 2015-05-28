@@ -364,19 +364,6 @@ class TournDriver(RegularDriver):
             super().__init__(metapath=metapath)
             self.number = number
 
-    # Extenstion
-    @classmethod
-    def classify_resolved_metabody_item(cls, item, *, default):
-        if not isinstance(item, dict):
-            return super().classify_resolved_metabody_item( item,
-                default=default )
-        if item.keys() == {'source', 'problem_number'}:
-            return cls.ProblemBodyItem(
-                metapath=item['source'], number=item['problem_number'] )
-        else:
-            return super().classify_resolved_metabody_item( item,
-                default=default )
-
     @classifying_items(aspect='metabody', default='verbatim')
     def _generate_tourn_problem_matter(self, target, metarecord,
         *, number
@@ -392,9 +379,7 @@ class TournDriver(RegularDriver):
         if 'itemized' not in target.flags:
             yield self.constitute_begin_tourn_problems(
                 target.flags.intersection(self.tourn_problem_flags) )
-        yield {
-            'source' : target.path,
-            'problem_number' : number }
+        yield self.ProblemBodyItem(metapath=target.path, number=number)
         if has_criteria:
             yield self.substitute_criteria(criteria=metarecord['$criteria'])
         if has_problem_source:

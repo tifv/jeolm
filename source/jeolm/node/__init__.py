@@ -239,8 +239,12 @@ class Node:
 
     class _LoggerAdapter(logging.LoggerAdapter):
 
+        # pylint: disable=redefined-outer-name
+
         def __init__(self, logger, node):
             super().__init__(logger, extra=dict(node=node))
+
+        # pylint: enable=redefined-outer-name
 
         def process(self, msg, kwargs):
             extra = kwargs.setdefault('extra', {})
@@ -351,7 +355,7 @@ class Command:
     wants_concurrency = False
 
     def __call__(self):
-        pass
+        del self.node # break reference cycle
 
     @property
     def logger(self):
@@ -376,8 +380,8 @@ class SubprocessCommand(Command):
     wants_concurrency = True
 
     def __call__(self):
-        super().__call__()
         self._subprocess()
+        super().__call__()
 
     def _subprocess(self):
         """
@@ -735,7 +739,6 @@ class LazyWriteTextCommand(Command):
         self.textfunc = textfunc
 
     def __call__(self):
-        super().__call__()
         text = self.textfunc()
         if not isinstance(text, str):
             raise TypeError(type(text))
@@ -745,6 +748,7 @@ class LazyWriteTextCommand(Command):
         )
         with self.node.open('w') as text_file:
             text_file.write(text)
+        super().__call__()
 
 class WriteTextCommand(LazyWriteTextCommand):
     """

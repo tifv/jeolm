@@ -46,7 +46,7 @@ class RecordPath:
         if any(part in {'.', '..'} for part in parts):
             raise ValueError(parts)
         self = cls()
-        self._parts = parts
+        self._parts = parts # pylint: disable=protected-access
         return self
 
     @classmethod
@@ -120,42 +120,17 @@ class RecordPath:
         return self.parts[-1]
 
     @property
-    def suffix(self):
-        name = self.name
-        return name[self._suffix_pos(name):]
-
-    @property
-    def basename(self):
-        name = self.name
-        return name[:self._suffix_pos(name)]
-
-    @staticmethod
-    def _suffix_pos(name):
-        suffix_pos = name.find('.', 1)
-        if suffix_pos <= 0:
-            suffix_pos = len(name)
-        return suffix_pos
-
-    def with_suffix(self, suffix):
-        if '/' in suffix:
-            raise ValueError(suffix)
-        if suffix and (not suffix.startswith('.') or suffix == '.'):
-            raise ValueError(suffix)
-        name = self.name
-        return type(self)(
-            self.parent,
-            name[:self._suffix_pos(name)] + suffix )
-
-    @property
     def ancestry(self):
         yield self
         if self.parts:
             yield from self.parent.ancestry
 
     def as_inpath(self, *, suffix=None):
+        inpath = PurePosixPath(*self.parts)
+        assert inpath.suffix == '', inpath
         if suffix is not None:
-            self = self.with_suffix(suffix)
-        return PurePosixPath(*self.parts)
+            inpath = inpath.with_suffix(suffix)
+        return inpath
 
     def __repr__(self):
         return '{cls.__qualname__}({parts})'.format(

@@ -7,8 +7,6 @@ from collections import OrderedDict
 
 from pathlib import PurePosixPath
 
-from .utils import unique
-
 from . import yaml
 from .record_path import RecordPath
 from .records import RecordsManager
@@ -17,18 +15,57 @@ import logging
 logger = logging.getLogger(__name__)
 
 
+class MetadataPath(RecordPath):
+    @property
+    def suffix(self):
+        name = self.name
+        return name[self._suffix_pos(name):]
+
+    @property
+    def basename(self):
+        name = self.name
+        return name[:self._suffix_pos(name)]
+
+    @staticmethod
+    def _suffix_pos(name):
+        suffix_pos = name.find('.', 1)
+        if suffix_pos <= 0:
+            suffix_pos = len(name)
+        return suffix_pos
+
+    def with_suffix(self, suffix):
+        if '/' in suffix:
+            raise ValueError(suffix)
+        if suffix and (not suffix.startswith('.') or suffix == '.'):
+            raise ValueError(suffix)
+        name = self.name
+        return type(self)(
+            self.parent,
+            name[:self._suffix_pos(name)] + suffix )
+
+
 class MetadataManager(RecordsManager):
     Dict = dict
+    Path = MetadataPath
+    name_pattern = re.compile(r'^(?:\w+-)*\w+(?:\.\w+)?$')
 
     source_types = {
+
         ''      : 'directory',
+        '.yaml' : 'metadata in YAML',
+
         '.tex'  : 'LaTeX source',
         '.dtx'  : 'LaTeX documented style',
         '.sty'  : 'LaTeX style',
+
         '.asy'  : 'Asymptote image',
         '.svg'  : 'SVG image',
+        '.pdf'  : 'PDF image',
         '.eps'  : 'EPS image',
-        '.yaml' : 'metadata in YAML',
+
+        '.png'  : 'PNG image',
+        '.jpg'  : 'JPEG image',
+
     }
 
     def __init__(self, *, local):
@@ -79,7 +116,7 @@ class MetadataManager(RecordsManager):
         if not isinstance(inpath, PurePosixPath):
             raise RuntimeError(type(inpath))
         path = self.local.source_dir/inpath
-        metainpath = RecordPath.from_inpath(inpath)
+        metainpath = MetadataPath.from_inpath(inpath)
 
         exists = path.exists()
         recorded = metainpath in self
@@ -90,25 +127,31 @@ class MetadataManager(RecordsManager):
             else:
                 logger.warning(
                     "Reviewed path was not recorded and does not exist "
-                    "as file: %(inpath)s",
-                    dict(inpath=inpath) )
+                    "as file: %(path)s",
+                    dict(path='source'/inpath) )
             return
         # path exists
 
         suffix = inpath.suffix
         is_dir = path.is_dir()
+        if any('.' in part for part in inpath.parts[:-1]):
+            raise ValueError( "Reviewed path has dot in directory parts: {}"
+                .format('source'/inpath) )
+        if inpath.name.startswith('.'):
+            raise ValueError( "Reviewed path name has leading dot: {}"
+                .format('source'/inpath) )
         if len(inpath.suffixes) > 1:
-            raise ValueError( "Reviewed path has multiple suffixes: {}"
-                .format(inpath) )
+            raise ValueError( "Reviewed path name has multiple suffixes: {}"
+                .format('source'/inpath) )
         if not suffix in self.source_types:
-            raise ValueError( "Reviewed path suffix unrecognized: {}"
-                .format(inpath) )
+            raise ValueError( "Reviewed path name has unrecognized suffix: {}"
+                .format('source'/inpath) )
         if suffix == '' and not is_dir:
-            raise ValueError( "Reviewed file has no suffix: {}"
-                .format(inpath) )
+            raise ValueError( "Reviewed file name has no suffix: {}"
+                .format('source'/inpath) )
         if suffix != '' and is_dir:
-            raise ValueError( "Reviewed directory has suffix: {}"
-                .format(inpath) )
+            raise ValueError( "Reviewed directory name has suffix: {}"
+                .format('source'/inpath) )
         assert is_dir == (suffix == ''), (is_dir, suffix)
         if is_dir and recorded:
             self.clear(metainpath)
@@ -126,32 +169,53 @@ class MetadataManager(RecordsManager):
             subinpath = inpath/subname
             subpath = self.local.source_dir/subinpath
             subsuffix = subinpath.suffix
+            subpath_is_dir = subpath.is_dir()
+            def warn(message, subname=subname):
+                logger.warning( "<MAGENTA>%(path)s/<NOCOLOUR>: " +
+                    message, dict(path='source'/inpath, name=subname) )
+            if subname.startswith('.'):
+                warn("name <YELLOW>%(name)s<NOCOLOUR> has leading dot")
+                continue
             if len(subinpath.suffixes) > 1:
-                logger.warning( "<MAGENTA>%(inpath)s<NOCOLOUR>: "
-                    "path <YELLOW>%(name)s<NOCOLOUR> has multiple suffixes",
-                    dict(inpath=inpath, name=subname) )
+                warn("name <YELLOW>%(name)s<NOCOLOUR> has multiple suffixes")
                 continue
             if subsuffix not in self.source_types:
-                logger.warning( "<MAGENTA>%(inpath)s<NOCOLOUR>: "
-                    "path <YELLOW>%(name)s<NOCOLOUR> suffix is unrecognized",
-                    dict(inpath=inpath, name=subname) )
+                warn("name <YELLOW>%(name)s<NOCOLOUR> has unrecognized suffix")
                 continue
-            subpath_is_dir = subpath.is_dir()
             if subsuffix != '' and subpath_is_dir:
-                logger.warning( "<MAGENTA>%(inpath)s<NOCOLOUR>: "
-                    "directory <YELLOW>%(name)s<NOCOLOUR> has suffix",
-                    dict(inpath=inpath, name=subname) )
+                warn("directory name <YELLOW>%(name)s<NOCOLOUR> has suffix")
                 continue
             if subsuffix == '' and not subpath_is_dir:
-                logger.warning( "<MAGENTA>%(inpath)s<NOCOLOUR>: "
-                    "file <YELLOW>%(name)s<NOCOLOUR> has no suffix",
-                    dict(inpath=inpath, name=subname) )
+                warn("file name <YELLOW>%(name)s<NOCOLOUR> has no suffix")
                 continue
             self.review(subinpath)
 
     def _query_file(self, inpath):
-        filetype = inpath.suffix[1:]
-        query_method = getattr(self, '_query_{}_file'.format(filetype))
+        filetype = inpath.suffix
+        if filetype == '':
+            raise RuntimeError
+        elif filetype == '.yaml':
+            query_method = self._query_yaml_file
+        elif filetype == '.tex':
+            query_method = self._query_tex_file
+        elif filetype == '.dtx':
+            query_method = self._query_dtx_file
+        elif filetype == '.sty':
+            query_method = self._query_sty_file
+        elif filetype == '.asy':
+            query_method = self._query_asy_file
+        elif filetype == '.svg':
+            query_method = self._query_svg_file
+        elif filetype == '.pdf':
+            query_method = self._query_pdf_file
+        elif filetype == '.eps':
+            query_method = self._query_eps_file
+        elif filetype == '.png':
+            query_method = self._query_png_file
+        elif filetype == '.jpg':
+            query_method = self._query_jpg_file
+        else:
+            raise RuntimeError
         return query_method(inpath)
 
     def _query_yaml_file(self, inpath):
@@ -173,9 +237,9 @@ class MetadataManager(RecordsManager):
         elif metadata['$build$special'] == 'standalone':
             metadata.setdefault('$source$able', False)
         else:
-            logger.warning( "<MAGENTA>%(inpath)s<NOCOLOUR>: "
+            logger.warning( "<MAGENTA>%(path)s<NOCOLOUR>: "
                 "<YELLOW>$build$special<NOCOLOUR> value unrecognized",
-                dict(inpath=inpath) )
+                dict(path='source'/inpath) )
         return metadata
 
     def _query_tex_content(self, inpath, tex_content):
@@ -186,25 +250,46 @@ class MetadataManager(RecordsManager):
         return metadata
 
     def _query_tex_figures(self, inpath, tex_content):
-        if self.tex_includegraphics_pattern.search(tex_content) is not None:
-            logger.warning("<MAGENTA>%(inpath)s<NOCOLOUR>: "
-                "<YELLOW>" r"\includegraphics" "<NOCOLOUR> command found",
-                dict(inpath=inpath) )
-        figures = unique(
-            match.group('figure')
-            for match in self.tex_figure_pattern.finditer(tex_content) )
-        metapath = RecordPath.from_inpath(inpath.with_suffix(''))
-        if figures:
-            return {'$source$figures' : OrderedDict(
-                (figure, str(RecordPath(metapath, figure).as_inpath()))
-                for figure in figures
-            )}
+        if self._tex_includegraphics_pattern.search(tex_content) is not None:
+            logger.warning( "<MAGENTA>%(path)s<NOCOLOUR>: "
+                r"<YELLOW>\includegraphics<NOCOLOUR> command found",
+                dict(path='source'/inpath) )
+        figure_refs = list()
+        figure_refs_set = set()
+        for match in self._tex_figure_pattern.finditer(tex_content):
+            figure_ref = match.group('figure_ref')
+            if figure_ref in figure_refs_set:
+                continue
+            figure_refs_set.add(figure_ref)
+            if figure_ref is None:
+                continue
+            figure_refs.append(figure_ref)
+        if None in figure_refs_set:
+            logger.warning( "<MAGENTA>%(path)s<NOCOLOUR>: "
+                "unable to parse some of the "
+                r"<YELLOW>\jeolmfigure<NOCOLOUR> commands",
+                dict(path='source'/inpath) )
+        if figure_refs:
+            return {'$source$figures' : figure_refs}
         else:
             return {}
 
-    tex_figure_pattern = re.compile(
-        r'\\jeolmfigure(?:\[.*?\])?\{(?P<figure>.*?)\}' )
-    tex_includegraphics_pattern = re.compile(
+    _tex_figure_pattern = re.compile( r'(?m)'
+        r'\\jeolmfigure(?:\s*'
+            r'(?:\['
+                r'[\w\s.,=\\]*?'
+            r'\])?'
+        r'\s*'
+            r'\{'
+                r'(?P<figure_ref>'
+                    r'/?'
+                    r'(?:(?:\w+-)\w+/|../)*'
+                    r'(?:\w+-)*\w+'
+                    r'(?:\.(?P<figure_type>asy|svg|pdf|eps|png|jpg))?'
+                r')'
+            r'\}'
+        r')?')
+    _tex_includegraphics_pattern = re.compile(
         r'\\includegraphics')
 
     # pylint: disable=unused-argument
@@ -216,7 +301,10 @@ class MetadataManager(RecordsManager):
         return {'$source$sections' : sections} if sections else {}
 
     tex_section_pattern = re.compile(
-        r'\\section\*?\{(?P<section>[^\{\}]*?)\}' )
+        r'\\section\*?\s*'
+            r'\{\s*'
+                r'(?P<section>(?:[^\{\}%]|\{[^\{\}%]*\})*)'
+            r'(?:\s|%.*$)*\}' )
 
     # pylint: enable=unused-argument
 
@@ -237,9 +325,9 @@ class MetadataManager(RecordsManager):
             piece_io.name = inpath
             piece = yaml.load(piece_io)
             if not isinstance(piece, dict) or len(piece) != 1:
-                logger.error( "<MAGENTA>%(inpath)s<NOCOLOUR>: "
+                logger.error( "<MAGENTA>%(path)s<NOCOLOUR>: "
                     "unrecognized metadata piece",
-                    dict(inpath=inpath) )
+                    dict(path='source'/inpath) )
                 raise ValueError(piece)
             (key, value), = piece.items()
             if extend:
@@ -248,9 +336,9 @@ class MetadataManager(RecordsManager):
                 elif isinstance(value, dict):
                     metadata.setdefault(key, {}).update(value)
                 else:
-                    logger.error( "<MAGENTA>%(inpath)s<NOCOLOUR>: "
+                    logger.error( "<MAGENTA>%(path)s<NOCOLOUR>: "
                         "extending value may be only a list or a dict",
-                        dict(inpath=inpath) )
+                        dict(path='source'/inpath) )
                     raise TypeError(value)
             else:
                 metadata[key] = value
@@ -296,7 +384,7 @@ class MetadataManager(RecordsManager):
             asy_content = asy_file.read()
         metadata = {
             '$figure$able' : True,
-            '$figure$format$asy' : True }
+            '$figure$type$asy' : True }
         metadata.update(self._query_asy_content(inpath, asy_content))
         return metadata
 
@@ -305,35 +393,57 @@ class MetadataManager(RecordsManager):
         return metadata or {}
 
     def _query_asy_accessed(self, inpath, asy_content):
-        metapath = RecordPath.from_inpath(inpath.with_suffix(''))
         accessed = OrderedDict()
-        for match in self.asy_access_pattern.finditer(asy_content):
-            alias_name = match.group('alias_name')
-            accessed_path_s = str(RecordPath(
-                metapath, match.group('accessed_path')
-            ).as_inpath())
-            accessed[alias_name] = accessed_path_s
+        for match in self._asy_access_pattern.finditer(asy_content):
+            accessed[match.group('alias_name')] = match.group('accessed_path')
+        for match in self._broken_asy_access_pattern.finditer(asy_content):
+            if self._asy_access_pattern.match(match.group()) is not None:
+                continue
+            logger.warning( "<MAGENTA>%(path)s<NOCOLOUR>: "
+                "invalid 'access path' line spotted",
+                dict(path='source'/inpath) )
         if accessed:
             return {'$figure$asy$accessed' : accessed}
         else:
             return {}
 
-    asy_access_pattern = re.compile(
-        r'(?m)^// access (?P<accessed_path>[-._a-zA-Z0-9/]*?\.asy) '
+    _asy_access_pattern = re.compile(
+        r'(?m)^// access (?P<accessed_path>[-_a-zA-Z0-9/]*?/) '
         r'as (?P<alias_name>[-a-zA-Z0-9]*?\.asy)$' )
+
+    _broken_asy_access_pattern = re.compile(
+        r'(?m)^// (?:access|use) (?:.*?) as (?:.*?)$' )
 
     # pylint: disable=no-self-use,unused-argument
 
     def _query_svg_file(self, inpath):
         metadata = {
             '$figure$able' : True,
-            '$figure$format$svg' : True }
+            '$figure$type$svg' : True }
+        return metadata
+
+    def _query_pdf_file(self, inpath):
+        metadata = {
+            '$figure$able' : True,
+            '$figure$type$pdf' : True }
         return metadata
 
     def _query_eps_file(self, inpath):
         metadata = {
             '$figure$able' : True,
-            '$figure$format$eps' : True }
+            '$figure$type$eps' : True }
+        return metadata
+
+    def _query_png_file(self, inpath):
+        metadata = {
+            '$figure$able' : True,
+            '$figure$type$png' : True }
+        return metadata
+
+    def _query_jpg_file(self, inpath):
+        metadata = {
+            '$figure$able' : True,
+            '$figure$type$jpg' : True }
         return metadata
 
     # pylint: enable=no-self-use,unused-argument

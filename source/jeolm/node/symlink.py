@@ -173,7 +173,7 @@ class ProxyNode(ProductNode):
     def update_self(self):
         self._load_mtime()
         self.modified = self.source.modified
-        super().update_self()
+        self.updated = True
 
     def _load_mtime(self):
         self.mtime = self.source.mtime
