@@ -89,7 +89,7 @@ class DocumentNode(jeolm.node.FileNode):
 class DocumentNodeFactory:
     document_types = ('regular', 'standalone', 'latexdoc')
 
-    class _DocumentNode(DocumentNode, jeolm.node.latex.DVI2PDFNode):
+    class _DocumentNode(jeolm.node.latex.LaTeXPDFNode, DocumentNode):
         pass
 
     def __init__(self, *, local, driver,
@@ -135,20 +135,21 @@ class DocumentNodeFactory:
         if document_type not in self.document_types:
             raise RuntimeError(document_type, target)
         if document_type == 'regular':
-            prebuild_dvi_method = self._prebuild_dvi_regular
+            prebuild_method = self._prebuild_regular
         elif document_type == 'standalone':
-            prebuild_dvi_method = self._prebuild_dvi_standalone
+            prebuild_method = self._prebuild_standalone
         elif document_type == 'latexdoc':
-            prebuild_dvi_method = self._prebuild_dvi_latexdoc
+            prebuild_method = self._prebuild_latexdoc
         if recipe['compiler'] != 'latex':
             raise ValueError("No compilers except 'latex' are supported yet")
-        dvi_node = prebuild_dvi_method( target, recipe,
+        document_node = prebuild_method( target, recipe,
             build_dir=build_subdir, build_dir_node=build_subdir_node )
-        pdf_node = self._prebuild_pdf( target, recipe, dvi_node,
-            build_dir=build_subdir, build_dir_node=build_subdir_node )
-        return pdf_node
+        # pylint: disable=attribute-defined-outside-init
+        document_node.outname = recipe['outname']
+        # pylint: enable=attribute-defined-outside-init
+        return document_node
 
-    def _prebuild_dvi_regular(self, target, recipe,
+    def _prebuild_regular(self, target, recipe,
         *, build_dir, build_dir_node
     ):
         compiler = recipe['compiler']
@@ -189,18 +190,20 @@ class DocumentNodeFactory:
 
         if compiler != 'latex':
             raise RuntimeError
-        dvi_node = jeolm.node.latex.LaTeXNode(
-            name='document:{}:dvi'.format(target),
+        document_node = self._DocumentNode(
+            name='document:{}:pdf'.format(target),
             source=main_tex_node,
-            path=build_dir/'Main.dvi',
-            needs=chain( package_nodes, source_nodes, figure_nodes,
-                (build_dir_node,) )
+            output_dir_node=build_dir_node, jobname='Main',
+            figure_nodes=figure_nodes,
+            needs=chain(package_nodes, source_nodes),
         )
-        dvi_node.figure_nodes = figure_nodes
-        dvi_node.build_dir_node = build_dir_node
-        return dvi_node
+        # pylint: disable=attribute-defined-outside-init
+        document_node.figure_nodes = figure_nodes
+        document_node.build_dir_node = build_dir_node
+        # pylint: enable=attribute-defined-outside-init
+        return document_node
 
-    def _prebuild_dvi_standalone(self, target, recipe,
+    def _prebuild_standalone(self, target, recipe,
         *, build_dir, build_dir_node
     ):
         source_node = self.source_node_factory(recipe['source'])
@@ -208,15 +211,17 @@ class DocumentNodeFactory:
             name='document:{}:source:main'.format(target),
             source=source_node, path=build_dir/'Main.tex',
             needs=(build_dir_node,) )
-        dvi_node = jeolm.node.latex.LaTeXNode(
-            name='document:{}:dvi'.format(target),
-            source=tex_node, path=build_dir/'Main.dvi',
-            needs=(build_dir_node,) )
-        dvi_node.figure_nodes = []
-        dvi_node.build_dir_node = build_dir_node
-        return dvi_node
+        document_node = self._DocumentNode(
+            name='document:{}:pdf'.format(target),
+            source=tex_node,
+            output_dir_node=build_dir_node, jobname='Main', )
+        # pylint: disable=attribute-defined-outside-init
+        document_node.figure_nodes = ()
+        document_node.build_dir_node = build_dir_node
+        # pylint: enable=attribute-defined-outside-init
+        return document_node
 
-    def _prebuild_dvi_latexdoc(self, target, recipe,
+    def _prebuild_latexdoc(self, target, recipe,
         *, build_dir, build_dir_node
     ):
         package_name = recipe['name']
@@ -250,14 +255,16 @@ class DocumentNodeFactory:
             path=(build_dir/package_name).with_suffix('.sty'),
             needs=(build_dir_node,) )
 
-        dvi_node = jeolm.node.latex.LaTeXNode(
-            name='document:{}:dvi'.format(target),
+        document_node = self._DocumentNode(
+            name='document:{}:pdf'.format(target),
             source=drv_node,
-            path=build_dir/'Main.dvi',
-            needs=(sty_node, dtx_node, build_dir_node,) )
-        dvi_node.figure_nodes = []
-        dvi_node.build_dir_node = build_dir_node
-        return dvi_node
+            output_dir_node=build_dir_node, jobname='Main',
+            needs=(sty_node, dtx_node,) )
+        # pylint: disable=attribute-defined-outside-init
+        document_node.figure_nodes = ()
+        document_node.build_dir_node = build_dir_node
+        # pylint: enable=attribute-defined-outside-init
+        return document_node
 
     _driver_ins_template = (
         r"\input docstrip.tex" '\n'
@@ -274,20 +281,6 @@ class DocumentNodeFactory:
     )
     _substitute_driver_ins = Template(_driver_ins_template).substitute
 
-    def _prebuild_pdf(self, target, recipe, dvi_node, *,
-        build_dir, build_dir_node
-    ):
-        pdf_node = self._DocumentNode(
-            name='document:{}:pdf'.format(target),
-            source=dvi_node, path=build_dir/'Main.pdf',
-            needs=chain(dvi_node.figure_nodes, (build_dir_node,))
-        )
-        # pylint: disable=attribute-defined-outside-init
-        pdf_node.figure_nodes = dvi_node.figure_nodes
-        pdf_node.build_dir_node = build_dir_node
-        pdf_node.outname = recipe['outname']
-        # pylint: enable=attribute-defined-outside-init
-        return pdf_node
 
 def _wraps_kwdefaults(method, kwarg_names):
     if method.__kwdefaults__ is None:

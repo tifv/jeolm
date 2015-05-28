@@ -13,19 +13,22 @@ class _LaTeXCommand(SubprocessCommand):
     latex_command = 'latex'
     target_suffix = '.dvi'
 
-    _latex_additional_args = ('-interaction=nonstopmode', '-halt-on-error')
+    _latex_mode_args = ('-interaction=nonstopmode', '-halt-on-error')
 
     # No more than 5 LaTeX runs in a row.
     _max_latex_reruns = 4
 
-    def __init__(self, node, source_name, jobname, *, cwd):
+    def __init__(self, node, *, source_name, output_dir, jobname, cwd):
+        output_dir_arg = output_dir.relative_to(cwd)
         callargs = tuple(chain(
-            (self.latex_command,),
-            ('-jobname={}'.format(jobname),),
-            self._latex_additional_args,
+            ( self.latex_command,
+                '-output-directory={}'.format(output_dir_arg),
+                '-jobname={}'.format(jobname), ),
+            self._latex_mode_args,
             (source_name,),
         ))
         super().__init__(node, callargs, cwd=cwd)
+        self._latex_log_path = (output_dir/jobname).with_suffix('.log')
 
     # Override
     def _subprocess(self, *, reruns=0):
@@ -41,9 +44,8 @@ class _LaTeXCommand(SubprocessCommand):
                 self.logger.warning(
                     "LaTeX requests rerun too many times in a row." )
         else:
-            self._print_latex_log(
-                latex_output,
-                latex_log_path=self.node.path.with_suffix('.log') )
+            self._print_latex_log( latex_output,
+                latex_log_path=self._latex_log_path )
 
     @classmethod
     def _latex_output_requests_rerun(cls, latex_output):
@@ -189,6 +191,19 @@ class _LaTeXCommand(SubprocessCommand):
         r'(?=[\s)])' # ")" or "\n" or " "
     )
 
+class _PdfLaTeXCommand(_LaTeXCommand):
+    latex_command = 'pdflatex'
+    target_suffix = '.pdf'
+
+class _XeLaTeXCommand(_LaTeXCommand):
+    latex_command = 'xelatex'
+    target_suffix = '.pdf'
+
+class _LuaLaTeXCommand(_LaTeXCommand):
+    latex_command = 'lualatex'
+    target_suffix = '.pdf'
+
+
 class LaTeXNode(ProductFileNode):
     """
     Represents a target of some latex command.
@@ -200,33 +215,59 @@ class LaTeXNode(ProductFileNode):
 
     _Command = _LaTeXCommand
 
-    def __init__(self, source, path, *, name=None, needs=(), **kwargs):
-        super().__init__( source=source, path=path,
-            name=name, needs=needs, **kwargs )
-
-        build_dir = self.path.parent
-        if build_dir != source.path.parent:
+    def __init__( self, source, output_dir_node, jobname,
+        *, name=None, needs=(), **kwargs
+    ):
+        build_dir = source.path.parent
+        output_dir = output_dir_node.path
+        if not (build_dir == output_dir or build_dir in output_dir.parents):
             raise RuntimeError
-        jobname = self.path.stem
+        if '.' in jobname:
+            raise RuntimeError
+        path = (output_dir / jobname).with_suffix(
+            self._Command.target_suffix )
 
-        command = self._Command(self, source.path.name, jobname, cwd=build_dir)
+        super().__init__( source=source, path=path,
+            name=name, needs=chain(needs, (output_dir_node,)), **kwargs )
+
+        command = self._Command( self,
+            source_name=source.path.name,
+            output_dir=output_dir, jobname=jobname,
+            cwd=build_dir )
         if self.path.suffix != command.target_suffix:
             raise RuntimeError
-
         self.set_command(command)
 
-class DVI2PDFNode(ProductFileNode):
+class PdfLaTeXNode(LaTeXNode):
+    _Command = _PdfLaTeXCommand
 
-    def __init__(self, source, path, *, name=None, needs=(), **kwargs):
-        super().__init__( source=source, path=path,
-            name=name, needs=needs, **kwargs)
+class XeLaTeXNode(LaTeXNode):
+    _Command = _XeLaTeXCommand
 
-        build_dir = self.path.parent
-        if build_dir != source.path.parent:
-            raise RuntimeError(source, self)
-        if source.path.suffix != '.dvi' or self.path.suffix != '.pdf':
-            raise RuntimeError(source, self)
+class LuaLaTeXNode(LaTeXNode):
+    _Command = _LuaLaTeXCommand
+
+
+class LaTeXPDFNode(ProductFileNode):
+
+    _LaTeXNode = LaTeXNode
+
+    def __init__(self, source, output_dir_node, jobname,
+        *, name, figure_nodes=(), needs=(), **kwargs
+    ):
+        dvi_node = self._LaTeXNode( source, output_dir_node, jobname,
+            name='{}:dvi'.format(name),
+            needs=chain(needs, figure_nodes), **kwargs )
+        if output_dir_node.path != dvi_node.path.parent:
+            raise RuntimeError
+        if dvi_node.path.suffix != '.dvi':
+            raise RuntimeError
+        super().__init__( source=dvi_node,
+            path=dvi_node.path.with_suffix('.pdf'),
+            name=name,
+            needs=chain(figure_nodes, (output_dir_node,)),
+            **kwargs )
         self.set_subprocess_command(
-            ('dvipdf', str(source.path.name), str(self.path.name)),
-            cwd=build_dir )
+            ('dvipdf', str(self.source.path.name), str(self.path.name)),
+            cwd=output_dir_node.path )
 
