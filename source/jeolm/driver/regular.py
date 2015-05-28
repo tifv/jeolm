@@ -94,8 +94,6 @@ Keys recognized in metarecords:
         # best used with anyfontsize package
         # only affects font size at the beginning of document
         # (like, any size command including \\normalsize will undo this)
-    Values generated internally:
-    - local package: <metapath>
     Non-string values may be extended with conditions.
 
   $date
@@ -209,7 +207,7 @@ class RegularDriver(RecordsManager, metaclass=DriverMetaclass):
     def __init__(self):
         super().__init__()
         self._cache.update(
-            outrecords=dict(), figure_records=dict(), package_records=dict(),
+            outrecords=dict(), package_records=dict(), figure_records=dict(),
             delegated_targets=dict() )
 
     ##########
@@ -436,6 +434,37 @@ class RegularDriver(RecordsManager, metaclass=DriverMetaclass):
         return outrecord
 
     @folding_driver_errors(wrap_generator=False)
+    def produce_package_records(self, package_path):
+        """
+        Return {package_type : package_record} dictionary.
+
+        Each package_record must contain the following fields:
+        'type'
+            one of 'dtx', 'sty'
+        'source'
+            inpath
+        'name'
+            package name, as in ProvidesPackage.
+        """
+        assert isinstance(package_path, RecordPath), type(package_path)
+        with suppress(KeyError):
+            return self._cache['package_records'][package_path]
+        package_records = self._cache['package_records'][package_path] = \
+            dict(self._generate_package_records(package_path))
+        # QA
+        if not package_records:
+            raise RuntimeError(package_path)
+        for package_type, package_record in package_records.items():
+            keys = package_record.keys()
+            if not keys >= {'type', 'source', 'name'}:
+                raise RuntimeError(keys)
+            if package_type not in {'dtx', 'sty'}:
+                raise RuntimeError(package_type)
+            if package_record['type'] != package_type:
+                raise RuntimeError
+        return package_records
+
+    @folding_driver_errors(wrap_generator=False)
     def produce_figure_records(self, figure_path):
         """
         Return {figure_type : figure_record} dictionary.
@@ -459,6 +488,8 @@ class RegularDriver(RecordsManager, metaclass=DriverMetaclass):
         figure_records = self._cache['figure_records'][figure_path] = \
             dict(self._generate_figure_records(figure_path))
         # QA
+        if not figure_records:
+            raise RuntimeError(figure_path)
         for figure_type, figure_record in figure_records.items():
             keys = figure_record.keys()
             if not keys >= {'type', 'source'}:
@@ -471,30 +502,6 @@ class RegularDriver(RecordsManager, metaclass=DriverMetaclass):
                 if 'accessed_sources' not in keys:
                     raise RuntimeError
         return figure_records
-
-    @folding_driver_errors(wrap_generator=False)
-    def produce_package_record(self, package_path):
-        """
-        Return package_record.
-
-        Each package_record must contain the following fields:
-        'buildname'
-            string; valid filename without extension
-        'source'
-            inpath with '.dtx' or '.sty' extension
-        'source_format'
-            one of 'dtx', 'sty'
-        'name'
-            package name, as in ProvidesPackage.
-        """
-        with suppress(KeyError):
-            return self._cache['package_records'][package_path]
-        package_record = self._cache['package_records'][package_path] = \
-            self._generate_package_record(package_path)
-        keys = package_record.keys()
-        assert keys >= {'buildname', 'source', 'source_format', 'name'}
-        assert package_record['source_format'] in {'dtx', 'sty'}
-        return package_record
 
     @folding_driver_errors(wrap_generator=True)
     def list_inpaths(self, *targets, inpath_type='tex'):
@@ -796,12 +803,13 @@ class RegularDriver(RecordsManager, metaclass=DriverMetaclass):
             super().__init__()
 
     class LocalPackagePreambleItem(MetapreambleItem):
-        __slots__ = ['package_path', 'package_name']
+        __slots__ = ['package_path', 'package_type', 'package_name']
 
-        def __init__(self, package_path):
+        def __init__(self, package_path, package_type):
             if not isinstance(package_path, RecordPath):
                 raise RuntimeError(package_path)
             self.package_path = package_path
+            self.package_type = package_type
             super().__init__()
 
     class ProvidePreamblePreambleItem(VerbatimPreambleItem):
@@ -861,9 +869,6 @@ class RegularDriver(RecordsManager, metaclass=DriverMetaclass):
             return cls.DocumentClassItem(
                 document_class=item['document class'],
                 options=item['options'] )
-        elif item.keys() == {'local package'}:
-            return cls.LocalPackagePreambleItem(
-                package_path=item['local package'] )
         else:
             raise DriverError(item)
 
@@ -1259,7 +1264,15 @@ class RegularDriver(RecordsManager, metaclass=DriverMetaclass):
     @classifying_items(aspect='metapreamble', default='verbatim')
     def generate_auto_metapreamble(self, target, metarecord):
         if '$package$able' in metarecord:
-            yield {'local package' : target.path}
+            for package_type in self._package_types:
+                package_type_key = self._get_package_type_key(package_type)
+                if metarecord.get(package_type_key, False):
+                    break
+            else:
+                raise DriverError("Failed to determine package type")
+            yield self.LocalPackagePreambleItem(
+                package_path=target.path,
+                package_type=package_type )
         else:
             yield target.path_derive('..')
 
@@ -1347,8 +1360,15 @@ class RegularDriver(RecordsManager, metaclass=DriverMetaclass):
             assert isinstance(item, self.MetapreambleItem), type(item)
             if isinstance(item, self.LocalPackagePreambleItem):
                 package_path = item.package_path
+                package_type = item.package_type
                 metarecord = self.getitem(package_path)
-                package_name = item.package_name = metarecord['$package$name']
+                package_name_key = self._get_package_name_key(package_type)
+                try:
+                    package_name = item.package_name = \
+                        metarecord[package_name_key]
+                except KeyError as error:
+                    raise DriverError( "Package {} of type {} name not found"
+                        .format(package_path, package_type) ) from error
                 self.check_and_set(package_paths, package_name, package_path)
                 yield item
             elif isinstance(item, self.ProvidePackagePreambleItem):
@@ -1358,6 +1378,50 @@ class RegularDriver(RecordsManager, metaclass=DriverMetaclass):
                 yield self.ProvidePreamblePreambleItem(key=key, value=value)
             else:
                 yield item
+
+
+    ##########
+    # Record-level functions (package_record)
+
+    def _generate_package_records(self, package_path):
+        try:
+            metarecord = self.getitem(package_path)
+        except RecordNotFoundError as error:
+            raise DriverError('Package not found') from error
+        if not metarecord.get('$package$able', False):
+            raise DriverError("Package '{}' not found".format(package_path))
+
+        for package_type in self._package_types:
+            package_type_key = self._get_package_type_key(package_type)
+            if not metarecord.get(package_type_key, False):
+                continue
+            suffix = self._get_package_suffix(package_type)
+            inpath = package_path.as_inpath(suffix=suffix)
+            name_key = self._get_package_name_key(package_type)
+            try:
+                package_name = metarecord[name_key]
+            except KeyError as error:
+                raise DriverError( "Package {} of type {} name not found"
+                    .format(package_path, package_type) ) from error
+
+            package_record = {
+                'type' : package_type,
+                'source' : inpath, 'name' : package_name }
+            yield package_type, package_record
+
+    _package_types = ('dtx', 'sty',)
+
+    @staticmethod
+    def _get_package_type_key(package_type):
+        return '$package$type${}'.format(package_type)
+
+    @staticmethod
+    def _get_package_name_key(package_type):
+        return '$package${}$name'.format(package_type)
+
+    @staticmethod
+    def _get_package_suffix(package_type):
+        return '.{}'.format(package_type)
 
 
     ##########
@@ -1371,10 +1435,11 @@ class RegularDriver(RecordsManager, metaclass=DriverMetaclass):
         if not metarecord.get('$figure$able', False):
             raise DriverError("Figure '{}' not found".format(figure_path))
 
-        for figure_type, key in self._figure_type_keys.items():
-            if not metarecord.get(key, False):
+        for figure_type in self._figure_types:
+            figure_type_key = self._get_figure_type_key(figure_type)
+            if not metarecord.get(figure_type_key, False):
                 continue
-            suffix = self._figure_type_suffixes[figure_type]
+            suffix = self._get_figure_suffix(figure_type)
             inpath = figure_path.as_inpath(suffix=suffix)
 
             figure_record = {
@@ -1385,22 +1450,15 @@ class RegularDriver(RecordsManager, metaclass=DriverMetaclass):
                     self._find_figure_asy_sources(figure_path, metarecord)
             yield figure_type, figure_record
 
-    _figure_type_keys = OrderedDict((
-        ('asy', '$figure$type$asy'),
-        ('svg', '$figure$type$svg'),
-        ('pdf', '$figure$type$pdf'),
-        ('eps', '$figure$type$eps'),
-        ('png', '$figure$type$png'),
-        ('jpg', '$figure$type$jpg'),
-    ))
-    _figure_type_suffixes = OrderedDict((
-        ('asy', '.asy'),
-        ('svg', '.svg'),
-        ('pdf', '.pdf'),
-        ('eps', '.eps'),
-        ('png', '.png'),
-        ('jpg', '.jpg'),
-    ))
+    _figure_types = ('asy', 'svg', 'pdf', 'eps', 'png', 'jpg',)
+
+    @staticmethod
+    def _get_figure_type_key(figure_type):
+        return '$figure$type${}'.format(figure_type)
+
+    @staticmethod
+    def _get_figure_suffix(figure_type):
+        return '.{}'.format(figure_type)
 
     def _find_figure_asy_sources(self, figure_path, metarecord):
         accessed_sources = dict()
@@ -1428,59 +1486,6 @@ class RegularDriver(RecordsManager, metaclass=DriverMetaclass):
             yield from self._trace_figure_asy_sources(
                 figure_path, metarecord, seen_items=seen_items )
 
-
-    ##########
-    # Record-level functions (package_record)
-
-    def _generate_package_record(self, package_path):
-        assert isinstance(package_path, RecordPath), type(package_path)
-        package_format, inpath, package_name = \
-            self._find_package_info(package_path)
-        assert isinstance(inpath, PurePosixPath), type(inpath)
-        assert not inpath.is_absolute(), inpath
-
-        package_record = dict()
-        package_record['buildname'] = '-'.join(package_path.parts)
-        package_record['source'] = inpath
-        package_record['source_format'] = package_format
-        package_record['name'] = package_name
-
-        return package_record
-
-    # listed in priority order
-    _package_format_suffixes = OrderedDict((
-        ('dtx', '.dtx'),
-        ('sty', '.sty'),
-    ))
-    _package_format_keys = OrderedDict((
-        ('dtx', '$package$format$dtx'),
-        ('sty', '$package$format$sty'),
-    ))
-
-    def _find_package_info(self, package_path):
-        """
-        Return (package_format, inpath, package_name).
-        package_format is one of 'dtx', 'sty'.
-        """
-        try:
-            metarecord = self.getitem(package_path)
-        except RecordNotFoundError as error:
-            raise DriverError('Package not found') from error
-        if not metarecord.get('$package$able', False):
-            raise DriverError("Package '{}' not found".format(package_path))
-
-        for package_format, key in self._package_format_keys.items():
-            if metarecord.get(key, False):
-                break
-        else:
-            raise RuntimeError( "Found $package$able key, "
-                "but none of $package$format$* keys." )
-        # pylint: disable=undefined-loop-variable
-        suffix = self._package_format_suffixes[package_format]
-        inpath = package_path.as_inpath(suffix=suffix)
-        package_name = metarecord['$package$name']
-        return package_format, inpath, package_name
-        # pylint: enable=undefined-loop-variable
 
     ##########
     # LaTeX-level functions

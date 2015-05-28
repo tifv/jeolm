@@ -353,9 +353,10 @@ class MetadataManager(RecordsManager):
             dtx_content = dtx_file.read()
         metadata = {
             '$package$able' : True,
-            '$package$format$dtx' : True,
+            '$package$type$dtx' : True,
             '$build$special' : 'latexdoc' }
-        metadata.update(self._query_package_content(inpath, dtx_content))
+        metadata.update(self._query_package_content(inpath, dtx_content,
+            package_type='dtx' ))
         return metadata
 
     def _query_sty_file(self, inpath):
@@ -363,17 +364,20 @@ class MetadataManager(RecordsManager):
             sty_content = sty_file.read()
         metadata = {
             '$package$able' : True,
-            '$package$format$sty' : True }
-        metadata.update(self._query_package_content(inpath, sty_content))
+            '$package$type$sty' : True }
+        metadata.update(self._query_package_content(inpath, sty_content,
+            package_type='sty' ))
         return metadata
 
-    def _query_package_content(self, inpath, package_content):
+    def _query_package_content( self, inpath, package_content,
+        *, package_type
+    ):
         match = self.package_name_pattern.search(package_content)
         if match is not None:
             package_name = match.group('package_name')
         else:
             package_name = inpath.with_suffix('').name
-        return {'$package$name' : package_name}
+        return {'$package${}$name'.format(package_type) : package_name}
 
     package_name_pattern = re.compile(
         r'\\ProvidesPackage\{(?P<package_name>[\w-]+)\}'

@@ -289,8 +289,56 @@ class DocumentNodeFactory:
         # pylint: enable=attribute-defined-outside-init
         return pdf_node
 
+def _wraps_kwdefaults(method, kwarg_names):
+    if method.__kwdefaults__ is None:
+        return lambda wrapper: wrapper
+    kwdefaults = method.__kwdefaults__
+    def decorator(wrapper):
+        if wrapper.__kwdefaults__ is None:
+            wrapper.__kwdefaults__ = dict()
+        for kwarg_name in kwarg_names:
+            if kwarg_name not in kwdefaults:
+                continue
+            wrapper.__kwdefaults__[kwarg_name] = kwdefaults[kwarg_name]
+        return wrapper
+    return decorator
+
+# pylint: disable=protected-access
+
+def _cache_package_node(package_type=None):
+    """Decorator factory for methods of PackageNodeFactory."""
+    if package_type is None:
+        def decorator(method):
+            @wraps(method)
+            @_wraps_kwdefaults(method, {'package_type'})
+            def wrapper(self, metapath, *, package_type, **kwargs):
+                try:
+                    return self._nodes[metapath, package_type]
+                except KeyError:
+                    pass
+                node = method( self, metapath,
+                    package_type=package_type, **kwargs )
+                self._nodes[metapath, package_type] = node
+                return node
+            return wrapper
+    else:
+        def decorator(method, package_type=package_type):
+            @wraps(method)
+            def wrapper(self, metapath, **kwargs):
+                try:
+                    return self._nodes[metapath, package_type]
+                except KeyError:
+                    pass
+                node = method(self, metapath, **kwargs)
+                self._nodes[metapath, package_type] = node
+                return node
+            return wrapper
+    return decorator
+
+# pylint: enable=protected-access
 
 class PackageNodeFactory:
+    package_types = frozenset(('dtx', 'sty',))
 
     def __init__(self, *, local, driver,
         build_dir_node,
@@ -302,36 +350,100 @@ class PackageNodeFactory:
         self.source_node_factory = source_node_factory
         self.text_node_shelf = text_node_shelf
 
-        self.nodes = dict()
+        self._nodes = dict()
 
-    def __call__(self, metapath):
-        assert isinstance(metapath, RecordPath), type(metapath)
-        try:
-            node = self.nodes[metapath]
-        except KeyError:
-            node = None
-        if node is None:
-            node = self.nodes[metapath] = self._prebuild_package(metapath)
+    def __call__(self, metapath, *, package_type=None):
+        assert isinstance(metapath, RecordPath)
+        return self._get_package_node(metapath, package_type=package_type)
+
+    @_cache_package_node()
+    def _get_package_node(self, metapath,
+        *, package_type,
+        package_records=None
+    ):
+        if package_records is None:
+            package_records = self.driver.produce_package_records(metapath)
+        package_types = set(package_records)
+        if package_type is not None:
+            if package_type not in package_types:
+                raise ValueError( "Package {0} of type {1} is not available"
+                    .format(metapath, package_type) )
+            package_types = {package_type}
+        assert package_types, (package_records, package_type)
+
+        if package_type is None:
+            for package_type in ('dtx', 'sty',):
+                if package_type in package_types:
+                    break
+            else:
+                raise ValueError( "Unable to determine package type "
+                    "for package {}, given types {}"
+                    .format(metapath, sorted(package_types)) )
+            return self._get_package_node( metapath,
+                package_type=package_type,
+                package_records=package_records )
+        elif package_type == 'dtx':
+            get_package_node_method = self._get_package_node_dtx
+        elif package_type == 'sty':
+            get_package_node_method = self._get_package_node_proxy
+        else:
+            raise RuntimeError
+
+        node = get_package_node_method( metapath,
+            package_record=package_records[package_type] )
+        if not hasattr(node, 'metapath'):
+            node.metapath = metapath
         return node
 
-    def _prebuild_package(self, metapath):
-        package_record = self.driver.produce_package_record(metapath)
-        buildname = package_record['buildname']
-        assert '/' not in buildname
-        build_subdir = self.build_dir_node.path / buildname
-        build_subdir_node = jeolm.node.directory.DirectoryNode(
-            name='package:{}:dir'.format(metapath),
-            path=build_subdir, parents=False,
-            needs=(self.build_dir_node,) )
-        source_package_format = package_record['source_format']
-        if source_package_format == 'dtx':
-            prebuild_sty_method = self._prebuild_dtx_package
-        elif source_package_format == 'sty':
-            prebuild_sty_method = self._prebuild_sty_package
+    @_cache_package_node()
+    def _get_package_node_dir(self, metapath, *, package_type):
+        if package_type == 'dir':
+            parent_dir_node = self.build_dir_node
+            buildname = '-'.join(metapath.parts)
+            assert '.' not in buildname
+            return jeolm.node.directory.DirectoryNode(
+                    name='package:{}:dir'.format(metapath),
+                    path=parent_dir_node.path/buildname,
+                    needs=(parent_dir_node,) )
+        elif package_type == 'dtx':
+            parent_dir_node = self._get_package_node_dir( metapath,
+                package_type='dir' )
+            return jeolm.node.directory.DirectoryNode(
+                    name = 'package:{}:{}:dir'.format(metapath, package_type),
+                    path=parent_dir_node.path/package_type,
+                    needs=(parent_dir_node,) )
         else:
-            raise RuntimeError(source_package_format, metapath)
-        return prebuild_sty_method( metapath, package_record,
-            build_dir_node=build_subdir_node )
+            raise RuntimeError
+
+    def _get_package_node_dtx(self, metapath, *, package_record):
+        build_dir_node = self._get_package_node_dir( metapath,
+            package_type='dtx' )
+        source_dtx_node = self.source_node_factory(
+            package_record['source'] )
+        package_name = package_record['name']
+        dtx_node = jeolm.node.symlink.SymLinkedFileNode(
+            name='package:{}:source:dtx'.format(metapath),
+            source=source_dtx_node,
+            path=build_dir_node.path/'{}.dtx'.format(package_name),
+            needs=(build_dir_node,) )
+        ins_node = TextNode(
+            name='package:{}:source:ins'.format(metapath),
+            path=build_dir_node.path/'package.ins',
+            needs=(build_dir_node,),
+            text_node_shelf=self.text_node_shelf,
+            local=self.local )
+        ins_node.set_command(jeolm.node.WriteTextCommand( ins_node,
+            self._substitute_ins(package_name=package_name) ))
+        sty_node = jeolm.node.ProductFileNode(
+            name='package:{}:sty'.format(metapath),
+            source=dtx_node,
+            path=build_dir_node.path/'{}.sty'.format(package_name),
+            needs=(ins_node,) )
+        sty_node.set_subprocess_command(
+            ( 'latex', '-interaction=nonstopmode', '-halt-on-error',
+                ins_node.path.name ),
+            cwd=build_dir_node.path )
+        return sty_node
 
     _ins_template = (
         r"\input docstrip.tex" '\n'
@@ -347,46 +459,13 @@ class PackageNodeFactory:
         r"\endinput" )
     _substitute_ins = Template(_ins_template).substitute
 
-    def _prebuild_dtx_package(self, metapath, package_record,
-        *, build_dir_node
-    ):
-        build_dir = build_dir_node.path
-        assert build_dir.is_absolute()
-        source_node = self.source_node_factory(
-            package_record['source'] )
-        package_name = package_record['name']
-        dtx_node = jeolm.node.symlink.SymLinkedFileNode(
-            name='package:{}:source:dtx'.format(metapath),
-            source=source_node,
-            path=build_dir/'{}.dtx'.format(package_name),
-            needs=(build_dir_node,) )
-        ins_node = TextNode(
-            name='package:{}:source:ins'.format(metapath),
-            path=build_dir/'package.ins',
-            needs=(build_dir_node,),
-            text_node_shelf=self.text_node_shelf,
-            local=self.local )
-        ins_node.set_command(jeolm.node.WriteTextCommand( ins_node,
-            self._substitute_ins(package_name=package_name) ))
-        sty_node = jeolm.node.ProductFileNode(
+    def _get_package_node_proxy(self, metapath, *, package_record):
+        source_node = self.source_node_factory(package_record['source'])
+        node = jeolm.node.symlink.ProxyFileNode(
             name='package:{}:sty'.format(metapath),
-            source=dtx_node,
-            path=build_dir/'{}.sty'.format(package_name),
-            needs=(ins_node,) )
-        sty_node.set_subprocess_command(
-            ( 'latex', '-interaction=nonstopmode', '-halt-on-error',
-                ins_node.path.name ),
-            cwd=build_dir )
-        return sty_node
+            source=source_node )
+        return node
 
-    # pylint: disable=unused-argument,unused-variable
-
-    def _prebuild_sty_package(self, metapath, package_record,
-        *, build_dir_node
-    ):
-        return self.source_node_factory(package_record['source'])
-
-    # pylint: enable=unused-argument,unused-variable
 
 # pylint: disable=protected-access
 
@@ -395,7 +474,7 @@ def _cache_figure_node(figure_type=None, figure_format=None):
     if figure_type is None and figure_format is None:
         def decorator(method):
             @wraps(method)
-            def wrapper(self, metapath,
+            def wrapper( self, metapath,
                 *, figure_type, figure_format, **kwargs
             ):
                 try:
@@ -411,9 +490,7 @@ def _cache_figure_node(figure_type=None, figure_format=None):
     elif figure_format is None:
         def decorator(method, figure_type=figure_type):
             @wraps(method)
-            def wrapper(self, metapath,
-                *, figure_format, **kwargs
-            ):
+            def wrapper(self, metapath, *, figure_format, **kwargs):
                 try:
                     return self._nodes[metapath, figure_type, figure_format]
                 except KeyError:
@@ -426,9 +503,7 @@ def _cache_figure_node(figure_type=None, figure_format=None):
     elif figure_type is None:
         def decorator(method, figure_format=figure_format):
             @wraps(method)
-            def wrapper(self, metapath,
-                *, figure_type, **kwargs
-            ):
+            def wrapper(self, metapath, *, figure_type, **kwargs):
                 try:
                     return self._nodes[metapath, figure_type, figure_format]
                 except KeyError:
@@ -538,7 +613,9 @@ class FigureNodeFactory:
         elif figure_type == 'svg':
             get_figure_node_method = self._get_figure_node_svg
         elif figure_type in {'pdf', 'eps', 'png', 'jpg'}:
-            get_figure_node_method = self._get_figure_node_symlink
+            get_figure_node_method = self._get_figure_node_proxy
+        else:
+            raise RuntimeError
 
         node = get_figure_node_method( metapath,
             figure_format=figure_format,
@@ -692,7 +769,7 @@ class FigureNodeFactory:
             path=build_dir_node.path/'Main.svg',
             needs=(build_dir_node,) )
 
-    def _get_figure_node_symlink( self, metapath,
+    def _get_figure_node_proxy( self, metapath,
         *, figure_format, figure_record
     ):
         source_node = self.source_node_factory(figure_record['source'])
