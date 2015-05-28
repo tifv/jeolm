@@ -409,7 +409,7 @@ class RegularDriver(RecordsManager, metaclass=DriverMetaclass):
             self.generate_outrecord(target)
         keys = outrecord.keys()
         if not keys >= {'outname', 'buildname', 'type', 'compiler'}:
-            raise RuntimeError
+            raise RuntimeError(keys)
         if outrecord['type'] not in {'regular', 'standalone', 'latexdoc'}:
             raise RuntimeError
         if outrecord['type'] in {'regular'}:
@@ -923,7 +923,8 @@ class RegularDriver(RecordsManager, metaclass=DriverMetaclass):
         suffix = {'latexdoc' : '.dtx', 'standalone' : '.tex'}[special_type]
         outrecord['source'] = target.path.as_inpath(suffix=suffix)
         if special_type == 'latexdoc':
-            package_name = outrecord['name'] = metarecord['$package$name']
+            package_name_key = self._get_package_name_key('dtx')
+            package_name = outrecord['name'] = metarecord[package_name_key]
             outrecord['package_paths'] = {package_name : target.path}
         return outrecord
 
@@ -997,14 +998,14 @@ class RegularDriver(RecordsManager, metaclass=DriverMetaclass):
 
     @processing_target_aspect(aspect='outrecord compiler')
     def _set_outrecord_compiler(self, target, metarecord, *, outrecord):
-        """Yield additional flags for the target."""
+        """Return additional flags for the target."""
         if 'compiler' not in outrecord:
             outrecord['compiler'] = metarecord['$build$compiler$default']
         if outrecord['compiler'] not in {
                 'latex', 'pdflatex', 'xelatex', 'lualatex' }:
             raise DriverError( "Unknown compiler detected: {}"
                 .format(outrecord['compiler']) )
-        yield 'compiler:{}'.format(outrecord['compiler'])
+        return {'compiler-{}'.format(outrecord['compiler'])}
 
     def select_outname(self, target, metarecord, date=None):
         outname_pieces = []
