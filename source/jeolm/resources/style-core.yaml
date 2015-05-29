@@ -1,23 +1,108 @@
 $target$able: off
 
 $style:
-- ./main
-- ./jeolm
-- ./optional
 
-main:
-  $style:
-  - document class: article
-    options: [a4paper,10pt]
-    condition: {not: no-document-class}
-  - package: fontenc
-    options: [T2A]
-  - package: inputenc
-    options: [utf8]
-  - package: babel
-    options: [russian]
-  - verbatim: '\pagestyle{empty}'
-    provide: pagestyle
+- document class: article
+  options: [a4paper,10pt]
+  condition: {not: no-document-class}
+- package: inputenc
+  options: [utf8]
+- delegate: font-config
+  condition: {not: no-font-config}
+- delegate: language-config
+  condition: {not: no-language-config}
+- verbatim: '\pagestyle{empty}'
+  provide: pagestyle
+  condition: {not: no-pagestyle}
+
+- delegate: jeolm
+
+- delegate: math-font-config
+  condition: {not: no-font-config}
+
+- delegate: optional
+
+font-config:
+  $style[compiler-latex]:
+  - delegate: fontenc
+  $style[compiler-pdflatex]:
+  - delegate: fontenc
+  $style[compiler-xelatex]:
+  - delegate: fontspec
+  $style[compiler-lualatex]:
+  - delegate: fontspec
+
+  fontenc:
+    $style:
+    - package: fontenc
+      options: [T2A]
+
+  fontspec:
+    $style:
+    - package: xparse
+      options: [log-declarations=false]
+    - package: fontspec
+      options: [no-math]
+    - delegate: setfont
+    setfont:
+      $style[compiler-xelatex]:
+      - verbatim: |-
+          \setmainfont[Ligatures=TeX]{Linux Libertine}
+          \newfontfamily{\cyrillicfont}[Ligatures=TeX]{Linux Libertine}
+        provide: setmainfont
+      - verbatim: |-
+          \setsansfont[Ligatures=TeX]{DejaVu Sans Condensed}
+          \newfontfamily{\cyrillicfontsf}[Ligatures=TeX]{DejaVu Sans Condensed}
+        provide: setsansfont
+      - verbatim: |-
+          \setmonofont[Ligatures=TeX]{Liberation Mono}
+          \newfontfamily{\cyrillicfonttt}[Ligatures=TeX]{Liberation Mono}
+        provide: setmonofont
+      $style[compiler-lualatex]:
+      - verbatim: |-
+          \setmainfont{CMU Serif}
+        provide: setmainfont
+      - verbatim: |-
+          \setsansfont{CMU Sans Serif}
+        provide: setsansfont
+      - verbatim: |-
+          \setmonofont{CMU Typewriter Text}
+        provide: setmonofont
+      $style:
+      - error: fontspec package be may be used only with XeLaTeX of LuaLaTeX
+
+math-font-config:
+  $style[compiler-latex]: []
+  $style[compiler-pdflatex]: []
+  $style[compiler-lualatex]: []
+
+  # amsmath (and thus jeolm) must go before this
+  $style[compiler-xelatex]:
+  - package: mathspec
+  - verbatim:
+      \setmathsfont(Digits){Linux Libertine}
+    provide: setmathsfont
+
+language-config:
+  $style[compiler-latex]:
+  - babel
+  $style[compiler-pdflatex]:
+  - babel
+  $style[compiler-xelatex]:
+  - polyglossia
+  $style[compiler-lualatex]:
+  - polyglossia
+
+  babel:
+    $style:
+    - package: babel
+      options: [russian]
+
+  polyglossia:
+    $style:
+    - package: polyglossia
+    - verbatim: \setdefaultlanguage{russian}
+      provide: setdefaultlanguage
 
 jeolm:
   $target$able: on
@@ -41,7 +126,7 @@ optional:
   geometry:
     $style:
     - package: geometry
-    - ./set-paper-size
+    - delegate: set-paper-size
     - verbatim: '\geometry{vmargin={2em,2em},hmargin={2em,2em}}'
       provide: geometry:margin
     - verbatim: '\geometry{landscape}'
@@ -66,7 +151,7 @@ optional:
     $style[-resize-to,-2-on-1,-4-on-1]: []
     $style:
     - package: pgfpages
-    - ./uselayout
+    - delegate: uselayout
     uselayout:
       $style[resize-to,-landscape]:
       - verbatim: '\pgfpagesuselayout{resize to}[a4paper]'
@@ -86,8 +171,7 @@ optional:
       $style[4-on-1,landscape]:
       - verbatim: '\pgfpagesuselayout{4 on 1}[a4paper,landscape]'
         provide: pgfpagesuselayout
-      $style: # default
-        []
+      $style: [] # default
   shrink-formulas:
     $style:
     - verbatim: |-

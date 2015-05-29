@@ -573,7 +573,7 @@ class RegularDriver(RecordsManager, metaclass=DriverMetaclass):
                 logger.warning(
                     "No <MAGENTA>%(key)s<NOCOLOUR> key set "
                     "at %(path)s, asserting '<CYAN>%(compiler)s<NOCOLOUR>'",
-                    extra=dict(
+                    dict(
                         key=_compiler_default_key, path=path,
                         compiler=compiler_default )
                 )
@@ -764,6 +764,8 @@ class RegularDriver(RecordsManager, metaclass=DriverMetaclass):
         elif item.keys() == {'preamble package', 'options'}:
             return cls.RequirePackageBodyItem(
                 package=item['preamble package'], options=item['options'] )
+        elif item.keys() == {'error'}:
+            raise DriverError(item['error'])
         else:
             raise DriverError(item)
 
@@ -867,6 +869,8 @@ class RegularDriver(RecordsManager, metaclass=DriverMetaclass):
             return cls.DocumentClassItem(
                 document_class=item['document class'],
                 options=item['options'] )
+        elif item.keys() == {'error'}:
+            raise DriverError(item['error'])
         else:
             raise DriverError(item)
 
