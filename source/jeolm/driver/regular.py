@@ -372,8 +372,6 @@ class RegularDriver(RecordsManager, metaclass=DriverMetaclass):
         Each outrecord must contain the following fields:
         'outname'
             string
-        'buildname'
-            string
         'type'
             one of 'regular', 'standalone', 'latexdoc'
         'compiler'
@@ -385,7 +383,7 @@ class RegularDriver(RecordsManager, metaclass=DriverMetaclass):
             where alias_name is a filename with '.tex' extension, and inpath
             also has '.tex' extension.
         'figures'
-            {alias_name : (figure_path, figure_type) for each figure}
+            {alias_stem : (figure_path, figure_type) for each figure}
         'document'
             LaTeX document as a string
 
@@ -408,7 +406,7 @@ class RegularDriver(RecordsManager, metaclass=DriverMetaclass):
         outrecord = self._cache['outrecords'][target] = \
             self.generate_outrecord(target)
         keys = outrecord.keys()
-        if not keys >= {'outname', 'buildname', 'type', 'compiler'}:
+        if not keys >= {'outname', 'type', 'compiler'}:
             raise RuntimeError(keys)
         if outrecord['type'] not in {'regular', 'standalone', 'latexdoc'}:
             raise RuntimeError
@@ -494,7 +492,7 @@ class RegularDriver(RecordsManager, metaclass=DriverMetaclass):
             keys = figure_record.keys()
             if not keys >= {'type', 'source'}:
                 raise RuntimeError(keys)
-            if figure_type not in {'asy', 'svg', 'eps'}:
+            if figure_type not in {'asy', 'svg', 'pdf', 'eps', 'png', 'jpg'}:
                 raise RuntimeError(figure_type)
             if figure_record['type'] != figure_type:
                 raise RuntimeError
@@ -918,8 +916,8 @@ class RegularDriver(RecordsManager, metaclass=DriverMetaclass):
                 "Unknown type of special '{}'".format(special_type) )
         outrecord = {'type' : special_type}
         self._set_outrecord_compiler(target, metarecord, outrecord=outrecord)
-        outrecord['outname'] = outrecord['buildname'] = \
-            self.select_outname(target, metarecord, date=None)
+        outrecord['outname'] = self.select_outname(
+            target, metarecord, date=None )
         suffix = {'latexdoc' : '.dtx', 'standalone' : '.tex'}[special_type]
         outrecord['source'] = target.path.as_inpath(suffix=suffix)
         if special_type == 'latexdoc':
@@ -970,9 +968,6 @@ class RegularDriver(RecordsManager, metaclass=DriverMetaclass):
         if 'outname' not in outrecord:
             outrecord['outname'] = self.select_outname(
                 target, metarecord, date=outrecord['date'] )
-        if 'buildname' not in outrecord:
-            outrecord['buildname'] = self.select_outname(
-                target, metarecord, date=None )
 
         with self.process_target_aspect(target, 'document'):
             outrecord['document'] = self.constitute_document(
@@ -1334,12 +1329,13 @@ class RegularDriver(RecordsManager, metaclass=DriverMetaclass):
             figure = match.group('figure')
             figure_type = match.group('figure_type')
             figure_path = RecordPath(item.metapath, figure)
-            figure_alias = self.select_alias(figure_path.as_inpath())
+            figure_alias_stem = self.select_alias(figure_path.as_inpath())
             with self.process_target_aspect(item.metapath, 'figure_map'):
-                self.check_and_set(item.figure_map, figure_ref, figure_alias)
+                self.check_and_set( item.figure_map,
+                    figure_ref, figure_alias_stem )
             with self.process_target_aspect(target, 'figures'):
                 self.check_and_set( figures,
-                    figure_alias, (figure_path, figure_type) )
+                    figure_alias_stem, (figure_path, figure_type) )
 
     _figure_ref_pattern = re.compile( r'^'
         r'(?P<figure>'

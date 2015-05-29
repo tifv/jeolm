@@ -216,7 +216,7 @@ class LaTeXNode(ProductFileNode):
     _Command = _LaTeXCommand
 
     def __init__( self, source, output_dir_node, jobname,
-        *, name=None, needs=(), **kwargs
+        *, name=None, figure_nodes=(), needs=(), **kwargs
     ):
         build_dir = source.path.parent
         output_dir = output_dir_node.path
@@ -228,7 +228,8 @@ class LaTeXNode(ProductFileNode):
             self._Command.target_suffix )
 
         super().__init__( source=source, path=path,
-            name=name, needs=chain(needs, (output_dir_node,)), **kwargs )
+            name=name, needs=chain(needs, figure_nodes, (output_dir_node,)),
+            **kwargs )
 
         command = self._Command( self,
             source_name=source.path.name,
@@ -255,9 +256,11 @@ class LaTeXPDFNode(ProductFileNode):
     def __init__(self, source, output_dir_node, jobname,
         *, name, figure_nodes=(), needs=(), **kwargs
     ):
+        build_dir = source.path.parent
         dvi_node = self._LaTeXNode( source, output_dir_node, jobname,
             name='{}:dvi'.format(name),
-            needs=chain(needs, figure_nodes), **kwargs )
+            figure_nodes=figure_nodes, needs=needs, **kwargs )
+        del source # is not self.source
         if output_dir_node.path != dvi_node.path.parent:
             raise RuntimeError
         if dvi_node.path.suffix != '.dvi':
@@ -268,6 +271,8 @@ class LaTeXPDFNode(ProductFileNode):
             needs=chain(figure_nodes, (output_dir_node,)),
             **kwargs )
         self.set_subprocess_command(
-            ('dvipdf', str(self.source.path.name), str(self.path.name)),
-            cwd=output_dir_node.path )
+            ( 'dvipdf',
+                str(self.source.path.relative_to(build_dir)),
+                str(self.path.relative_to(build_dir)) ),
+            cwd=build_dir )
 

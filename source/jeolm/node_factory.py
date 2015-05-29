@@ -17,6 +17,7 @@ import jeolm.records
 import jeolm.target
 
 from jeolm.record_path import RecordPath
+from jeolm.target import Target
 
 import logging
 logger = logging.getLogger(__name__)
@@ -82,15 +83,50 @@ class TargetNodeFactory:
             target_node.append_needs(exposed_node)
         return target_node
 
+# pylint: disable=protected-access
+
+def _cache_node(key_function):
+    """Decorator factory for NodeFactory classes methods."""
+    def decorator(method):
+        @wraps(method)
+        def wrapper(self, *args, **kwargs):
+            key = key_function(self, *args, **kwargs)
+            try:
+                return self._nodes[key]
+            except KeyError:
+                pass
+            node = self._nodes[key] = method(self, *args, **kwargs)
+            return node
+        return wrapper
+    return decorator
+
+# pylint: enable=protected-access
 
 class DocumentNode(jeolm.node.FileNode):
     pass
 
 class DocumentNodeFactory:
+
     document_types = ('regular', 'standalone', 'latexdoc')
 
-    class _DocumentNode(jeolm.node.latex.LaTeXPDFNode, DocumentNode):
+    class _LaTeXDocumentNode(jeolm.node.latex.LaTeXPDFNode, DocumentNode):
         pass
+
+    class _PdfLaTeXDocumentNode(jeolm.node.latex.PdfLaTeXNode, DocumentNode):
+        pass
+
+    class _XeLaTeXDocumentNode(jeolm.node.latex.XeLaTeXNode, DocumentNode):
+        pass
+
+    class _LuaLaTeXDocumentNode(jeolm.node.latex.LuaLaTeXNode, DocumentNode):
+        pass
+
+    _document_node_classes = {
+        'latex' : _LaTeXDocumentNode,
+        'pdflatex' : _PdfLaTeXDocumentNode,
+        'xelatex' : _XeLaTeXDocumentNode,
+        'lualatex' : _LuaLaTeXDocumentNode,
+    }
 
     def __init__(self, *, local, driver,
         build_dir_node,
@@ -105,131 +141,180 @@ class DocumentNodeFactory:
         self.figure_node_factory = figure_node_factory
         self.text_node_shelf = text_node_shelf
 
-        self.nodes = dict()
+        self._nodes = dict()
 
     @property
     def build_dir(self):
         return self.build_dir_node.path
 
     def __call__(self, target):
-        assert isinstance(target, jeolm.target.Target), type(target)
-        try:
-            node = self.nodes[target]
-        except KeyError:
-            node = None
-        if node is None:
-            node = self.nodes[target] = self._prebuild_document(target)
-        assert hasattr(node, 'outname'), node
-        return node
+        assert isinstance(target, Target), type(target)
+        return self._get_document_node(target)
 
-    def _prebuild_document(self, target):
+    # pylint: disable=no-self-use
+    def _document_node_key(self, target):
+        return target, 'pdf'
+    # pylint: enable=no-self-use
+
+    @_cache_node(_document_node_key)
+    def _get_document_node(self, target):
         recipe = self.driver.produce_outrecord(target)
-        buildname = recipe['buildname']
-        assert '/' not in buildname
-        build_subdir = self.build_dir / buildname
-        build_subdir_node = jeolm.node.directory.DirectoryNode(
-            name='document:{}:dir'.format(target),
-            path=build_subdir, parents=False,
-            needs=(self.build_dir_node,) )
+        build_dir_node = self._get_build_dir(target, recipe)
+        output_dir_node = jeolm.node.directory.DirectoryNode(
+            name='document:{}:output:dir'.format(target),
+            path=build_dir_node.path/'output',
+            needs=(build_dir_node,) )
         document_type = recipe['type']
-        if document_type not in self.document_types:
-            raise RuntimeError(document_type, target)
         if document_type == 'regular':
             prebuild_method = self._prebuild_regular
         elif document_type == 'standalone':
             prebuild_method = self._prebuild_standalone
         elif document_type == 'latexdoc':
             prebuild_method = self._prebuild_latexdoc
-        if recipe['compiler'] != 'latex':
-            raise ValueError("No compilers except 'latex' are supported yet")
-        document_node = prebuild_method( target, recipe,
-            build_dir=build_subdir, build_dir_node=build_subdir_node )
+        else:
+            raise RuntimeError
+        main_source_node, source_nodes, package_nodes, figure_nodes = \
+            prebuild_method( target, recipe,
+                build_dir_node=build_dir_node )
+        document_node_class = self._document_node_classes[recipe['compiler']]
+        document_node = document_node_class(
+            name='document:{}:output'.format(target),
+            source=main_source_node,
+            output_dir_node=output_dir_node, jobname='Main',
+            figure_nodes=figure_nodes,
+            needs=chain(source_nodes, package_nodes),
+        )
         # pylint: disable=attribute-defined-outside-init
+        document_node.figure_nodes = figure_nodes
+        document_node.build_dir_node = build_dir_node
         document_node.outname = recipe['outname']
         # pylint: enable=attribute-defined-outside-init
         return document_node
 
-    def _prebuild_regular(self, target, recipe,
-        *, build_dir, build_dir_node
-    ):
-        compiler = recipe['compiler']
-        main_tex_node = TextNode(
+    # pylint: disable=no-self-use
+    def _metapath_build_dir_key(self, metapath):
+        return metapath, 'dir'
+    # pylint: enable=no-self-use
+
+    @_cache_node(_metapath_build_dir_key)
+    def _get_metapath_build_dir(self, metapath):
+        assert isinstance(metapath, RecordPath)
+        parent_dir_node = self.build_dir_node
+        buildname = '-'.join(metapath.parts)
+        assert '.' not in buildname
+        return jeolm.node.directory.DirectoryNode(
+            name='document:{}:dir'.format(metapath),
+            path=parent_dir_node.path/buildname,
+            needs=(parent_dir_node,) )
+
+    # pylint: disable=no-self-use,unused-argument,unused-variable
+    def _build_dir_key(self, target, recipe):
+        return target, 'dir'
+    # pylint: enable=no-self-use,unused-argument,unused-variable
+
+    @_cache_node(_build_dir_key)
+    def _get_build_dir(self, target, recipe):
+        assert isinstance(target, Target)
+        parent_dir_node = self._get_metapath_build_dir(target.path)
+        buildname = '{flags}~{compiler}'.format(
+            flags=','.join(target.flags.as_frozenset),
+            compiler=recipe['compiler']
+        )
+        assert '.' not in buildname
+        return jeolm.node.directory.DirectoryNode(
+            name='document:{}:dir'.format(target),
+            path=parent_dir_node.path/buildname,
+            needs=(parent_dir_node,) )
+
+    def _prebuild_regular(self, target, recipe, *, build_dir_node):
+        """
+        Prebuild all necessary for building a document.
+
+        Return (
+            main_source_node, source_nodes,
+            package_nodes, figure_nodes ).
+        """
+        build_dir = build_dir_node.path
+        main_source_node = TextNode(
             name='document:{}:source:main'.format(target),
             path=build_dir/'Main.tex',
             needs=(build_dir_node,),
             text_node_shelf=self.text_node_shelf,
             local=self.local )
-        main_tex_node.set_command(jeolm.node.WriteTextCommand(
-            main_tex_node, text=recipe['document'] ))
+        main_source_node.set_command(jeolm.node.WriteTextCommand(
+            main_source_node, text=recipe['document'] ))
 
-        package_nodes = [
-            jeolm.node.symlink.SymLinkedFileNode(
-                name='document:{}:package:{}'.format(target, alias_name),
-                source=self.package_node_factory(package_path),
-                path=(build_dir/alias_name).with_suffix('.sty'),
-                needs=(build_dir_node,) )
-            for alias_name, package_path
-            in recipe['package_paths'].items() ]
-        figure_nodes = [
-            jeolm.node.symlink.SymLinkedFileNode(
-                name='document:{}:figure:{}'.format(target, alias_name),
-                source=self.figure_node_factory( figure_path,
-                    figure_type=figure_type,
-                    figure_format='<{}>'.format(compiler) ),
-                path=(build_dir/alias_name).with_suffix('.eps'),
-                needs=(build_dir_node,) )
-            for alias_name, (figure_path, figure_type)
-            in recipe['figures'].items() ]
-        source_nodes = [
-            jeolm.node.symlink.SymLinkedFileNode(
+        source_nodes = list()
+        for alias, inpath in recipe['sources'].items():
+            source_nodes.append(jeolm.node.symlink.SymLinkedFileNode(
                 name='document:{}:source:{}'.format(target, alias),
                 source=self.source_node_factory(inpath),
                 path=build_dir/alias,
-                needs=(build_dir_node,) )
-            for alias, inpath in recipe['sources'].items() ]
+                needs=(build_dir_node,)
+            ))
 
-        if compiler != 'latex':
-            raise RuntimeError
-        document_node = self._DocumentNode(
-            name='document:{}:pdf'.format(target),
-            source=main_tex_node,
-            output_dir_node=build_dir_node, jobname='Main',
-            figure_nodes=figure_nodes,
-            needs=chain(package_nodes, source_nodes),
+        return (
+            main_source_node, source_nodes,
+            self._prebuild_regular_packages( target, recipe,
+                build_dir_node=build_dir_node ),
+            self._prebuild_regular_figures( target, recipe,
+                build_dir_node=build_dir_node ),
         )
-        # pylint: disable=attribute-defined-outside-init
-        document_node.figure_nodes = figure_nodes
-        document_node.build_dir_node = build_dir_node
-        # pylint: enable=attribute-defined-outside-init
-        return document_node
+
+    def _prebuild_regular_packages( self, target, recipe,
+        *, build_dir_node
+    ):
+        build_dir = build_dir_node.path
+        package_nodes = list()
+        for package_name, package_path in recipe['package_paths'].items():
+            package_nodes.append(jeolm.node.symlink.SymLinkedFileNode(
+                name='document:{}:package:{}'.format(target, package_name),
+                source=self.package_node_factory(package_path),
+                path=(build_dir/package_name).with_suffix('.sty'),
+                needs=(build_dir_node,)
+            ))
+        return package_nodes
+
+    def _prebuild_regular_figures( self, target, recipe,
+        *, build_dir_node
+    ):
+        build_dir = build_dir_node.path
+        figure_nodes = list()
+        compiler = recipe['compiler']
+        for alias_stem, (figure_path, figure_type) in (
+                recipe['figures'].items() ):
+            figure_node = self.figure_node_factory( figure_path,
+                figure_type=figure_type,
+                figure_format='<{}>'.format(compiler) )
+            figure_suffix = figure_node.path.suffix
+            assert figure_suffix in {'.pdf', '.eps', '.png', '.jpg'}
+            figure_nodes.append(jeolm.node.symlink.SymLinkedFileNode(
+                name='document:{}:figure:{}'.format(target, alias_stem),
+                source=figure_node,
+                path=(build_dir/alias_stem).with_suffix(figure_suffix),
+                needs=(build_dir_node,)
+            ))
+        return figure_nodes
 
     def _prebuild_standalone(self, target, recipe,
-        *, build_dir, build_dir_node
+        *, build_dir_node
     ):
-        source_node = self.source_node_factory(recipe['source'])
-        tex_node = jeolm.node.symlink.SymLinkedFileNode(
+        build_dir = build_dir_node.path
+        main_source_node = jeolm.node.symlink.SymLinkedFileNode(
             name='document:{}:source:main'.format(target),
-            source=source_node, path=build_dir/'Main.tex',
+            source=self.source_node_factory(recipe['source']),
+            path=build_dir/'Main.tex',
             needs=(build_dir_node,) )
-        document_node = self._DocumentNode(
-            name='document:{}:pdf'.format(target),
-            source=tex_node,
-            output_dir_node=build_dir_node, jobname='Main', )
-        # pylint: disable=attribute-defined-outside-init
-        document_node.figure_nodes = ()
-        document_node.build_dir_node = build_dir_node
-        # pylint: enable=attribute-defined-outside-init
-        return document_node
+        return main_source_node, (), (), ()
 
     def _prebuild_latexdoc(self, target, recipe,
-        *, build_dir, build_dir_node
+        *, build_dir_node
     ):
+        build_dir = build_dir_node.path
         package_name = recipe['name']
-
-        source_node = self.source_node_factory(recipe['source'])
         dtx_node = jeolm.node.symlink.SymLinkedFileNode(
             name='document:{}:source:dtx'.format(target),
-            source=source_node,
+            source=self.source_node_factory(recipe['source']),
             path=build_dir/'{}.dtx'.format(package_name),
             needs=(build_dir_node,) )
         ins_node = TextNode(
@@ -254,17 +339,7 @@ class DocumentNodeFactory:
             source=self.package_node_factory(target.path),
             path=(build_dir/package_name).with_suffix('.sty'),
             needs=(build_dir_node,) )
-
-        document_node = self._DocumentNode(
-            name='document:{}:pdf'.format(target),
-            source=drv_node,
-            output_dir_node=build_dir_node, jobname='Main',
-            needs=(sty_node, dtx_node,) )
-        # pylint: disable=attribute-defined-outside-init
-        document_node.figure_nodes = ()
-        document_node.build_dir_node = build_dir_node
-        # pylint: enable=attribute-defined-outside-init
-        return document_node
+        return drv_node, (dtx_node,), (sty_node,), ()
 
     _driver_ins_template = (
         r"\input docstrip.tex" '\n'
@@ -296,39 +371,6 @@ def _wraps_kwdefaults(method, kwarg_names):
         return wrapper
     return decorator
 
-# pylint: disable=protected-access
-
-def _cache_package_node(package_type=None):
-    """Decorator factory for methods of PackageNodeFactory."""
-    if package_type is None:
-        def decorator(method):
-            @wraps(method)
-            @_wraps_kwdefaults(method, {'package_type'})
-            def wrapper(self, metapath, *, package_type, **kwargs):
-                try:
-                    return self._nodes[metapath, package_type]
-                except KeyError:
-                    pass
-                node = method( self, metapath,
-                    package_type=package_type, **kwargs )
-                self._nodes[metapath, package_type] = node
-                return node
-            return wrapper
-    else:
-        def decorator(method, package_type=package_type):
-            @wraps(method)
-            def wrapper(self, metapath, **kwargs):
-                try:
-                    return self._nodes[metapath, package_type]
-                except KeyError:
-                    pass
-                node = method(self, metapath, **kwargs)
-                self._nodes[metapath, package_type] = node
-                return node
-            return wrapper
-    return decorator
-
-# pylint: enable=protected-access
 
 class PackageNodeFactory:
     package_types = frozenset(('dtx', 'sty',))
@@ -345,11 +387,23 @@ class PackageNodeFactory:
 
         self._nodes = dict()
 
+    @property
+    def build_dir(self):
+        return self.build_dir_node.path
+
     def __call__(self, metapath, *, package_type=None):
         assert isinstance(metapath, RecordPath)
         return self._get_package_node(metapath, package_type=package_type)
 
-    @_cache_package_node()
+    # pylint: disable=no-self-use,unused-argument,unused-variable
+    def _package_node_key(self, metapath,
+        *, package_type,
+        package_records=None
+    ):
+        return metapath, package_type, 'sty'
+    # pylint: enable=no-self-use,unused-argument,unused-variable
+
+    @_cache_node(_package_node_key)
     def _get_package_node(self, metapath,
         *, package_type,
         package_records=None
@@ -388,8 +442,13 @@ class PackageNodeFactory:
             node.metapath = metapath
         return node
 
-    @_cache_package_node()
-    def _get_package_node_dir(self, metapath, *, package_type):
+    # pylint: disable=no-self-use,unused-argument,unused-variable
+    def _build_dir_key(self, metapath, *, package_type):
+        return metapath, package_type, 'dir'
+    # pylint: enable=no-self-use,unused-argument,unused-variable
+
+    @_cache_node(_build_dir_key)
+    def _get_build_dir(self, metapath, *, package_type):
         if package_type == 'dir':
             parent_dir_node = self.build_dir_node
             buildname = '-'.join(metapath.parts)
@@ -399,7 +458,7 @@ class PackageNodeFactory:
                     path=parent_dir_node.path/buildname,
                     needs=(parent_dir_node,) )
         elif package_type == 'dtx':
-            parent_dir_node = self._get_package_node_dir( metapath,
+            parent_dir_node = self._get_build_dir( metapath,
                 package_type='dir' )
             return jeolm.node.directory.DirectoryNode(
                     name = 'package:{}:{}:dir'.format(metapath, package_type),
@@ -409,7 +468,7 @@ class PackageNodeFactory:
             raise RuntimeError
 
     def _get_package_node_dtx(self, metapath, *, package_record):
-        build_dir_node = self._get_package_node_dir( metapath,
+        build_dir_node = self._get_build_dir( metapath,
             package_type='dtx' )
         source_dtx_node = self.source_node_factory(
             package_record['source'] )
@@ -460,70 +519,6 @@ class PackageNodeFactory:
         return node
 
 
-# pylint: disable=protected-access
-
-def _cache_figure_node(figure_type=None, figure_format=None):
-    """Decorator factory for methods of FigureNodeFactory."""
-    if figure_type is None and figure_format is None:
-        def decorator(method):
-            @wraps(method)
-            def wrapper( self, metapath,
-                *, figure_type, figure_format, **kwargs
-            ):
-                try:
-                    return self._nodes[metapath, figure_type, figure_format]
-                except KeyError:
-                    pass
-                node = method( self, metapath,
-                    figure_type=figure_type, figure_format=figure_format,
-                    **kwargs )
-                self._nodes[metapath, figure_type, figure_format] = node
-                return node
-            return wrapper
-    elif figure_format is None:
-        def decorator(method, figure_type=figure_type):
-            @wraps(method)
-            def wrapper(self, metapath, *, figure_format, **kwargs):
-                try:
-                    return self._nodes[metapath, figure_type, figure_format]
-                except KeyError:
-                    pass
-                node = method( self, metapath,
-                    figure_format=figure_format, **kwargs )
-                self._nodes[metapath, figure_type, figure_format] = node
-                return node
-            return wrapper
-    elif figure_type is None:
-        def decorator(method, figure_format=figure_format):
-            @wraps(method)
-            def wrapper(self, metapath, *, figure_type, **kwargs):
-                try:
-                    return self._nodes[metapath, figure_type, figure_format]
-                except KeyError:
-                    pass
-                node = method( self, metapath,
-                    figure_type=figure_type, **kwargs )
-                self._nodes[metapath, figure_type, figure_format] = node
-                return node
-            return wrapper
-    else:
-        def decorator(method,
-            figure_type=figure_type, figure_format=figure_format
-        ):
-            @wraps(method)
-            def wrapper(self, metapath, **kwargs):
-                try:
-                    return self._nodes[metapath, figure_type, figure_format]
-                except KeyError:
-                    pass
-                node = method(self, metapath, **kwargs)
-                self._nodes[metapath, figure_type, figure_format] = node
-                return node
-            return wrapper
-    return decorator
-
-# pylint: enable=protected-access
-
 class FigureNodeFactory:
     figure_formats = frozenset((
         '<latex>', '<pdflatex>', '<xelatex>', '<lualatex>',
@@ -543,6 +538,10 @@ class FigureNodeFactory:
 
         self._nodes = dict()
 
+    @property
+    def build_dir(self):
+        return self.build_dir_node.path
+
     def __call__(self, metapath, *, figure_type, figure_format):
         assert isinstance(metapath, RecordPath)
         if figure_type not in self.figure_types:
@@ -554,7 +553,15 @@ class FigureNodeFactory:
         return self._get_figure_node( metapath,
             figure_type=figure_type, figure_format=figure_format )
 
-    @_cache_figure_node()
+    # pylint: disable=no-self-use,unused-argument,unused-variable
+    def _figure_node_key(self, metapath,
+        *, figure_type, figure_format,
+        figure_records=None
+    ):
+        return metapath, figure_type, figure_format
+    # pylint: enable=no-self-use,unused-argument,unused-variable
+
+    @_cache_node(_figure_node_key)
     def _get_figure_node(self, metapath,
         *, figure_type, figure_format,
         figure_records=None
@@ -571,14 +578,14 @@ class FigureNodeFactory:
 
         if figure_format in {
                 '<latex>', '<pdflatex>', '<xelatex>', '<lualatex>' }:
-            figure_format = self._determine_figure_format(
+            refined_figure_format = self._determine_figure_format(
                 figure_types, figure_format )
-            if figure_format is None:
+            if refined_figure_format is None:
                 raise ValueError( "Unable to determine figure format "
                     "for figure {}, given types {} and format {}"
                     .format(metapath, sorted(figure_types), figure_format) )
             return self._get_figure_node( metapath,
-                figure_type=figure_type, figure_format=figure_format,
+                figure_type=figure_type, figure_format=refined_figure_format,
                 figure_records=figure_records )
         elif figure_format in {'pdf', 'eps', 'png', 'jpg'}:
             pass
@@ -666,23 +673,28 @@ class FigureNodeFactory:
         else:
             raise RuntimeError
 
-    @_cache_figure_node(figure_format='dir')
-    def _get_figure_node_dir(self, metapath, *, figure_type):
+    # pylint: disable=no-self-use,unused-argument,unused-variable
+    def _build_dir_key(self, metapath, *, figure_type):
+        return metapath, figure_type, 'dir'
+    # pylint: enable=no-self-use,unused-argument,unused-variable
+
+    @_cache_node(_build_dir_key)
+    def _get_build_dir(self, metapath, *, figure_type):
         if figure_type == 'dir':
             parent_dir_node = self.build_dir_node
             buildname = '-'.join(metapath.parts)
             assert '.' not in buildname
             return jeolm.node.directory.DirectoryNode(
-                    name='figure:{}:dir'.format(metapath),
-                    path=parent_dir_node.path/buildname,
-                    needs=(parent_dir_node,) )
+                name='figure:{}:dir'.format(metapath),
+                path=parent_dir_node.path/buildname,
+                needs=(parent_dir_node,) )
         elif figure_type in {'asy', 'svg'}:
-            parent_dir_node = self._get_figure_node_dir( metapath,
+            parent_dir_node = self._get_build_dir( metapath,
                 figure_type='dir' )
             return jeolm.node.directory.DirectoryNode(
-                    name = 'figure:{}:{}:dir'.format(metapath, figure_type),
-                    path=parent_dir_node.path/figure_type,
-                    needs=(parent_dir_node,) )
+                name = 'figure:{}:{}:dir'.format(metapath, figure_type),
+                path=parent_dir_node.path/figure_type,
+                needs=(parent_dir_node,) )
         else:
             raise RuntimeError
 
@@ -691,7 +703,7 @@ class FigureNodeFactory:
     def _get_figure_node_asy( self, metapath,
         *, figure_format, figure_record
     ):
-        build_dir_node = self._get_figure_node_dir( metapath,
+        build_dir_node = self._get_build_dir( metapath,
             figure_type='asy' )
         main_asy_node = self._get_figure_node_asy_source( metapath,
             figure_record=figure_record )
@@ -708,9 +720,14 @@ class FigureNodeFactory:
             cwd=build_dir_node.path )
         return node
 
-    @_cache_figure_node(figure_type='asy', figure_format='asy')
+    # pylint: disable=no-self-use,unused-argument,unused-variable
+    def _figure_node_asy_source_key(self, metapath, *, figure_record):
+        return metapath, 'asy', 'asy'
+    # pylint: enable=no-self-use,unused-argument,unused-variable
+
+    @_cache_node(_figure_node_asy_source_key)
     def _get_figure_node_asy_source(self, metapath, *, figure_record):
-        build_dir_node = self._get_figure_node_dir( metapath,
+        build_dir_node = self._get_build_dir( metapath,
             figure_type='asy' )
         main_asy_node = jeolm.node.symlink.SymLinkedFileNode(
             name='figure:{}:asy:source:main'.format(metapath),
@@ -735,7 +752,7 @@ class FigureNodeFactory:
     def _get_figure_node_svg( self, metapath,
         *, figure_format, figure_record
     ):
-        build_dir_node = self._get_figure_node_dir( metapath,
+        build_dir_node = self._get_build_dir( metapath,
             figure_type='svg' )
         svg_node = self._get_figure_node_svg_source( metapath,
             figure_record=figure_record )
@@ -752,9 +769,14 @@ class FigureNodeFactory:
             cwd=build_dir_node.path )
         return node
 
-    @_cache_figure_node(figure_type='svg', figure_format='svg')
+    # pylint: disable=no-self-use,unused-argument,unused-variable
+    def _figure_node_svg_source_key(self, metapath, *, figure_record):
+        return metapath, 'svg', 'svg'
+    # pylint: enable=no-self-use,unused-argument,unused-variable
+
+    @_cache_node(_figure_node_svg_source_key)
     def _get_figure_node_svg_source(self, metapath, *, figure_record):
-        build_dir_node = self._get_figure_node_dir( metapath,
+        build_dir_node = self._get_build_dir( metapath,
             figure_type='svg' )
         return jeolm.node.symlink.SymLinkedFileNode(
             name='figure:{}:svg:source'.format(metapath),
