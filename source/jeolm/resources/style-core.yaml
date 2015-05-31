@@ -106,6 +106,7 @@ language-config:
 
 jeolm:
   $target$able: on
+  $build$compiler$default: pdflatex
 
 optional:
   $style:
@@ -151,6 +152,10 @@ optional:
     $style[-resize-to,-2-on-1,-4-on-1]: []
     $style:
     - package: pgfpages
+    - verbatim: |-
+        \renewcommand\pgfsetupphysicalpagesizes{% fix for xelatex
+          \pdfpagewidth\pgfphysicalwidth\pdfpageheight\pgfphysicalheight}
+      condition: compiler-xelatex
     - delegate: uselayout
     uselayout:
       $style[resize-to,-landscape]:

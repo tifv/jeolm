@@ -217,7 +217,7 @@ class DocumentNodeFactory:
         assert isinstance(target, Target)
         parent_dir_node = self._get_metapath_build_dir(target.path)
         buildname = '{flags}~{compiler}'.format(
-            flags=','.join(target.flags.as_frozenset),
+            flags=','.join(sorted(target.flags.as_frozenset)),
             compiler=recipe['compiler']
         )
         assert '.' not in buildname
