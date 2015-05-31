@@ -175,7 +175,7 @@ class GroupsDriver(RegularDriver):
             yield from super().generate_auto_metabody(target, metarecord)
             return
 
-        if '$timetable' not in metarecord:
+        if '$timetable' not in metarecord or not metarecord['$timetable']:
             if metarecord.get('$source$able', False):
                 raise DriverError(
                     "Sourceable target {target} does not have timetable"
@@ -192,20 +192,15 @@ class GroupsDriver(RegularDriver):
                 yield self.ClearPageBodyItem()
             return
         timetable = metarecord['$timetable']
+        if len(timetable) < 1:
+            raise RuntimeError(timetable)
 
         present_group_flags = target.flags.intersection(self.groups)
         if not present_group_flags:
-            if len(timetable) != 1:
-                raise DriverError( "Unable to auto matter {target}"
-                    .format(target=target) )
-            group_name, = timetable
-            yield target.flags_union({group_name})
+            group_names = set(timetable)
+            yield target.flags_union(group_names)
             return
-        if len(present_group_flags) > 1:
-            raise DriverError(
-                "Multiple group flags present in target {}".format(target) )
-        present_group_flag,  = present_group_flags
-        if present_group_flag not in timetable:
+        if not present_group_flags.issubset(timetable.keys()):
             return
 
         yield from super().generate_auto_metabody(target, metarecord)
