@@ -83,7 +83,6 @@
 %
 % \subsection{Figures}
 %
-% \DescribeMacro{\jeolmfiguremap}
 % \DescribeMacro{\jeolmfigure}
 % Macro |\jeolmfiguremap|\marg{alias}\marg{realname} will set a map from its
 % first argument to the second.
@@ -132,7 +131,6 @@
 % |\problemy| and |\problemx|.
 %
 % \DescribeMacro{\sp}
-% \DescribeMacro{\spx}
 % To indicate sub-problems, macro
 % |\subproblem| is used, with
 % |\subproblemx|\marg{mark} counterpart:
@@ -301,7 +299,7 @@
 %
 % \begin{macro}{\jeolmheadertemplate}
 % \begin{macro}{\jeolmheader}
-% Macro |\jeolmheader| is not defined here, but used by jeolm driver.
+% Macro |\jeolmheader| is used by jeolm driver.
 % It is advised to define it as
 % |\jeolmheadertemplate|\marg{institution}\marg{daterange}\marg{group}.
 %    \begin{macrocode}
@@ -317,6 +315,7 @@
     {\vspace{-1ex}\Large\vspace{-4ex}\vspace{-\parskip}}
 \endgroup}
 \let\jeolmdate\relax
+\newcommand\jeolmheader[1]{}
 %    \end{macrocode}
 % \end{macro}
 % \end{macro}
