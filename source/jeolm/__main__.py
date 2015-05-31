@@ -1,4 +1,5 @@
 import argparse
+
 from contextlib import suppress
 
 from pathlib import Path
@@ -9,22 +10,29 @@ import jeolm.target
 import jeolm.commands
 import jeolm.logging
 
+from jeolm.logging import DEBUG, INFO, WARNING
+
 # use 'jeolm' logger instead of '__main__'
 from jeolm import logger
 
 
 def _get_base_arg_parser( prog='jeolm',
-    description='Automated build system for course-like projects'
+    description="Automated build system for course-like projects"
 ):
     parser = argparse.ArgumentParser(prog=prog, description=description)
     parser.add_argument( '-R', '--root',
-        help='explicit root path of a jeolm project' )
-    parser.add_argument( '-v', '--verbose',
-        help='include debug messages in log output',
-        action='store_true' )
+        help="explicit root path of a jeolm project" )
+    verbosity_group = parser.add_mutually_exclusive_group()
+    verbosity_group.add_argument( '-v', '--verbose',
+        help="show debug messages",
+        action='store_const', dest='log_level', const=DEBUG )
+    verbosity_group.add_argument( '-q', '--quiet',
+        help="show only warnings and errors",
+        action='store_const', dest='log_level', const=WARNING )
     parser.add_argument( '-C', '--no-colour',
-        help='disable colour output',
+        help="disable colour output",
         action='store_false', dest='colour' )
+    parser.set_defaults(log_level=INFO)
     return parser
 
 def _jobs_arg(arg):
@@ -37,9 +45,9 @@ def _jobs_arg(arg):
     return jobs
 
 def main(args):
-    jeolm.logging.setup_logging(verbose=args.verbose, colour=args.colour)
+    jeolm.logging.setup_logging(level=args.log_level, colour=args.colour)
     if args.command is None:
-        logger.critical("No command selected.")
+        logger.error("No command selected.")
         raise SystemExit(1)
     if args.command == 'init':
         # special case: no local expected
@@ -60,21 +68,21 @@ def main(args):
 
 def _add_build_arg_subparser(subparsers):
     parser = subparsers.add_parser( 'build',
-        help='build specified targets' )
+        help="build specified targets" )
     parser.add_argument( 'targets',
         nargs='*', metavar='TARGET', type=jeolm.target.Target.from_string)
     force_build_group = parser.add_mutually_exclusive_group()
     force_build_group.add_argument( '-f', '--force-latex',
-        help='force recompilation on LaTeX stage',
+        help="force recompilation on LaTeX stage",
         action='store_const', dest='force', const='latex' )
     force_build_group.add_argument( '-F', '--force-generate',
-        help='force overwriting of generated LaTeX file',
+        help="force overwriting of generated LaTeX file",
         action='store_const', dest='force', const='generate' )
     parser.add_argument( '-D', '--no-delegate',
-        help='ignore the possibility of delegating targets',
+        help="ignore the possibility of delegating targets",
         action='store_false', dest='delegate' )
     parser.add_argument( '-j', '--jobs',
-        help='number of parallel jobs',
+        help="number of parallel jobs",
         type=_jobs_arg, default=1 )
     parser.set_defaults(command_func=main_build, force=None)
 
@@ -83,7 +91,7 @@ def main_build(args, *, local):
     from jeolm.node_factory import TargetNodeFactory
 
     if not args.targets:
-        logger.warning('No-op: no targets for building')
+        logger.warning("No-op: no targets for building")
     PathNode.root = local.root
     node_updater = _build_get_node_updater(args.jobs)
     driver = jeolm.commands.simple_load_driver(local)
@@ -136,9 +144,9 @@ def _build_get_node_updater(jobs):
 
 def _add_buildline_arg_subparser(subparsers):
     parser = subparsers.add_parser( 'buildline',
-        help='start an interactive build shell' )
+        help="start an interactive build shell" )
     parser.add_argument( '-j', '--jobs',
-        help='number of parallel jobs',
+        help="number of parallel jobs",
         type=_jobs_arg, default=1 )
     parser.set_defaults(command_func=main_buildline, force=None)
 
@@ -162,7 +170,7 @@ def main_buildline(args, *, local):
 
 def _add_review_arg_subparser(subparsers):
     parser = subparsers.add_parser( 'review',
-        help='review given infiles' )
+        help="review given infiles" )
     parser.add_argument( 'inpaths',
         nargs='*', metavar='INPATH' )
     parser.set_defaults(command_func=main_review)
@@ -171,7 +179,7 @@ def main_review(args, *, local):
     from jeolm.commands.review import review
     from jeolm.commands.diffprint import log_metadata_diff
     if not args.inpaths:
-        logger.warning('No-op: no inpaths for review')
+        logger.warning("No-op: no inpaths for review")
     metadata = (local.metadata_class)(local=local)
     metadata.load_metadata_cache()
     with log_metadata_diff(metadata, logger=logger):
@@ -185,7 +193,7 @@ def main_review(args, *, local):
 
 def _add_init_arg_subparser(subparsers):
     parser = subparsers.add_parser( 'init',
-        help='create jeolm directory/file structure' )
+        help="create jeolm directory/file structure" )
     parser.add_argument( 'resources',
         nargs='*', metavar='RESOURCE' )
     # command_func default is intentionally not set
@@ -204,11 +212,11 @@ def main_init(args):
 
 def _add_list_arg_subparser(subparsers):
     parser = subparsers.add_parser( 'list',
-        help='list all infiles for given targets' )
+        help="list all infiles for given targets" )
     parser.add_argument( 'targets',
         nargs='*', metavar='TARGET', type=jeolm.target.Target.from_string )
     parser.add_argument( '--type',
-        help='searched-for infiles type',
+        help="searched-for infiles type",
         choices=['tex', 'asy'], default='tex',
         dest='source_type', metavar='SOURCE_TYPE' )
     parser.set_defaults(command_func=main_list)
@@ -216,7 +224,7 @@ def _add_list_arg_subparser(subparsers):
 def main_list(args, *, local):
     from jeolm.commands.list_sources import print_source_list
     if not args.targets:
-        logger.warning('No-op: no targets for source list')
+        logger.warning("No-op: no targets for source list")
     print_source_list( args.targets,
         viewpoint=Path.cwd(), local=local,
         driver=jeolm.commands.simple_load_driver(local),
@@ -228,7 +236,7 @@ def main_list(args, *, local):
 
 def _add_spell_arg_subparser(subparsers):
     parser = subparsers.add_parser( 'spell',
-        help='spell-check all infiles for given targets' )
+        help="spell-check all infiles for given targets" )
     parser.add_argument( 'targets',
         nargs='*', metavar='TARGET', type=jeolm.target.Target.from_string )
     parser.set_defaults(command_func=main_spell)
@@ -236,7 +244,7 @@ def _add_spell_arg_subparser(subparsers):
 def main_spell(args, *, local):
     from jeolm.commands.spell import check_spelling
     if not args.targets:
-        logger.warning('No-op: no targets for spell check')
+        logger.warning("No-op: no targets for spell check")
     check_spelling( args.targets,
         local=local,
         driver=jeolm.commands.simple_load_driver(local),
@@ -248,15 +256,15 @@ def main_spell(args, *, local):
 
 def _add_makefile_arg_subparser(subparsers):
     parser = subparsers.add_parser( 'makefile',
-        help='generate makefile for given targets' )
+        help="generate makefile for given targets" )
     parser.add_argument( 'targets',
         nargs='*', metavar='TARGET', type=jeolm.target.Target.from_string)
     parser.add_argument( '-o', '--output-makefile',
-        help='where to write makefile; default is Makefile',
+        help="where to write makefile; default is Makefile",
         default='Makefile' )
     parser.add_argument( '-O', '--output-unbuildable',
-        help=( 'where to write list of files which makefile cannot rebuild '
-            '(and depends on); default is stdout' ) )
+        help = "where to write list of files which makefile cannot rebuild "
+            "(and depends on); default is stdout" )
     parser.set_defaults(command_func=main_makefile)
 
 def main_makefile(args, *, local):
@@ -265,7 +273,7 @@ def main_makefile(args, *, local):
     from jeolm.node_factory import TargetNodeFactory
 
     if not args.targets:
-        logger.warning('No-op: no targets for makefile generation')
+        logger.warning("No-op: no targets for makefile generation")
     PathNode.root = local.root
     node_updater = _build_get_node_updater(jobs=1)
     driver = jeolm.commands.simple_load_driver(local)
@@ -302,26 +310,26 @@ def _print_unbuildable_list(unbuildable_nodes, *, local, **kwargs):
 
 def _add_excerpt_arg_subparser(subparsers):
     parser = subparsers.add_parser( 'excerpt',
-        help='create a source archive for a given target' )
+        help="create a source archive for a given target" )
     parser.add_argument( 'target',
         metavar='TARGET', type=jeolm.target.Target.from_string,
-        help='target to create an archive for; '
-            'no delegation will be performed on it' )
+        help = "target to create an archive for; "
+            "no delegation will be performed on it" )
     parser.add_argument( '-j', '--jobs',
-        help='number of parallel jobs',
+        help="number of parallel jobs",
         type=_jobs_arg, default=1 )
     parser.add_argument( '-o', '--output',
-        help='output file; default is stdout')
+        help="output file; default is stdout")
     parser.add_argument( '--include-pdf',
         action='store_true',
-        help='include compiled PDF document in the archive' )
+        help="include compiled PDF document in the archive" )
     format_group = parser.add_mutually_exclusive_group()
     format_group.add_argument( '--zip',
         dest='format', const='zip', action='store_const',
-        help='output archive in zip format' )
+        help="output archive in zip format" )
     format_group.add_argument( '--tar-gz',
         dest='format', const='tar.gz', action='store_const',
-        help='output archive in tar.gz format (default)' )
+        help="output archive in tar.gz format (default)" )
     parser.set_defaults(command_func=main_excerpt, format='tar.gz')
 
 def main_excerpt(args, *, local):
@@ -361,7 +369,7 @@ def main_excerpt(args, *, local):
 
 def _add_clean_arg_subparser(subparsers):
     parser = subparsers.add_parser( 'clean',
-        help='clean toplevel links to build/**.pdf' )
+        help="clean toplevel links to build/**.pdf" )
     parser.set_defaults(command_func=main_clean)
 
 def main_clean(args, *, local):

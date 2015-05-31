@@ -1,9 +1,10 @@
-from logging import Formatter, StreamHandler, DEBUG, INFO, WARNING
+from logging import ( Formatter, StreamHandler,
+    DEBUG, INFO, WARNING, ERROR, CRITICAL )
 
 from jeolm import logger as jeolm_logger
 from jeolm.fancify import fancify, unfancify
 
-def setup_logging(verbose=False, colour=True):
+def setup_logging(level=INFO, colour=True):
     node_formatter = NodeFormatter(
         "[{node_name}] {message}", colour=colour)
     formatter = MainFormatter(
@@ -11,7 +12,7 @@ def setup_logging(verbose=False, colour=True):
         node_formatter=node_formatter )
     handler = StreamHandler()
     handler.setFormatter(formatter)
-    handler.setLevel(INFO if not verbose else DEBUG)
+    handler.setLevel(level)
     jeolm_logger.addHandler(handler)
 
 class FancifyingFormatter(Formatter):
