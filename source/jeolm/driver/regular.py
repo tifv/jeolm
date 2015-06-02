@@ -711,15 +711,17 @@ class RegularDriver(RecordsManager, metaclass=DriverMetaclass):
 
     class ClearPageBodyItem(VerbatimBodyItem):
         __slots__ = []
+        _value = r'\clearpage' '\n'
 
-        def __init__(self, value=r'\clearpage'):
-            super().__init__(value=value)
+        def __init__(self):
+            super().__init__(value=self._value)
 
     class EmptyPageBodyItem(VerbatimBodyItem):
         __slots__ = []
+        _value = r'\strut\clearpage' '\n'
 
-        def __init__(self, value=r'\strut\clearpage'):
-            super().__init__(value=value)
+        def __init__(self):
+            super().__init__(value=self._value)
 
     class RequirePreambleBodyItem(ControlBodyItem):
         __slots__ = ['key', 'value']

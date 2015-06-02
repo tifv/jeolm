@@ -50,6 +50,12 @@ font-config:
           \setmainfont[Ligatures=TeX]{Linux Libertine}
           \newfontfamily{\cyrillicfont}[Ligatures=TeX]{Linux Libertine}
         provide: setmainfont
+        condition: {not: print}
+      - verbatim: |-
+          \setmainfont[Ligatures=TeX]{Times New Roman}
+          \newfontfamily{\cyrillicfont}[Ligatures=TeX]{Times New Roman}
+        provide: setmainfont
+        condition: print
       - verbatim: |-
           \setsansfont[Ligatures=TeX]{DejaVu Sans Condensed}
           \newfontfamily{\cyrillicfontsf}[Ligatures=TeX]{DejaVu Sans Condensed}
@@ -82,6 +88,11 @@ math-font-config:
   - verbatim:
       \setmathsfont(Digits){Linux Libertine}
     provide: setmathsfont
+    condition: {not: print}
+  - verbatim:
+      \setmathsfont(Digits){Times New Roman}
+    provide: setmathsfont
+    condition: print
 
 language-config:
   $style[compiler-latex]:
@@ -118,12 +129,15 @@ optional:
     condition: {not: no-pgfpages}
   - delegate: ./shrink-formulas
     condition: shrink-formulas
-  $style[print]:
-  - .[a5paper,2-on-1,-print]
-  $style[tiled4]:
-  - .[a6paper,landscape,4-on-1,-tiled4]
+  $style[print,-tiled4]:
+  - delegate: .[a5paper,-print]
+    condition: {or: [resize-to, 2-on-1, 4-on-1]}
+  - delegate: .[a5paper,2-on-1,-print]
+    condition: {not: {or: [resize-to, 2-on-1, 4-on-1]}}
   $style[print,tiled4]:
   - .[-print]
+  $style[tiled4,-print]:
+  - .[a6paper,landscape,4-on-1,-tiled4]
   geometry:
     $style:
     - package: geometry

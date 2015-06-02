@@ -3,6 +3,8 @@ Keys recognized in metarecords:
   $source-root-link
 """
 
+from string import Template
+
 from jeolm.driver.regular import RegularDriver
 
 from jeolm.record_path import RecordPath
@@ -26,6 +28,17 @@ class SourceLinkDriver(RegularDriver):
         assert isinstance(source_link_default, bool)
         return source_link_default
 
+    class SourceLinkBodyItem(RegularDriver.VerbatimBodyItem):
+        _template = (
+            r'\begin{flushright}\ttfamily\small' '\n'
+            r'  \href{${root}${inpath}}' '\n'
+            r'    {source:${inpath}}' '\n'
+            r'\end{flushright}' )
+        _substitute = Template(_template).substitute
+
+        def __init__(self, inpath, *, root):
+            super().__init__(value=self._substitute(root=root, inpath=inpath))
+
     @processing_target_aspect( aspect='source metabody [source_link]',
         wrap_generator=True )
     @classifying_items(aspect='metabody', default='verbatim')
@@ -48,18 +61,9 @@ class SourceLinkDriver(RegularDriver):
             difference={'source-link'},
             union=( {'no-source-link'} if source_link_default else {} ))
         yield self.RequirePackageBodyItem(package='hyperref')
-        yield self.substitute_source_link(
-            target=( str(self.source_link_root) +
-                str(target.path.as_inpath(suffix='.tex')) ),
-            text=str(target.path)
-        )
-
-    def _constitute_source_link(self, metapath):
-        return self.substitute_source_link(
-            target=(
-                str(self.source_root_link) +
-                str(metapath.as_inpath(suffix='.tex')) ),
-            text=str(metapath)
+        yield self.SourceLinkBodyItem(
+            inpath=target.path.as_inpath(suffix='.tex'),
+            root=self.source_link_root
         )
 
     source_link_template = (
