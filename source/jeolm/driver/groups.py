@@ -224,9 +224,9 @@ class GroupsDriver(RegularDriver):
             if not group_flags or '$timetable' not in metarecord:
                 return super()._find_date(target, metarecord)
             if len(group_flags) > 1:
-                date = self.min_date(
+                date = self.min_date(list(
                     self._find_date(target, metarecord, group_flag=group_flag)
-                    for group_flag in group_flags )
+                    for group_flag in group_flags ))
                 if date is None:
                     return super()._find_date(target, metarecord)
                 else:
