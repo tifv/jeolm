@@ -283,7 +283,7 @@ class MetadataManager(RecordsManager):
             r'\{'
                 r'(?P<figure_ref>'
                     r'/?'
-                    r'(?:(?:\w+-)\w+/|../)*'
+                    r'(?:(?:\w+-)*\w+/|../)*'
                     r'(?:\w+-)*\w+'
                     r'(?:\.(?P<figure_type>asy|svg|pdf|eps|png|jpg))?'
                 r')'
@@ -412,7 +412,11 @@ class MetadataManager(RecordsManager):
             return {}
 
     _asy_access_pattern = re.compile(
-        r'(?m)^// access (?P<accessed_path>[-_a-zA-Z0-9/]*?/) '
+        r'(?m)^// access '
+            r'(?P<accessed_path>'
+                r'/?'
+                r'(?:(?:\w+-)*\w+/|../)+'
+            r') '
         r'as (?P<alias_name>[-a-zA-Z0-9]*?\.asy)$' )
 
     _broken_asy_access_pattern = re.compile(
