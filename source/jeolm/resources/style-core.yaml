@@ -10,16 +10,16 @@ $style:
   condition: {or: [compiler-latex, compiler-pdflatex]}
 - delegate: font-config
   condition: {not: no-font-config}
-- delegate: language-config
-  condition: {not: no-language-config}
-- verbatim: '\pagestyle{empty}'
-  provide: pagestyle
-  condition: {not: no-pagestyle}
 
 - delegate: jeolm
 
 - delegate: math-font-config
   condition: {not: no-font-config}
+- delegate: language-config
+  condition: {not: no-language-config}
+- verbatim: '\pagestyle{empty}'
+  provide: pagestyle
+  condition: {not: no-pagestyle}
 
 - delegate: optional
 
@@ -44,56 +44,54 @@ font-config:
       options: [log-declarations=false]
     - package: fontspec
       options: [no-math]
-    - delegate: setfont
+    - verbatim:
+        \defaultfontfeatures{Ligatures=TeX,Scale=MatchLowercase}
+    - delegate: setfont/cm-unicode
     setfont:
-      $style[compiler-xelatex]:
-      - verbatim: |-
-          \setmainfont[Ligatures=TeX]{Linux Libertine}
-          \newfontfamily{\cyrillicfont}[Ligatures=TeX]{Linux Libertine}
-        provide: setmainfont
-        condition: {not: print}
-      - verbatim: |-
-          \setmainfont[Ligatures=TeX]{Times New Roman}
-          \newfontfamily{\cyrillicfont}[Ligatures=TeX]{Times New Roman}
-        provide: setmainfont
-        condition: print
-      - verbatim: |-
-          \setsansfont[Ligatures=TeX]{DejaVu Sans Condensed}
-          \newfontfamily{\cyrillicfontsf}[Ligatures=TeX]{DejaVu Sans Condensed}
-        provide: setsansfont
-      - verbatim: |-
-          \setmonofont[Ligatures=TeX]{Liberation Mono}
-          \newfontfamily{\cyrillicfonttt}[Ligatures=TeX]{Liberation Mono}
-        provide: setmonofont
-      $style[compiler-lualatex]:
-      - verbatim: |-
-          \setmainfont{CMU Serif}
-        provide: setmainfont
-      - verbatim: |-
-          \setsansfont{CMU Sans Serif}
-        provide: setsansfont
-      - verbatim: |-
-          \setmonofont{CMU Typewriter Text}
-        provide: setmonofont
-      $style:
-      - error: fontspec package be may be used only with XeLaTeX of LuaLaTeX
+      cm-unicode:
+        $style:
+        - verbatim: |-
+            \setmainfont[
+              Path = /usr/share/texmf-dist/fonts/opentype/public/cm-unicode/,
+              Extension=.otf,
+              BoldFont=cmunbx, ItalicFont=cmunti, BoldItalicFont=cmunbi,
+              SlantedFont=cmunsl,
+              SmallCapsFont=cmunrm, SmallCapsFeatures={Letters=SmallCaps},
+            ]{cmunrm}
+            \let\cyrillicfont\normalfont
+          provide: setmainfont
+        - verbatim: |-
+            \setsansfont[
+              Path = /usr/share/texmf-dist/fonts/opentype/public/cm-unicode/,
+              Extension=.otf,
+              BoldFont=cmunsx, ItalicFont=cmunsi, BoldItalicFont=cmunso,
+            ]{cmunss}
+            \let\cyrillicfontsf\sffamily
+          provide: setsansfont
+        - verbatim: |-
+            \setmonofont[
+              Path = /usr/share/texmf-dist/fonts/opentype/public/cm-unicode/,
+              Extension=.otf,
+              BoldFont=cmuntb, ItalicFont=cmunit, BoldItalicFont=cmuntx,
+              SlantedFont=cmunst,
+            ]{cmuntt}
+            \let\cyrillicfonttt\ttfamily
+          provide: setmonofont
 
 math-font-config:
   $style[compiler-latex]: []
   $style[compiler-pdflatex]: []
   $style[compiler-lualatex]: []
+  $style[compiler-xelatex]: []
 
-  # amsmath (and thus jeolm) must go before this
-  $style[compiler-xelatex]:
-  - package: mathspec
-  - verbatim:
-      \setmathsfont(Digits){Linux Libertine}
-    provide: setmathsfont
-    condition: {not: print}
-  - verbatim:
-      \setmathsfont(Digits){Times New Roman}
-    provide: setmathsfont
-    condition: print
+  unicode-math:
+    $style:
+    - package: unicode-math
+      options:
+      - vargreek-shape=unicode
+    - verbatim: |-
+        \setmathfont{latinmodern-math.otf}
+      provide: setmathfont
 
 language-config:
   $style[compiler-latex]:
@@ -131,9 +129,9 @@ optional:
   - delegate: ./shrink-formulas
     condition: shrink-formulas
   $style[print,-tiled4]:
-  - delegate: .[a5paper,-print]
+  - delegate: .[-print]
     condition: {or: [resize-to, 2-on-1, 4-on-1]}
-  - delegate: .[a5paper,2-on-1,-print]
+  - delegate: .[2-on-1,-print]
     condition: {not: {or: [resize-to, 2-on-1, 4-on-1]}}
   $style[print,tiled4]:
   - .[-print]

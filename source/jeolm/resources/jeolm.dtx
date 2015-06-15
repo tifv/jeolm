@@ -210,45 +210,39 @@
 %
 % \subsection{Some definitions}
 %
-% Russian-specific or just convenient (re)definitions.
+% Russian-specific redefinitions.
 %
 %    \begin{macrocode}
 \let\geq\geqslant
 \let\leq\leqslant
-\let\eps\varepsilon
-\let\originalphi\phi
-\let\phi\varphi
-\let\ov\overline
-%    \end{macrocode}
-%
-%    \begin{macrocode}
-\newcommand{\NN}{\mathbb{N}}
-\newcommand{\ZZ}{\mathbb{Z}}
-\newcommand{\QQ}{\mathbb{Q}}
-\newcommand{\RR}{\mathbb{R}}
-\newcommand{\CC}{\mathbb{C}}
-%    \end{macrocode}
-%
-%    \begin{macrocode}
-\DeclareMathOperator{\Arg}{Arg}
-\DeclareMathOperator{\Ln}{Ln}
-\DeclareMathOperator{\const}{const}
-\DeclareMathOperator{\ord}{ord}
-\DeclareMathOperator{\sgn}{sgn}
-\DeclareMathOperator{\supp}{supp}
-\DeclareMathOperator*{\esssup}{ess\,sup}
-\DeclareMathOperator*{\osc}{osc}
-\newcommand{\ud}{\mathrm{d}}
-\newcommand{\pd}{\partial}
-%    \end{macrocode}
-%
-%    \begin{macrocode}
 \let\originalRe\Re
 \let\originalIm\Im
 \let\Re\undefined
 \let\Im\undefined
 \DeclareMathOperator{\Re}{Re}
 \DeclareMathOperator{\Im}{Im}
+%    \end{macrocode}
+%
+% Infamous Russian <<divided by>> relation.
+%    \begin{macrocode}
+\newlength{\@kratno@height}
+\newcommand{\@kratno@template}[2]{\setlength{\@kratno@height}{#2pt}%
+\mathrel{%
+    \rlap{\raisebox{-0.10\@kratno@height}{$\mathsurround=0pt#1.$}}%
+    \rlap{\raisebox{ 0.20\@kratno@height}{$\mathsurround=0pt#1.$}}%
+          \raisebox{ 0.50\@kratno@height}{$\mathsurround=0pt#1.$}%
+    }}
+\def\kratno{\mathchoice%
+    {\@kratno@template{\displaystyle}{\tf@size}}%
+    {\@kratno@template{\textstyle}{\tf@size}}%
+    {\@kratno@template{\scriptstyle}{\sf@size}}%
+    {\@kratno@template{\scriptscriptstyle}{\ssf@size}}%
+}
+%    \end{macrocode}
+%
+% Just convenient definitions.
+%    \begin{macrocode}
+\let\ov\overline
 %    \end{macrocode}
 %
 % This macro will work only on the second run, when the label is substituted.

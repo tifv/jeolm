@@ -4,7 +4,7 @@ Keys recognized in metarecords:
   $source$sections
 """
 
-from jeolm.driver.regular import RegularDriver
+from jeolm.driver.regular import RegularDriver, DriverError
 
 import logging
 logger = logging.getLogger(__name__)
@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 class AddToCDriver(RegularDriver):
 
-    @processing_target_aspect( aspect='source metabody [training]',
+    @processing_target_aspect( aspect='source metabody [addtoc]',
         wrap_generator=True )
     @classifying_items(aspect='metabody', default='verbatim')
     def generate_source_metabody(self, target, metarecord):

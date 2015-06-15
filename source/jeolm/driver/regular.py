@@ -859,7 +859,7 @@ class RegularDriver(RecordsManager, metaclass=DriverMetaclass):
             return cls.ProvidePackagePreambleItem(
                 package=item['package'], options=item['options'] )
         elif item.keys() == {'resize font'}:
-            size, skip = item['font size']
+            size, skip = item['resize font']
             return cls.ProvidePreamblePreambleItem(
                 value=cls.substitute_selectfont(
                     size=float(size), skip=float(skip)
