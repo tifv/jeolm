@@ -81,6 +81,17 @@
 %
 % \section{Usage}
 %
+% \subsection{Swap Greek variants}
+%
+% Command |\swapvargreek| allos one to exchange variant and normal greek
+% letters.
+% For example, |\swapvargreek{kappa}| will exchange |\kappa| and |\varkappa|.
+%
+% Package options
+% |swap-beta|, |swap-epsilon|, |swap-kappa|, |swap-phi|,
+% |swap-pi|, |swap-rho|, |swap-theta|, |swap-Theta|
+% will switch respective letters.
+%
 % \subsection{Figures}
 %
 % \DescribeMacro{\jeolmfigure}
@@ -103,7 +114,7 @@
 % \problem For |\problem|.
 %
 % \DescribeMacro{\problemx}
-% Marking a problem (e.\,g. as hard) should be done with the
+% Marking a problem (e.~g. as hard) should be done with the
 % |\problemx|\marg{mark} macro, just like this:
 % \\
 % \problemx{*} For |\problemx{*}|.
@@ -125,7 +136,7 @@
 % \\
 % \problemy{2.3} For |\problemy{2.3}|.
 % \qquad
-% \problemyx{2.3}{*} For |\problemyx{2.3}{*}|.
+% \problemyx{2a}{**} For |\problemyx{2.3}{**}|.
 % \\
 % Macro |\problemyx|\marg{problem number}\marg{mark} combines features of
 % |\problemy| and |\problemx|.
@@ -155,9 +166,9 @@
 % \item
 % For |\item|.
 % \item\label{some problem}%
-% For another |\item|.
+% For |\item\label{some problem}%|.
 % \item
-% Mentioning previous problem: \ref{some problem}.
+% Mentioning previous problem: \ref{some problem} for |\ref{some problem}|.
 % \itemx{*}
 % For |\itemx{*}|.
 % \itemy{21}
@@ -175,7 +186,7 @@
 % \subsection{Statements}
 %
 % Problems are not the only structural elements of course.
-% Others include |\definition|, |\theorem|, |\lemma|, and some more.
+% Others include |\definition|, |\theorem|, |\lemma|, and |\statement|.
 %
 % The basic command is |\claim|\marg{caption}.
 %
@@ -188,6 +199,9 @@
 % \claim{Лемма Фату}
 % For |\claim{Лемма Фату}|.
 %
+% These commands should be used outside of |problems| environment.
+% This way they will outstand from the problem list.
+%
 % \StopEventually{\newpage\PrintIndex}
 %
 % \section{Implementation}
@@ -196,16 +210,9 @@
 %<*package>
 %    \end{macrocode}
 %
-% \subsection{Some imports}
-%
-% Not really used in this package, but very common.
 %    \begin{macrocode}
 \RequirePackage{amsmath}
 \RequirePackage{amssymb}
-\RequirePackage{mathrsfs}
-\RequirePackage{multicol}
-\RequirePackage{graphicx}
-\RequirePackage{anyfontsize}
 %    \end{macrocode}
 %
 % \subsection{Some definitions}
@@ -225,14 +232,14 @@
 %
 % Infamous Russian <<divided by>> relation.
 %    \begin{macrocode}
-\newlength{\@kratno@height}
-\newcommand{\@kratno@template}[2]{\setlength{\@kratno@height}{#2pt}%
+\newlength\@kratno@height
+\newcommand\@kratno@template[2]{\setlength{\@kratno@height}{#2pt}%
 \mathrel{%
     \rlap{\raisebox{-0.10\@kratno@height}{$\mathsurround=0pt#1.$}}%
     \rlap{\raisebox{ 0.20\@kratno@height}{$\mathsurround=0pt#1.$}}%
           \raisebox{ 0.50\@kratno@height}{$\mathsurround=0pt#1.$}%
     }}
-\def\kratno{\mathchoice%
+\newcommand\kratno{\mathchoice%
     {\@kratno@template{\displaystyle}{\tf@size}}%
     {\@kratno@template{\textstyle}{\tf@size}}%
     {\@kratno@template{\scriptstyle}{\sf@size}}%
@@ -245,18 +252,45 @@
 \let\ov\overline
 %    \end{macrocode}
 %
+% Allow exchanging greek letters with their variants.
+%    \begin{macrocode}
+\newcommand\swapvargreek[1]{\begingroup
+\expandafter\let\expandafter\swap\csname #1\endcsname
+\expandafter\let\expandafter\varswap\csname var#1\endcsname
+\global\expandafter\let\csname #1\endcsname\varswap
+\global\expandafter\let\csname var#1\endcsname\swap
+\endgroup}
+%    \end{macrocode}
+%
 % This macro will work only on the second run, when the label is substituted.
 % Watch out for build cycles!
 %    \begin{macrocode}
 \def\iflabelundefined#1{\expandafter\ifx\csname r@#1\endcsname\relax}
 %    \end{macrocode}
 %
-% |\mathclap| and related definitions:
-%    \begin{macrocode}
+% \subsubsection{Centering-overlap}
+%
+% Provide |\clap| complement to the |\rlap| and |\llap| commands.
+%
 % For comparison, the existing overlap macros:
+%    \begin{verbatim}
 % \def\llap#1{\hbox to 0pt{\hss#1}}
 % \def\rlap#1{\hbox to 0pt{#1\hss}}
+%    \end{verbatim}
+%
+% \begin{macro}{\clap}
+% Define |\clap| similarly.
+%    \begin{macrocode}
 \def\clap#1{\hbox to 0pt{\hss#1\hss}}
+%    \end{macrocode}
+% \end{macro}
+%
+% \begin{macro}{\mathllap}
+% \begin{macro}{\mathrlap}
+% \begin{macro}{\mathclap}
+% Define |\clap|, |\rlap| and |\llap| equivalents for math mode (not
+% that they didn't work before).
+%    \begin{macrocode}
 \def\mathllap{\mathpalette\mathllapinternal}
 \def\mathrlap{\mathpalette\mathrlapinternal}
 \def\mathclap{\mathpalette\mathclapinternal}
@@ -267,10 +301,21 @@
 \def\mathclapinternal#1#2{%
     \clap{$\mathsurround=0pt#1{#2}$}}
 %    \end{macrocode}
+% \end{macro}
+% \end{macro}
+% \end{macro}
 %
 % \subsection{Package options}
 %
 %    \begin{macrocode}
+\DeclareOption{swap-beta}{\swapvargreek{beta}}
+\DeclareOption{swap-epsilon}{\swapvargreek{epsilon}}
+\DeclareOption{swap-kappa}{\swapvargreek{kappa}}
+\DeclareOption{swap-phi}{\swapvargreek{phi}}
+\DeclareOption{swap-pi}{\swapvargreek{pi}}
+\DeclareOption{swap-rho}{\swapvargreek{rho}}
+\DeclareOption{swap-theta}{\swapvargreek{theta}}
+\DeclareOption{swap-Theta}{\swapvargreek{Theta}}
 \ProcessOptions
 %    \end{macrocode}
 %

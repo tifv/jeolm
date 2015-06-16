@@ -17,6 +17,7 @@ $style:
   condition: {not: no-font-config}
 - delegate: language-config
   condition: {not: no-language-config}
+- package: amsmath
 - verbatim: '\pagestyle{empty}'
   provide: pagestyle
   condition: {not: no-pagestyle}
@@ -79,10 +80,21 @@ font-config:
           provide: setmonofont
 
 math-font-config:
-  $style[compiler-latex]: []
-  $style[compiler-pdflatex]: []
-  $style[compiler-lualatex]: []
-  $style[compiler-xelatex]: []
+  $style[compiler-latex]:
+  - package: amssymb
+  - swap-vargreek
+  $style[compiler-pdflatex]:
+  - package: amssymb
+  - swap-vargreek
+  $style[compiler-lualatex]:
+  - package: amssymb
+  $style[compiler-xelatex]:
+  - package: amssymb
+
+  swap-vargreek:
+    $style:
+    - verbatim:
+        \swapvargreek{phi} \swapvargreek{epsilon} \swapvargreek{kappa}
 
   unicode-math:
     $style:
@@ -120,13 +132,19 @@ jeolm:
 
 optional:
   $style:
-  - delegate: ./geometry
-    condition: {not: no-geometry}
+  - delegate: geometry
+    condition: {not: no-package-geometry}
   - package: parskip
-    condition: {not: no-parskip}
-  - delegate: ./pgfpages
-    condition: {not: no-pgfpages}
-  - delegate: ./shrink-formulas
+    condition: {not: no-package-parskip}
+  - package: multicol
+    condition: {not: no-package-multicol}
+  - package: graphicx
+    condition: {not: no-package-graphicx}
+  - package: anyfontsize
+    condition: {not: no-package-anyfontsize}
+  - delegate: pgfpages
+    condition: {not: no-package-pgfpages}
+  - delegate: shrink-formulas
     condition: shrink-formulas
   $style[print,-tiled4]:
   - delegate: .[-print]
