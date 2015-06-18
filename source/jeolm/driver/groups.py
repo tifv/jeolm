@@ -57,11 +57,11 @@ class GroupsDriver(RegularDriver):
             group_flag, = group_flags
             if (
                 not isinstance(value, dict) or
-                not (value.keys() >= {'name', 'timetable'})
+                not (value.keys() >= {'name'})
             ):
                 raise RuntimeError(
                     "Group definition must be a dict with (at least) "
-                    "'name' and 'timetable' keys: {}".format(key) )
+                    "'name' key: {}".format(key) )
             groups[group_flag] = value
         return groups
 

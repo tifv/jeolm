@@ -220,14 +220,16 @@
 % Russian-specific redefinitions.
 %
 %    \begin{macrocode}
-\let\geq\geqslant
-\let\leq\leqslant
-\let\originalRe\Re
-\let\originalIm\Im
-\let\Re\undefined
-\let\Im\undefined
-\DeclareMathOperator{\Re}{Re}
-\DeclareMathOperator{\Im}{Im}
+\AtBeginDocument{
+    \let\geq\geqslant
+    \let\leq\leqslant
+    \let\originalRe\Re
+    \let\originalIm\Im
+    \let\Re\undefined
+    \let\Im\undefined
+    \DeclareMathOperator{\Re}{Re}
+    \DeclareMathOperator{\Im}{Im}
+}
 %    \end{macrocode}
 %
 % Infamous Russian <<divided by>> relation.

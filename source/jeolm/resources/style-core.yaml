@@ -8,16 +8,20 @@ $style:
 - package: inputenc
   options: [utf8]
   condition: {or: [compiler-latex, compiler-pdflatex]}
+- package: amsmath
+- package: amssymb
 - delegate: font-config
+  condition: {not: no-font-config}
+- delegate: math-font-config
   condition: {not: no-font-config}
 
 - delegate: jeolm
 
-- delegate: math-font-config
+- delegate: math-symbols-config
   condition: {not: no-font-config}
+
 - delegate: language-config
   condition: {not: no-language-config}
-- package: amsmath
 - verbatim: '\pagestyle{empty}'
   provide: pagestyle
   condition: {not: no-pagestyle}
@@ -47,73 +51,168 @@ font-config:
       options: [no-math]
     - verbatim:
         \defaultfontfeatures{Ligatures=TeX,Scale=MatchLowercase}
-    - delegate: setfont/cm-unicode
+    - delegate: setfont
     setfont:
-      cm-unicode:
+      $style:
+      - delegate: cm-unicode
+      $style[xits]:
+      - delegate: xits
+      xits:
         $style:
         - verbatim: |-
-            \setmainfont[
-              Path = /usr/share/texmf-dist/fonts/opentype/public/cm-unicode/,
-              Extension=.otf,
-              BoldFont=cmunbx, ItalicFont=cmunti, BoldItalicFont=cmunbi,
-              SlantedFont=cmunsl,
-              SmallCapsFont=cmunrm, SmallCapsFeatures={Letters=SmallCaps},
-            ]{cmunrm}
+            \setmainfont
+              [
+                Path = /usr/share/texmf-dist/fonts/opentype/public/xits/,
+                Extension=.otf,
+                UprightFont=*-regular,
+                BoldFont=*-bold,
+                ItalicFont=*-italic,
+                BoldItalicFont=*-bolditalic,
+              ]
+              {xits}
             \let\cyrillicfont\normalfont
           provide: setmainfont
+        - delegate: ../liberation/sans
+        - delegate: ../liberation/mono
+      cm-unicode:
+        $style:
+        - delegate: main
+        - delegate: sans
+        - delegate: mono
+        main:
+          $style:
+          - verbatim: |-
+              \setmainfont[
+                Path = /usr/share/texmf-dist/fonts/opentype/public/cm-unicode/,
+                Extension=.otf,
+                BoldFont=cmunbx, ItalicFont=cmunti, BoldItalicFont=cmunbi,
+                SlantedFont=cmunsl,
+                SmallCapsFont=cmunrm, SmallCapsFeatures={Letters=SmallCaps},
+              ]{cmunrm}
+              \let\cyrillicfont\normalfont
+            provide: setmainfont
+        sans:
+          $style:
+          - verbatim: |-
+              \setsansfont[
+                Path = /usr/share/texmf-dist/fonts/opentype/public/cm-unicode/,
+                Extension=.otf,
+                BoldFont=cmunsx, ItalicFont=cmunsi, BoldItalicFont=cmunso,
+              ]{cmunss}
+              \let\cyrillicfontsf\sffamily
+            provide: setsansfont
+        mono:
+          $style:
+          - verbatim: |-
+              \setmonofont[
+                Path = /usr/share/texmf-dist/fonts/opentype/public/cm-unicode/,
+                Extension=.otf,
+                BoldFont=cmuntb, ItalicFont=cmunit, BoldItalicFont=cmuntx,
+                SlantedFont=cmunst,
+              ]{cmuntt}
+              \let\cyrillicfonttt\ttfamily
+            provide: setmonofont
+      liberation:
+        $style:
+        - delegate: main
+        - delegate: sans
+        - delegate: mono
+        main:
+          $style:
+          - verbatim: |-
+              \setmainfont{Liberation Serif}
+              \let\cyrillicfont\normalfont
+            provide: setmainfont
+        sans:
+          $style:
+          - verbatim: |-
+              \setsansfont{Liberation Sans}
+              \let\cyrillicfontsf\sffamily
+            provide: setsansfont
+        mono:
+          $style:
+          - verbatim: |-
+              \setmonofont{Liberation Mono}
+              \let\cyrillicfonttt\ttfamily
+            provide: setmonofont
+      tinos:
+        $style:
         - verbatim: |-
-            \setsansfont[
-              Path = /usr/share/texmf-dist/fonts/opentype/public/cm-unicode/,
-              Extension=.otf,
-              BoldFont=cmunsx, ItalicFont=cmunsi, BoldItalicFont=cmunso,
-            ]{cmunss}
+            \setmainfont{Tinos}
+            \let\cyrillicfont\normalfont
+          provide: setmainfont
+      arimo:
+        $style:
+        - verbatim: |-
+            \setsansfont{Arimo}
             \let\cyrillicfontsf\sffamily
           provide: setsansfont
+      cousine:
+        $style:
         - verbatim: |-
-            \setmonofont[
-              Path = /usr/share/texmf-dist/fonts/opentype/public/cm-unicode/,
-              Extension=.otf,
-              BoldFont=cmuntb, ItalicFont=cmunit, BoldItalicFont=cmuntx,
-              SlantedFont=cmunst,
-            ]{cmuntt}
+            \setmonofont{Cousine}
             \let\cyrillicfonttt\ttfamily
           provide: setmonofont
 
 math-font-config:
   $style[compiler-latex]:
-  - package: amssymb
-  - swap-vargreek
+    []
   $style[compiler-pdflatex]:
-  - package: amssymb
-  - swap-vargreek
+    []
   $style[compiler-lualatex]:
-  - package: amssymb
+    []
   $style[compiler-xelatex]:
-  - package: amssymb
+  - delegate: unicode-math
 
-  swap-vargreek:
+  unicode-math:
+    $style:
+    - delegate: latinmodern
+    $style[xits]:
+    - delegate: xits
+    _package:
+      $style:
+      - package: unicode-math
+        options:
+        - vargreek-shape=unicode
+    latinmodern:
+      $style:
+      - delegate: ../_package
+      - verbatim: |-
+          \setmathfont{latinmodern-math.otf}
+        provide: setmathfont
+    xits:
+      $style:
+      - delegate: ../_package
+      - verbatim: |-
+          \setmathfont
+            [Path=/usr/share/texmf-dist/fonts/opentype/public/xits/]
+            {xits-math.otf}
+        provide: setmathfont
+
+math-symbols-config:
+  $style[compiler-latex]:
+  - delegate: swap-cm-vargreek
+  $style[compiler-pdflatex]:
+  - delegate: swap-cm-vargreek
+  $style[compiler-xelatex]:
+    []
+  $style[compiler-lualatex]:
+    []
+
+  swap-cm-vargreek:
     $style:
     - verbatim:
         \swapvargreek{phi} \swapvargreek{epsilon} \swapvargreek{kappa}
 
-  unicode-math:
-    $style:
-    - package: unicode-math
-      options:
-      - vargreek-shape=unicode
-    - verbatim: |-
-        \setmathfont{latinmodern-math.otf}
-      provide: setmathfont
-
 language-config:
   $style[compiler-latex]:
-  - babel
+  - delegate: babel
   $style[compiler-pdflatex]:
-  - babel
+  - delegate: babel
   $style[compiler-xelatex]:
-  - polyglossia
+  - delegate: polyglossia
   $style[compiler-lualatex]:
-  - polyglossia
+  - delegate: polyglossia
 
   babel:
     $style:
@@ -152,9 +251,9 @@ optional:
   - delegate: .[2-on-1,-print]
     condition: {not: {or: [resize-to, 2-on-1, 4-on-1]}}
   $style[print,tiled4]:
-  - .[-print]
+  - delegate: .[-print]
   $style[tiled4,-print]:
-  - .[a6paper,landscape,4-on-1,-tiled4]
+  - delegate: .[a6paper,landscape,4-on-1,-tiled4]
   geometry:
     $style:
     - package: geometry
@@ -178,7 +277,7 @@ optional:
       - verbatim: '\geometry{a3paper}'
         provide: geometry:paper
       $style: # default
-      - .[a5paper]
+      - delegate: .[a5paper]
   pgfpages:
     $style[-resize-to,-2-on-1,-4-on-1]: []
     $style:
