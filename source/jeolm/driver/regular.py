@@ -743,6 +743,13 @@ class RegularDriver(RecordsManager, metaclass=DriverMetaclass):
             self.options = [str(item) for item in options]
             super().__init__()
 
+    class ProhibitPackageBodyItem(ControlBodyItem):
+        __slots__ = ['package']
+
+        def __init__(self, package):
+            self.package = str(package)
+            super().__init__()
+
     @classmethod
     def classify_resolved_metabody_item(cls, item, *, default):
         assert default in {None, 'verbatim'}, default
@@ -766,6 +773,9 @@ class RegularDriver(RecordsManager, metaclass=DriverMetaclass):
         elif item.keys() == {'preamble package', 'options'}:
             return cls.RequirePackageBodyItem(
                 package=item['preamble package'], options=item['options'] )
+        elif item.keys() == {'preamble no package'}:
+            return cls.ProhibitPackageBodyItem(
+                package=item['preamble no package'] )
         elif item.keys() == {'error'}:
             raise DriverError(item['error'])
         else:
@@ -834,6 +844,13 @@ class RegularDriver(RecordsManager, metaclass=DriverMetaclass):
             self.options = [str(item) for item in options]
             super().__init__()
 
+    class ProhibitPackagePreambleItem(MetapreambleItem):
+        __slots__ = ['package']
+
+        def __init__(self, package):
+            self.package = str(package)
+            super().__init__()
+
     @classmethod
     def classify_resolved_metapreamble_item(cls, item, *, default):
         assert default in {None, 'verbatim'}, default
@@ -858,6 +875,9 @@ class RegularDriver(RecordsManager, metaclass=DriverMetaclass):
         elif item.keys() == {'package', 'options'}:
             return cls.ProvidePackagePreambleItem(
                 package=item['package'], options=item['options'] )
+        elif item.keys() == {'no package'}:
+            return cls.ProhibitPackagePreambleItem(
+                package=item['no package'] )
         elif item.keys() == {'resize font'}:
             size, skip = item['resize font']
             return cls.ProvidePreamblePreambleItem(
@@ -1310,6 +1330,9 @@ class RegularDriver(RecordsManager, metaclass=DriverMetaclass):
             elif isinstance(item, self.RequirePackageBodyItem):
                 metapreamble.append(self.ProvidePackagePreambleItem(
                     package=item.package, options=item.options ))
+            elif isinstance(item, self.ProhibitPackageBodyItem):
+                metapreamble.append(self.ProhibitPackagePreambleItem(
+                    package=item.package ))
             elif isinstance(item, self.ControlBodyItem):
                 # should be handled by superclass
                 yield item
@@ -1378,6 +1401,11 @@ class RegularDriver(RecordsManager, metaclass=DriverMetaclass):
                 key = 'usepackage:{}'.format(item.package)
                 value = self.substitute_usepackage( package=item.package,
                     options=self.constitute_options(item.options) )
+                yield self.ProvidePreamblePreambleItem(key=key, value=value)
+            elif isinstance(item, self.ProhibitPackagePreambleItem):
+                key = 'usepackage:{}'.format(item.package)
+                value = '%' + self.substitute_usepackage( package=item.package,
+                    options=self.constitute_options([]) )
                 yield self.ProvidePreamblePreambleItem(key=key, value=value)
             else:
                 yield item

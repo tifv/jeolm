@@ -29,9 +29,14 @@ class AddToCDriver(RegularDriver):
         if caption is None:
             raise DriverError("Failed to retrieve caption for ToC")
         assert isinstance(caption, str), type(caption)
-        # without hyperref, \phantomsection won't work
-        # (and with hyperref, \phantomsection is required)
-        yield self.RequirePackageBodyItem(package='hyperref')
+        if 'print' not in target.flags:
+            # with hyperref, \phantomsection is required
+            yield self.RequirePackageBodyItem(package='hyperref')
+            yield self.substitute_phantomsection()
+        else:
+            # without hyperref, \phantomsection won't work
+            yield self.ProhibitPackageBodyItem(package='hyperref')
+            pass
         yield self.substitute_addtoc(line=caption)
         yield target.flags_difference({'add-toc'})
 
@@ -44,7 +49,8 @@ class AddToCDriver(RegularDriver):
         else:
             return None
 
-    addtoc_template = r'\phantomsection\addcontentsline{toc}{section}{$line}'
+    addtoc_template = r'\addcontentsline{toc}{section}{$line}'
+    phantomsection_template = r'\phantomsection'
 
     ##########
     # LaTeX-level functions

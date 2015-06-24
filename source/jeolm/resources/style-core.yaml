@@ -2,31 +2,31 @@ $target$able: off
 
 $style:
 
-- document class: article
-  options: [a4paper,10pt]
-  condition: {not: no-document-class}
-- package: inputenc
-  options: [utf8]
-  condition: {or: [compiler-latex, compiler-pdflatex]}
-- package: amsmath
-- package: amssymb
-- delegate: font-config
-  condition: {not: no-font-config}
-- delegate: math-font-config
-  condition: {not: no-font-config}
+  - document class: article
+    options: [a4paper,10pt]
+    condition: {not: no-document-class}
+  - package: inputenc
+    options: [utf8]
+    condition: {or: [compiler-latex, compiler-pdflatex]}
+  - package: amsmath
+  - package: amssymb
+  - delegate: font-config
+    condition: {not: no-font-config}
+  - delegate: math-font-config
+    condition: {not: no-font-config}
 
-- delegate: jeolm
+  - delegate: jeolm
 
-- delegate: math-symbols-config
-  condition: {not: no-font-config}
+  - delegate: math-symbols-config
+    condition: {not: no-font-config}
 
-- delegate: language-config
-  condition: {not: no-language-config}
-- verbatim: '\pagestyle{empty}'
-  provide: pagestyle
-  condition: {not: no-pagestyle}
+  - delegate: language-config
+    condition: {not: no-language-config}
+  - verbatim: '\pagestyle{empty}'
+    provide: pagestyle
+    condition: {not: no-pagestyle}
 
-- delegate: optional
+  - delegate: optional
 
 font-config:
   $style[compiler-latex]:
@@ -231,29 +231,60 @@ jeolm:
 
 optional:
   $style:
-  - delegate: geometry
-    condition: {not: no-package-geometry}
-  - package: parskip
-    condition: {not: no-package-parskip}
-  - package: multicol
-    condition: {not: no-package-multicol}
-  - package: graphicx
-    condition: {not: no-package-graphicx}
-  - package: anyfontsize
-    condition: {not: no-package-anyfontsize}
-  - delegate: pgfpages
-    condition: {not: no-package-pgfpages}
-  - delegate: shrink-formulas
-    condition: shrink-formulas
-  $style[print,-tiled4]:
-  - delegate: .[-print]
-    condition: {or: [resize-to, 2-on-1, 4-on-1]}
-  - delegate: .[2-on-1,-print]
-    condition: {not: {or: [resize-to, 2-on-1, 4-on-1]}}
-  $style[print,tiled4]:
-  - delegate: .[-print]
-  $style[tiled4,-print]:
+
+    - delegate: geometry
+      condition: {not: no-package-geometry}
+
+    - package: parskip
+      condition: {not: no-package-parskip}
+    - package: multicol
+      condition: {not: no-package-multicol}
+    - package: graphicx
+      condition: {not: no-package-graphicx}
+    - package: anyfontsize
+      condition: {not: no-package-anyfontsize}
+
+    - delegate: pgfpages
+      condition: {not: no-package-pgfpages}
+    - delegate: hyperref
+      condition: {not: no-package-hyperref}
+    - delegate: shrink-formulas
+      condition: shrink-formulas
+
+  $style[-print,-paper-guard]:
+  - delegate: .[a5paper,paper-guard]
+    condition: {not: {or: [a3paper, a4paper, a5paper, a6paper]}}
+  - delegate: .[paper-guard]
+    condition: {or: [a3paper, a4paper, a5paper, a6paper]}
+
+  $style[print,tiled4,-paper-guard,-layout-guard]:
   - delegate: .[a6paper,landscape,4-on-1,-tiled4]
+
+  $style[print,-paper-guard,-layout-guard]:
+  - delegate: .[a5paper,paper-guard]
+    condition: {not: {or: [a3paper, a4paper, a5paper, a6paper]}}
+  - delegate: .[paper-guard]
+    condition: {or: [a3paper, a4paper, a5paper, a6paper]}
+
+  $style[print,paper-guard,-layout-guard]:
+  - delegate: .[2-on-1,layout-guard]
+    condition: {and: [
+      {not: {or: [resize-to, 2-on-1, 4-on-1]}},
+      a5paper,
+    ]}
+  - delegate: .[4-on-1,layout-guard]
+    condition: {and: [
+      {not: {or: [resize-to, 2-on-1, 4-on-1]}},
+      a6paper,
+    ]}
+  - delegate: .[layout-guard]
+    condition: {and: [
+      {not: {or: [resize-to, 2-on-1, 4-on-1]}},
+      {not: {or: [a5paper, a6paper]}},
+    ]}
+  - delegate: .[layout-guard]
+    condition: {or: [resize-to, 2-on-1, 4-on-1]}
+
   geometry:
     $style:
     - package: geometry
@@ -263,23 +294,28 @@ optional:
     - verbatim: '\geometry{landscape}'
       provide: geometry:landscape
       condition: landscape
+    - verbatim: '%\geometry{landscape}'
+      provide: geometry:landscape
+      condition: {not: landscape}
     set-paper-size:
-      $style[a6paper]:
-      - verbatim: '\geometry{a6paper}'
-        provide: geometry:paper
-      $style[a5paper]:
-      - verbatim: '\geometry{a5paper}'
+      $style[a3paper]:
+      - verbatim: '\geometry{a3paper}'
         provide: geometry:paper
       $style[a4paper]:
       - verbatim: '\geometry{a4paper}'
         provide: geometry:paper
-      $style[a3paper]:
-      - verbatim: '\geometry{a3paper}'
+      $style[a5paper]:
+      - verbatim: '\geometry{a5paper}'
         provide: geometry:paper
-      $style: # default
-      - delegate: .[a5paper]
+      $style[a6paper]:
+      - verbatim: '\geometry{a6paper}'
+        provide: geometry:paper
+      $style:
+      - error: core misconfiguration
+
   pgfpages:
-    $style[-resize-to,-2-on-1,-4-on-1]: []
+    $style[-print]: # pgfpages is incompatible with hyperref
+    - no package: pgfpages
     $style:
     - package: pgfpages
     - verbatim: |-
@@ -306,7 +342,15 @@ optional:
       $style[4-on-1,landscape]:
       - verbatim: '\pgfpagesuselayout{4 on 1}[a4paper,landscape]'
         provide: pgfpagesuselayout
-      $style: [] # default
+      $style:
+      - error: core misconfiguration
+
+  hyperref:
+    $style[print]: # hyperref is incompatible with pgfpages
+    - no package: hyperref
+    $style:
+    - package: hyperref
+
   shrink-formulas:
     $style:
     - verbatim: |-

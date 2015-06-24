@@ -383,6 +383,9 @@
 %    \begin{macrocode}
 \newcommand\subproblem{\subproblemx{}}
 \newcommand\subproblemx[1]{\subproblem@x{#1}\subproblem@space}
+\newcommand\subproblemmath{\subproblemmathx{}}
+\newcommand\subproblemmathx[1]{\text{\subproblem@x{#1}}%
+    \subproblem@space@math\mathstrut^{\mathstrut}}
 \let\sp\subproblem
 \let\spx\subproblemx
 %    \end{macrocode}
@@ -399,6 +402,7 @@
 \newcommand\setproblem[1]{\setcounter{jeolmproblem}{#1}}
 \newcommand\resetproblem{\setcounter{jeolmproblem}{0}}
 \newcounter{jeolmsubproblem}
+\newcommand\resetsubproblem{\setcounter{jeolmsubproblem}{0}}
 %    \end{macrocode}
 % \end{macro}
 % \end{macro}
@@ -466,9 +470,12 @@
     #1.\rlap{\!#2}%
 \endgroup}
 \newlength\subproblem@space@length
+\newlength\subproblem@space@math@length
 \newlength\@subproblem@letter@width
 \subproblem@space@length=0.5em
+\subproblem@space@math@length=1.0em
 \newcommand\subproblem@space{\hspace{\subproblem@space@length}\ignorespaces}
+\newcommand\subproblem@space@math{\hspace{\subproblem@space@math@length}}
 \newcommand\subproblem@format[2]{\begingroup\bfseries
 \settowidth{\@subproblem@letter@width}{m}%
 (%
