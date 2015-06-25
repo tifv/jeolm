@@ -22,18 +22,18 @@ class FancifyingFormatter(logging.Formatter):
     def __init__(self, fmt, datefmt=None, *,
         colour=True
     ):
-        fmt = '{term_bold}' + fmt + '{term_reset}'
+        fmt = '{term_bold}' + fmt + '{term_regular}'
         super().__init__(fmt=fmt, datefmt=datefmt, style='{')
         self.fancify = fancify if colour else unfancify
 
     def format(self, record):
         record.msg = self.fancify(record.msg)
         if record.levelno <= logging.INFO:
-            bold, reset = '', ''
+            bold, regular = '', ''
         else:
-            bold, reset = self.fancify('<BOLD>'), self.fancify('<RESET>')
+            bold, regular = self.fancify('<BOLD>'), self.fancify('<REGULAR>')
         record.term_bold = bold
-        record.term_reset = reset
+        record.term_regular = regular
         return super().format(record)
 
 class MainFormatter(FancifyingFormatter):
@@ -60,7 +60,7 @@ class NodeFormatter(FancifyingFormatter):
             return ( "{super_message}\n{prog_output}"
                 "{term_bold}"
                     "(output while building node {node_name})"
-                "{term_reset}"
+                "{term_regular}"
                 .format(super_message=super_message, **record.__dict__)
             )
         else:

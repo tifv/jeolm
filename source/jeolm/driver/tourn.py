@@ -79,7 +79,7 @@ class TournDriver(RegularDriver):
                     .format(flags=misused_flags, target=target) )
             if not target.flags.intersection(tourn_flags):
                 logger.error(
-                    "<BOLD>One of tourn flags is required: {}<RESET>"
+                    "One of tourn flags is required: {}"
                     .format(', '.join(sorted(self.all_tourn_flags)))
                 )
                 raise DriverError(

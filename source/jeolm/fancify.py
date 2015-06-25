@@ -7,6 +7,10 @@ FANCIFY_REPLACEMENTS = (
     ('<NOCOLOUR>', '\033[39m'),
 
     ('<BOLD>',     '\033[1m'),
+    ('<REGULAR>',  '\033[22m'),
+
+    ('<ITALIC>',   '\033[3m'),
+    ('<UPRIGHT>',  '\033[23m'),
 
     ('<BLACK>',    '\033[30m'),
     ('<RED>',      '\033[31m'),

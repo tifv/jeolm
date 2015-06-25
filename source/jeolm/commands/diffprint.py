@@ -48,15 +48,15 @@ def log_metadata_diff(metadata, logger=logger):
         old_dump = _dump(old_record).splitlines()
         new_dump = _dump(new_record).splitlines()
         if old_record is None:
-            header = ( '<BOLD><GREEN>{}<NOCOLOUR> metarecord added<RESET>'
+            header = ( '<BOLD><GREEN>{}<NOCOLOUR> metarecord added<REGULAR>'
                 .format(inpath) )
             old_dump = []
         elif new_record is None:
-            header = ( '<BOLD><RED>{}<NOCOLOUR> metarecord removed<RESET>'
+            header = ( '<BOLD><RED>{}<NOCOLOUR> metarecord removed<REGULAR>'
                 .format(inpath) )
             new_dump = []
         else:
-            header = ( '<BOLD><YELLOW>{}<NOCOLOUR> metarecord changed<RESET>'
+            header = ( '<BOLD><YELLOW>{}<NOCOLOUR> metarecord changed<REGULAR>'
                 .format(inpath) )
         delta = difflib.ndiff(a=old_dump, b=new_dump)
         lines = format_ndiff_delta(delta, fix_newlines=True)

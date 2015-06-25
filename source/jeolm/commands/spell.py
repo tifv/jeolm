@@ -63,7 +63,7 @@ def check_spelling(targets, *, local, driver, context=0, colour=True):
             continue
         indicator_clean()
         fprint(
-            '<BOLD><YELLOW>{}<NOCOLOUR> possible misspellings<RESET>'
+            '<BOLD><YELLOW>{}<NOCOLOUR> possible misspellings<REGULAR>'
             .format(path.relative_to(local.source_dir)) )
         line_range = range(len(lines))
         lineno_offset = len(str(len(lines)))
