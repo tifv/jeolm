@@ -129,10 +129,12 @@ def excerpt_document( document_node, *, stream, include_pdf=False,
     assert isinstance(document_node, DocumentNode)
     build_dir_node = document_node.build_dir_node
     build_dir = build_dir_node.path
-    latex_node, = [ node
-        for node in document_node.iter_needs()
-        if isinstance(node, LaTeXNode)
-        if node.path.parent == build_dir]
+    if isinstance(document_node, LaTeXNode):
+        latex_node = document_node
+    elif isinstance(document_node, LaTeXPDFNode):
+        latex_node = document_node.source
+    else:
+        raise RuntimError(type(document_node))
 
     archive_node = Node(name='archive:{}'.format(document_node.name))
     for node in latex_node.needs:
@@ -160,23 +162,28 @@ def excerpt_document( document_node, *, stream, include_pdf=False,
                 node=member_node )
 
 def _get_other_figure_formats( node, *,
-    figure_node_factory, build_dir_node
+    figure_node_factory, build_dir_node,
+    figure_formats=('<latex>', '<pdflatex>', '<xelatex>', '<lualatex>')
 ):
     if not isinstance(node, SymLinkedFileNode):
         raise RuntimeError(node)
-    figure_eps_node = node.source
-    if not hasattr(figure_eps_node, 'metapath'):
-        raise RuntimeError(figure_eps_node)
-    metapath = figure_eps_node.metapath
-    figure_nodes = {figure_eps_node}
-    for figure_format in ('<latex>', '<pdflatex>'):
-        figure_node = figure_node_factory( metapath,
-            figure_format=figure_format )
-        if figure_node in figure_nodes:
+    figure_node = node.source
+    if not hasattr(figure_node, 'metapath'):
+        raise RuntimeError(figure_node)
+    metapath = figure_node.metapath
+    figure_type = figure_node.figure_type
+    if figure_type not in figure_node_factory.flexible_figure_types:
+        # We most probably can't rebuild this figure in other format.
+        return
+    figure_nodes = {figure_node}
+    for figure_format in figure_formats:
+        other_figure_node = figure_node_factory( metapath,
+            figure_format=figure_format, figure_type=figure_type )
+        if other_figure_node in figure_nodes:
             continue
-        figure_nodes.add(figure_node)
+        figure_nodes.add(other_figure_node)
         yield SymLinkedFileNode(
-            source=figure_node,
-            path=node.path.with_suffix(figure_node.path.suffix),
+            source=other_figure_node,
+            path=node.path.with_suffix(other_figure_node.path.suffix),
             needs=(build_dir_node,) )
 

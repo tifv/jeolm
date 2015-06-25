@@ -357,21 +357,6 @@ class DocumentNodeFactory:
     _substitute_driver_ins = Template(_driver_ins_template).substitute
 
 
-def _wraps_kwdefaults(method, kwarg_names):
-    if method.__kwdefaults__ is None:
-        return lambda wrapper: wrapper
-    kwdefaults = method.__kwdefaults__
-    def decorator(wrapper):
-        if wrapper.__kwdefaults__ is None:
-            wrapper.__kwdefaults__ = dict()
-        for kwarg_name in kwarg_names:
-            if kwarg_name not in kwdefaults:
-                continue
-            wrapper.__kwdefaults__[kwarg_name] = kwdefaults[kwarg_name]
-        return wrapper
-    return decorator
-
-
 class PackageNodeFactory:
     package_types = frozenset(('dtx', 'sty',))
 
@@ -526,6 +511,7 @@ class FigureNodeFactory:
     figure_types = frozenset((
         None,
         'asy', 'svg', 'pdf', 'eps', 'png', 'jpg', ))
+    flexible_figure_types = frozenset(('asy', 'svg',))
 
     def __init__(self, *, local, driver,
         build_dir_node,
@@ -622,6 +608,10 @@ class FigureNodeFactory:
             figure_record=figure_records[figure_type] )
         if not hasattr(node, 'metapath'):
             node.metapath = metapath
+        if not hasattr(node, 'figure_type'):
+            node.figure_type = figure_type
+        if not hasattr(node, 'figure_format'):
+            node.figure_figure_format = figure_format
         return node
 
     @staticmethod
