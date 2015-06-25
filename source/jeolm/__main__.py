@@ -10,10 +10,9 @@ import jeolm.target
 import jeolm.commands
 import jeolm.logging
 
-from jeolm.logging import DEBUG, INFO, WARNING
-
 # use 'jeolm' logger instead of '__main__'
-from jeolm import logger
+import logging
+logger = logging.getLogger(jeolm.__name__)
 
 
 def _get_base_arg_parser( prog='jeolm',
@@ -25,14 +24,14 @@ def _get_base_arg_parser( prog='jeolm',
     verbosity_group = parser.add_mutually_exclusive_group()
     verbosity_group.add_argument( '-v', '--verbose',
         help="show debug messages",
-        action='store_const', dest='log_level', const=DEBUG )
+        action='store_const', dest='log_level', const=logging.DEBUG )
     verbosity_group.add_argument( '-q', '--quiet',
         help="show only warnings and errors",
-        action='store_const', dest='log_level', const=WARNING )
+        action='store_const', dest='log_level', const=logging.WARNING )
     parser.add_argument( '-C', '--no-colour',
         help="disable colour output",
         action='store_false', dest='colour' )
-    parser.set_defaults(log_level=INFO)
+    parser.set_defaults(log_level=logging.INFO)
     return parser
 
 def _jobs_arg(arg):

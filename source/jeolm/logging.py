@@ -1,23 +1,25 @@
-from logging import ( Formatter, StreamHandler,
-    DEBUG, INFO, WARNING, ERROR, CRITICAL )
+import logging
 
-from jeolm import logger as jeolm_logger
+import jeolm
+jeolm_logger = logging.getLogger(jeolm.__name__)
+
 from jeolm.fancify import fancify, unfancify
 
-def setup_logging(level=INFO, colour=True):
+def setup_logging(level=logging.INFO, colour=True):
     node_formatter = NodeFormatter(
         "[{node_name}] {message}", colour=colour)
     formatter = MainFormatter(
         "{name}: {message}", colour=colour,
         node_formatter=node_formatter )
-    handler = StreamHandler()
+    handler = logging.StreamHandler()
     handler.setFormatter(formatter)
     handler.setLevel(level)
+    jeolm_logger.setLevel(level)
     jeolm_logger.addHandler(handler)
 
-class FancifyingFormatter(Formatter):
+class FancifyingFormatter(logging.Formatter):
 
-    def __init__(self, fmt=None, datefmt=None, *,
+    def __init__(self, fmt, datefmt=None, *,
         colour=True
     ):
         fmt = '{term_bold}' + fmt + '{term_reset}'
@@ -26,7 +28,7 @@ class FancifyingFormatter(Formatter):
 
     def format(self, record):
         record.msg = self.fancify(record.msg)
-        if record.levelno <= INFO:
+        if record.levelno <= logging.INFO:
             bold, reset = '', ''
         else:
             bold, reset = self.fancify('<BOLD>'), self.fancify('<RESET>')
@@ -36,7 +38,7 @@ class FancifyingFormatter(Formatter):
 
 class MainFormatter(FancifyingFormatter):
 
-    def __init__(self, fmt=None, datefmt=None, *,
+    def __init__(self, fmt, datefmt=None, *,
         colour=True, node_formatter
     ):
         super().__init__(fmt=fmt, datefmt=datefmt, colour=colour)
@@ -65,11 +67,11 @@ class NodeFormatter(FancifyingFormatter):
             return super_message
 
     def _fancify_node_name(self, node, level):
-        if level <= DEBUG:
+        if level <= logging.DEBUG:
             colour = '<CYAN>'
-        elif level <= INFO:
+        elif level <= logging.INFO:
             colour = '<MAGENTA>'
-        elif level <= WARNING:
+        elif level <= logging.WARNING:
             colour = '<YELLOW>'
         else:
             colour = '<RED>'

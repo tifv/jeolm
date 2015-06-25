@@ -7,7 +7,8 @@ from collections import OrderedDict
 
 from pathlib import PurePosixPath
 
-from . import yaml
+import jeolm.yaml
+
 from .record_path import RecordPath
 from .records import RecordsManager
 
@@ -220,7 +221,7 @@ class MetadataManager(RecordsManager):
 
     def _query_yaml_file(self, inpath):
         with (self.local.source_dir/inpath).open('r') as yaml_file:
-            metadata = yaml.load(yaml_file)
+            metadata = jeolm.yaml.load(yaml_file)
         if not isinstance(metadata, dict):
             raise TypeError(
                 "Metadata in {} is of type {}, expected dictionary"
@@ -323,7 +324,7 @@ class MetadataManager(RecordsManager):
             piece = ''.join(piece_lines)
             piece_io = io.StringIO(piece)
             piece_io.name = inpath
-            piece = yaml.load(piece_io)
+            piece = jeolm.yaml.load(piece_io)
             if not isinstance(piece, dict) or len(piece) != 1:
                 logger.error( "<MAGENTA>%(path)s<NOCOLOUR>: "
                     "unrecognized metadata piece",
