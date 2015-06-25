@@ -1,0 +1,30 @@
+\ProvidesPackage{jeolm-groups}
+\let\jeolmheadertemplate\undefined
+\renewcommand\jeolmheader[1]{\begingroup#1
+    {\Large\vspace{4ex}}\par%
+    \begingroup\small\sffamily%
+    \strut\ifx\jeolmauthors\relax%
+      \hfill{\bfseries\jeolminstitutionname}\hfill%
+    \else%
+      {\bfseries\jeolminstitutionname}%
+        \hfill%
+      {\mdseries\jeolmauthors}%
+    \fi\strut\nopagebreak\\%
+    \strut{\itshape\jeolmdaterange}\hfill%
+    \jeolmgroupnames
+    \ifx\jeolmdate\relax\else%
+        \qquad{\itshape\jeolmdate}%
+    \fi\strut\nopagebreak\\%
+    \rule[1ex]{\textwidth}{0.5pt} %
+    \endgroup% \small\sffamily
+    {\vspace{-1ex}\Large\vspace{-4ex}\vspace{-\parskip}}%
+\endgroup}
+\newcommand{\jeolmgroupnames}{\ifx\jeolmgroupname\relax\else
+\smash{%
+    \begingroup\edef\x{\endgroup\noexpand\in@{,}{\jeolmgroupname}}\x%
+    \ifin@ группы:\else группа:\fi%
+    \enspace{\large\jeolmgroupname}%
+}\fi}
+\let\jeolmauthors\relax
+\let\jeolmgroupname\relax
+\let\jeolmdate\relax

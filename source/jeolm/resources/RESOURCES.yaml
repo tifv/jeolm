@@ -5,3 +5,6 @@ figure-style:
   source/_style/jeolm.asy: jeolm.asy
 gitignore:
   .gitignore: gitignore
+groups:
+  source/_style/jeolm-groups.sty: jeolm-groups.sty
+  source/_style/jeolm-groups.yaml: jeolm-groups.yaml
