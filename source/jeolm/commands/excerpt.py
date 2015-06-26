@@ -7,10 +7,9 @@ from stat import S_ISREG as stat_is_regular_file
 import tarfile
 import zipfile
 
-from jeolm.node import ( Node, FilelikeNode,
+from jeolm.node import ( Node, FilelikeNode, ProductNode,
     FileNode, LazyWriteTextCommand, )
 from jeolm.node.symlink import SymLinkedFileNode
-from jeolm.node.directory import DirectoryNode
 from jeolm.node.latex import LaTeXNode
 from jeolm.node_factory import DocumentNode
 
@@ -129,19 +128,18 @@ def excerpt_document( document_node, *, stream, include_pdf=False,
     assert isinstance(document_node, DocumentNode)
     build_dir_node = document_node.build_dir_node
     build_dir = build_dir_node.path
-    if isinstance(document_node, LaTeXNode):
-        latex_node = document_node
-    elif isinstance(document_node, LaTeXPDFNode):
-        latex_node = document_node.source
+    latex_node = document_node
+    while isinstance(latex_node, ProductNode):
+        if isinstance(latex_node, LaTeXNode):
+            break
+        latex_node = latex_node.source
     else:
-        raise RuntimError(type(document_node))
+        raise RuntimeError(document_node)
 
     archive_node = Node(name='archive:{}'.format(document_node.name))
     for node in latex_node.needs:
-        if isinstance(node, DirectoryNode):
-            continue
         if not isinstance(node, FilelikeNode):
-            raise RuntimeError(node)
+            continue
         if build_dir != node.path.parent:
             raise RuntimeError(node)
         archive_node.append_needs(node)

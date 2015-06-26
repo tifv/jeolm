@@ -142,7 +142,7 @@ class ProxyNode(ProductNode):
     Represents the same path as its source.
 
     This allows assigning some attributes which sould not belong to the
-    original node.
+    original node, or adding some post-dependencies.
 
     Attributes (additional to superclasses):
         source (PathNode):
@@ -152,7 +152,7 @@ class ProxyNode(ProductNode):
 
     def __init__(self, source, *, name=None, needs=(), **kwargs):
         """
-        Initialize SymLinkNode instance.
+        Initialize ProxyNode instance.
 
         Args:
             source (PathNode):
@@ -160,12 +160,10 @@ class ProxyNode(ProductNode):
             name (optional)
                 passed to the superclass.
             needs (optional)
-                must be an empty iterable.
+                passed to the superclass.
         """
-        if list(needs):
-            raise ValueError("ProxyNode does not accept any excess needs.")
         super().__init__( source=source, path=source.path,
-            name=name, **kwargs )
+            name=name, needs=needs, **kwargs )
 
     wants_concurrency = False
 

@@ -128,6 +128,9 @@ class DocumentNodeFactory:
         'lualatex' : _LuaLaTeXDocumentNode,
     }
 
+    class _ProxyDocumentNode(jeolm.node.symlink.ProxyFileNode, DocumentNode):
+        pass
+
     def __init__(self, *, local, driver,
         build_dir_node,
         source_node_factory, package_node_factory, figure_node_factory,
@@ -164,6 +167,7 @@ class DocumentNodeFactory:
             name='document:{}:output:dir'.format(target),
             path=build_dir_node.path/'output',
             needs=(build_dir_node,) )
+        build_dir_node.register_node(output_dir_node)
         document_type = recipe['type']
         if document_type == 'regular':
             prebuild_method = self._prebuild_regular
@@ -179,11 +183,15 @@ class DocumentNodeFactory:
         document_node_class = self._document_node_classes[recipe['compiler']]
         document_node = document_node_class(
             name='document:{}:output'.format(target),
-            source=main_source_node,
-            output_dir_node=output_dir_node, jobname='Main',
+            source=main_source_node, jobname='Main',
+            build_dir_node=build_dir_node, output_dir_node=output_dir_node,
             figure_nodes=figure_nodes,
             needs=chain(source_nodes, package_nodes),
         )
+        build_dir_node.post_check_node.append_needs(document_node)
+        document_node = self._ProxyDocumentNode(
+            source=document_node,
+            needs=(build_dir_node.post_check_node,), )
         # pylint: disable=attribute-defined-outside-init
         document_node.figure_nodes = figure_nodes
         document_node.build_dir_node = build_dir_node
@@ -221,7 +229,7 @@ class DocumentNodeFactory:
             compiler=recipe['compiler']
         )
         assert '.' not in buildname
-        return jeolm.node.directory.DirectoryNode(
+        return jeolm.node.directory.BuildDirectoryNode(
             name='document:{}:dir'.format(target),
             path=parent_dir_node.path/buildname,
             needs=(parent_dir_node,) )
@@ -243,15 +251,18 @@ class DocumentNodeFactory:
             local=self.local )
         main_source_node.set_command(jeolm.node.WriteTextCommand(
             main_source_node, text=recipe['document'] ))
+        build_dir_node.register_node(main_source_node)
 
         source_nodes = list()
         for alias, inpath in recipe['sources'].items():
-            source_nodes.append(jeolm.node.symlink.SymLinkedFileNode(
+            source_node = jeolm.node.symlink.SymLinkedFileNode(
                 name='document:{}:source:{}'.format(target, alias),
                 source=self.source_node_factory(inpath),
                 path=build_dir/alias,
                 needs=(build_dir_node,)
-            ))
+            )
+            source_nodes.append(source_node)
+            build_dir_node.register_node(source_node)
 
         return (
             main_source_node, source_nodes,
@@ -267,12 +278,14 @@ class DocumentNodeFactory:
         build_dir = build_dir_node.path
         package_nodes = list()
         for package_name, package_path in recipe['package_paths'].items():
-            package_nodes.append(jeolm.node.symlink.SymLinkedFileNode(
+            package_node = jeolm.node.symlink.SymLinkedFileNode(
                 name='document:{}:package:{}'.format(target, package_name),
                 source=self.package_node_factory(package_path),
                 path=(build_dir/package_name).with_suffix('.sty'),
                 needs=(build_dir_node,)
-            ))
+            )
+            package_nodes.append(package_node)
+            build_dir_node.register_node(package_node)
         return package_nodes
 
     def _prebuild_regular_figures( self, target, recipe,
@@ -288,12 +301,14 @@ class DocumentNodeFactory:
                 figure_format='<{}>'.format(compiler) )
             figure_suffix = figure_node.path.suffix
             assert figure_suffix in {'.pdf', '.eps', '.png', '.jpg'}
-            figure_nodes.append(jeolm.node.symlink.SymLinkedFileNode(
+            figure_node = jeolm.node.symlink.SymLinkedFileNode(
                 name='document:{}:figure:{}'.format(target, alias_stem),
                 source=figure_node,
                 path=(build_dir/alias_stem).with_suffix(figure_suffix),
                 needs=(build_dir_node,)
-            ))
+            )
+            figure_nodes.append(figure_node)
+            build_dir_node.register_node(figure_node)
         return figure_nodes
 
     def _prebuild_standalone(self, target, recipe,
@@ -305,6 +320,7 @@ class DocumentNodeFactory:
             source=self.source_node_factory(recipe['source']),
             path=build_dir/'Main.tex',
             needs=(build_dir_node,) )
+        build_dir_node.register_node(main_source_node)
         return main_source_node, (), (), ()
 
     def _prebuild_latexdoc(self, target, recipe,
@@ -317,6 +333,7 @@ class DocumentNodeFactory:
             source=self.source_node_factory(recipe['source']),
             path=build_dir/'{}.dtx'.format(package_name),
             needs=(build_dir_node,) )
+        build_dir_node.register_node(dtx_node)
         ins_node = TextNode(
             name='document:{}:source:ins'.format(target),
             path=build_dir/'driver.ins',
@@ -325,6 +342,7 @@ class DocumentNodeFactory:
             local=self.local )
         ins_node.set_command(jeolm.node.WriteTextCommand( ins_node,
             self._substitute_driver_ins(package_name=package_name) ))
+        build_dir_node.register_node(ins_node)
         drv_node = jeolm.node.ProductFileNode(
             name='document:{}:source:drv'.format(target),
             source=dtx_node,
@@ -334,11 +352,13 @@ class DocumentNodeFactory:
             ( 'latex', '-interaction=nonstopmode', '-halt-on-error',
                 ins_node.path.name ),
             cwd=build_dir )
+        build_dir_node.register_node(drv_node)
         sty_node = jeolm.node.symlink.SymLinkedFileNode(
             name='document:{}:package'.format(target),
             source=self.package_node_factory(target.path),
             path=(build_dir/package_name).with_suffix('.sty'),
             needs=(build_dir_node,) )
+        build_dir_node.register_node(sty_node)
         return drv_node, (dtx_node,), (sty_node,), ()
 
     _driver_ins_template = (

@@ -2,7 +2,12 @@ import os
 import os.path
 from stat import S_ISDIR
 
-from . import BuildablePathNode, Command
+from pathlib import Path
+
+from . import (
+    Node, BuildableNode, PathNode, BuildablePathNode,
+    Command,
+    NodeErrorReported )
 
 import logging
 logger = logging.getLogger(__name__)
@@ -104,4 +109,97 @@ class DirectoryNode(BuildablePathNode):
             return True
         return False
 
+
+class _CheckDirectoryNode(Node):
+
+    def __init__(self, path, approved_names, *, name, needs=()):
+        super().__init__(name=name, needs=needs)
+        self.path = path
+        self.approved_names = approved_names
+
+    def _find_rogue_names(self):
+        return set(os.listdir(str(self.path))) - self.approved_names
+
+class _CleanupCommand(Command):
+
+    def __init__(self, node):
+        assert isinstance(node, _PreCleanupNode), type(node)
+        super().__init__(node)
+
+    def __call__(self):
+        for rogue_name in self.node.rogue_names:
+            rogue_path = self.node.path / rogue_name
+            if rogue_path.is_dir():
+                self.logger.error(
+                    "Detected rogue directory <RED>%(path)s<NOCOLOUR>",
+                    dict(path=rogue_path) )
+                raise NodeErrorReported from IsADirectoryError()
+            self.logger.warning(
+                "Detected rogue file <YELLOW>%(path)s<NOCOLOUR>, removing",
+                dict(path=rogue_path) )
+            rogue_path.unlink()
+        self.node.modified = True
+        super.__call__()
+
+class _PreCleanupNode(_CheckDirectoryNode, BuildableNode):
+
+    wants_concurrency = False
+
+    def __init__(self, path, approved_names, *, name, needs=()):
+        super().__init__(path, approved_names, name=name, needs=needs)
+        self.set_command(_CleanupCommand(self))
+        self.rogue_names = None
+
+    def _needs_build(self):
+        rogue_names = self.rogue_names = self._find_rogue_names()
+        return bool(rogue_names)
+
+class _PostCheckNode(_CheckDirectoryNode):
+
+    def update_self(self):
+        for rogue_name in self._find_rogue_names():
+            self.logger.warning(
+                "Detected rogue path <YELLOW>%(path)s<NOCOLOUR>",
+                dict(path=self.path / rogue_name) )
+        self.updated = True
+
+class BuildDirectoryNode(DirectoryNode):
+    """
+    Represents a build directory.
+
+    Adds some control over the contents of the directory, so that rogue
+    files will not interfere with the build process.
+    """
+
+    def __init__(self, path,
+        *, parents=False,
+        name=None, needs=(), **kwargs
+    ):
+        super().__init__(path=path, parents=parents, name=name, needs=needs)
+        approved_names = self.approved_names = set()
+        self.pre_cleanup_node = _PreCleanupNode(
+            path, approved_names,
+            name='{}:pre-cleanup'.format(name), needs=(self,) )
+        self.post_check_node = _PostCheckNode(
+            path, approved_names,
+            name='{}:post-check'.format(name),
+            needs=(self, self.pre_cleanup_node),
+        )
+
+    def register_name(self, name):
+        if not isinstance(name, str):
+            raise TypeError(type(name))
+        self.approved_names.add(name)
+
+    def register_path(self, path):
+        if not isinstance(path, Path):
+            raise TypeError(type(path))
+        if path.parent != self.path:
+            raise ValueError(path)
+        self.register_name(path.name)
+
+    def register_node(self, node):
+        if not isinstance(node, PathNode):
+            raise TypeError(type(node))
+        self.register_path(node.path)
 

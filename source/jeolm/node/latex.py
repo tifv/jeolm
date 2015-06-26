@@ -3,6 +3,7 @@ from itertools import chain
 import re
 
 from . import ProductFileNode, SubprocessCommand
+from .directory import BuildDirectoryNode
 
 import logging
 logger = logging.getLogger(__name__)
@@ -215,10 +216,13 @@ class LaTeXNode(ProductFileNode):
 
     _Command = _LaTeXCommand
 
-    def __init__( self, source, output_dir_node, jobname,
+    def __init__( self, source, jobname,
+        build_dir_node, output_dir_node,
         *, name=None, figure_nodes=(), needs=(), **kwargs
     ):
-        build_dir = source.path.parent
+        build_dir = build_dir_node.path
+        if source.path.parent != build_dir:
+            raise RuntimeError
         output_dir = output_dir_node.path
         if not (build_dir == output_dir or build_dir in output_dir.parents):
             raise RuntimeError
@@ -230,6 +234,8 @@ class LaTeXNode(ProductFileNode):
         super().__init__( source=source, path=path,
             name=name, needs=chain(needs, figure_nodes, (output_dir_node,)),
             **kwargs )
+        if isinstance(build_dir_node, BuildDirectoryNode):
+            self.append_needs(build_dir_node.pre_cleanup_node)
 
         command = self._Command( self,
             source_name=source.path.name,
@@ -253,11 +259,15 @@ class LaTeXPDFNode(ProductFileNode):
 
     _LaTeXNode = LaTeXNode
 
-    def __init__(self, source, output_dir_node, jobname,
-        *, name, figure_nodes=(), needs=(), **kwargs
+    def __init__( self, source, jobname,
+        build_dir_node, output_dir_node,
+        *, name=None, figure_nodes=(), needs=(), **kwargs
     ):
-        build_dir = source.path.parent
-        dvi_node = self._LaTeXNode( source, output_dir_node, jobname,
+        build_dir = build_dir_node.path
+        if source.path.parent != build_dir:
+            raise RuntimeError
+        dvi_node = self._LaTeXNode( source, jobname,
+            build_dir_node, output_dir_node,
             name='{}:dvi'.format(name),
             figure_nodes=figure_nodes, needs=needs, **kwargs )
         del source # is not self.source
