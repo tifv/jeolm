@@ -3,7 +3,7 @@ import os.path
 
 from pathlib import PurePosixPath
 
-from . import ProductNode, FilelikeNode, _mtime_less
+from . import ProductNode, FilelikeNode, Command, _mtime_less
 
 import logging
 logger = logging.getLogger(__name__)
@@ -33,6 +33,31 @@ def _naive_relative_to(path, root):
     return PurePosixPath(*
         ['..'] * upstairs + [path.relative_to(root)] )
 
+class SymLinkCommand(Command):
+
+    def __init__(self, node, target):
+        assert isinstance(node, SymLinkNode), type(node)
+        super().__init__(node)
+        assert isinstance(target, str), type(target)
+        self.target = target
+
+    def __call__(self):
+        if os.path.lexists(str(self.node.path)):
+            self._clear_path()
+        self.logger.debug(
+            "<source=<CYAN>%(source_name)s<NOCOLOUR>> "
+            "<GREEN>ln --symbolic %(link_target)s %(path)s<NOCOLOUR>",
+            dict(
+                source_name=self.node.source.name,
+                link_target=self.target,
+                path=self.node.relative_path, )
+        )
+        os.symlink(self.target, str(self.node.path))
+        self.node.modified = True
+        super().__call__()
+
+    def _clear_path(self):
+        self.node.path.unlink()
 
 class SymLinkNode(ProductNode):
     """
@@ -43,6 +68,8 @@ class SymLinkNode(ProductNode):
             derived from ProductNode, this attribute is assigned specific
             semantics: it is the target of symbolic link.
     """
+
+    _Command = SymLinkCommand
 
     def __init__(self, source, path, *, relative=True,
         name=None, needs=(), **kwargs
@@ -64,27 +91,14 @@ class SymLinkNode(ProductNode):
             name=name, needs=needs, **kwargs )
 
         if not relative:
-            self.link_target = str(source.path)
+            target = str(source.path)
         else:
-            self.link_target = str(_naive_relative_to(
+            target = str(_naive_relative_to(
                 source.path, self.path.parent ))
 
-        def link_command():
-            if not isinstance(self.link_target, str):
-                raise TypeError(type(self.link_target))
-            if os.path.lexists(str(self.path)):
-                self.path.unlink()
-            self.logger.debug(
-                "<source=<CYAN>%(source_name)s<NOCOLOUR>> "
-                "<GREEN>ln --symbolic %(link_target)s %(path)s<NOCOLOUR>",
-                dict(
-                    source_name=self.source.name,
-                    link_target=self.link_target,
-                    path=self.relative_path, )
-            )
-            os.symlink(self.link_target, str(self.path))
-            self.modified = True
-        self.set_command(link_command)
+        self.set_command(self._Command(self, target))
+
+        self.old_target = None
 
     wants_concurrency = False
 
@@ -120,11 +134,11 @@ class SymLinkNode(ProductNode):
           - node.path is a link, but wrong link.
         Superclasses ignored.
         """
-        path = str(self.path)
-        return not (
-            self.mtime is not None and
-            os.path.islink(path) and
-            self.link_target == os.readlink(path) )
+        if self.mtime is not None and os.path.islink(str(self.path)):
+            self.old_target = os.readlink(str(self.path))
+            if self.command.target == self.old_target:
+                return False
+        return True
 
 
 class SymLinkedFileNode(SymLinkNode, FilelikeNode):

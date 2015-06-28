@@ -1,0 +1,80 @@
+from itertools import chain
+
+import re
+import hashlib
+
+from . import FileNode, Command
+from .directory import BuildDirectoryNode
+from .symlink import SymLinkedFileNode, SymLinkCommand
+
+class WriteTextCommand(Command):
+    """
+    Write some text to a file.
+    """
+
+    def __init__(self, node, text):
+        if not isinstance(node, FileNode):
+            raise RuntimeError(type(node))
+        super().__init__(node)
+        if not isinstance(text, str):
+            raise TypeError(type(text))
+        self.text = text
+
+    def __call__(self):
+        self.logger.info(
+            "<GREEN>Write generated text to %(path)s<NOCOLOUR>",
+            dict(path=self.node.relative_path)
+        )
+        with self.node.open('w') as text_file:
+            text_file.write(self.text)
+        super().__call__()
+
+class CleanupSymLinkCommand(SymLinkCommand):
+
+    _var_name_pattern = re.compile(r'(?P<name>.+)\.(?P<hash>[0-9a-f]{64})')
+
+    def _clear_path(self):
+        super()._clear_path()
+        if self.node.old_target is None:
+            return
+        match = self._var_name_pattern.match(self.node.old_target)
+        if match is not None and match.group('name') == self.node.path.name:
+            old_var_path = self.node.path.with_name(match.group(0))
+            if old_var_path.exists():
+                self.logger.debug(
+                    "<GREEN>rm %(path)s<NOCOLOUR>",
+                    dict(path=self.node.root_relative(old_var_path))
+                )
+                old_var_path.unlink()
+
+
+class TextNode(SymLinkedFileNode):
+
+    _Command = CleanupSymLinkCommand
+
+    def __init__(self, path, text,
+        *, build_dir_node,
+        name=None, needs=(), **kwargs
+    ):
+        if path.parent != build_dir_node.path:
+            raise RuntimeError(path)
+        var_name = '{name}.{hash}'.format(
+            name=path.name, hash=self.text_hash(text).hexdigest() )
+        var_text_node = FileNode(
+            path=path.with_name(var_name),
+            name='{}:var'.format(name),
+            needs=(build_dir_node,) )
+        var_text_node.set_command(WriteTextCommand(var_text_node, text))
+        if isinstance(build_dir_node, BuildDirectoryNode):
+            build_dir_node.register_node(var_text_node)
+        super().__init__(
+            source=var_text_node, path=path,
+            name=name,
+            needs=chain(needs, (build_dir_node,)),
+            **kwargs )
+        self.text = text
+
+    @staticmethod
+    def text_hash(text):
+        return hashlib.sha256(text.encode())
+

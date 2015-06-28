@@ -3,9 +3,10 @@ from shlex import quote
 from pathlib import Path
 
 from jeolm.node import ( Node, PathNode, BuildablePathNode,
-    FileNode, SubprocessCommand, LazyWriteTextCommand, )
+    FileNode, SubprocessCommand, )
 from jeolm.node.directory import DirectoryNode, MakeDirCommand
-from jeolm.node.symlink import SymLinkNode, ProxyNode
+from jeolm.node.symlink import SymLinkNode, SymLinkCommand, ProxyNode
+from jeolm.node.text import WriteTextCommand
 
 from jeolm.node_factory import TargetNode
 
@@ -145,6 +146,9 @@ class LinkRuleRepresenter(RuleRepresenter):
 
     @classmethod
     def represent(cls, node, *, viewpoint):
+        command = node.command
+        if not isinstance(command, SymLinkCommand):
+            raise RuntimeError(type(command))
         return cls._template.format(
             dependencies=cls._represent_dependencies(
                 node, viewpoint=viewpoint ),
@@ -161,18 +165,22 @@ class DirectoryRuleRepresenter(RuleRepresenter):
 
     _template = (
         '{dependencies}' '\n'
-        '\t' '{command} "$@"' )
+        '\t' 'mkdir "$@"' )
+
+    _template_parents = (
+        '{dependencies}' '\n'
+        '\t' 'mkdir --parents "$@"' )
 
     @classmethod
     def represent(cls, node, *, viewpoint):
         command = node.command
         if not isinstance(command, MakeDirCommand):
             raise RuntimeError(type(command))
-        bash_command = 'mkdir --parents' if command.parents else 'mkdir'
-        return cls._template.format(
+        template = ( cls._template_parents
+            if command.parents else cls._template )
+        return template.format(
             dependencies=cls._represent_dependencies(
-                node, viewpoint=viewpoint ),
-            command=bash_command )
+                node, viewpoint=viewpoint ), )
 
 
 class SubprocessRuleRepresenter(RuleRepresenter):
@@ -285,7 +293,7 @@ class MakefileGenerator:
         if isinstance(command, SubprocessCommand):
             return cls._SubprocessRuleRepresenter.represent(
                 node, viewpoint=viewpoint )
-        if isinstance(command, LazyWriteTextCommand):
+        if isinstance(command, WriteTextCommand):
             raise UnbuildableNode(node)
         else:
             raise TypeError(

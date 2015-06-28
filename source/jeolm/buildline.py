@@ -29,10 +29,9 @@ logger = logging.getLogger(__name__)
 class BuildLine:
 
     def __init__(self, *,
-        local, text_node_shelf, node_updater
+        local, node_updater
     ):
         self.local = local
-        self.text_node_shelf = text_node_shelf
         self.node_updater = node_updater
         metadata_class = self.local.metadata_class
         if not issubclass(NotifiedMetadataManager, metadata_class):
@@ -140,8 +139,7 @@ class BuildLine:
 
     def build(self, targets):
         target_node_factory = jeolm.node_factory.TargetNodeFactory(
-            local=self.local, driver=self.driver,
-            text_node_shelf=self.text_node_shelf )
+            local=self.local, driver=self.driver, )
         target_node = target_node_factory(targets, delegate=True)
         self.node_updater.clear()
         with suppress(NodeErrorReported):

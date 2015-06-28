@@ -7,10 +7,10 @@ from stat import S_ISREG as stat_is_regular_file
 import tarfile
 import zipfile
 
-from jeolm.node import ( Node, FilelikeNode, ProductNode,
-    FileNode, LazyWriteTextCommand, )
+from jeolm.node import ( Node, FilelikeNode, ProductNode, )
 from jeolm.node.symlink import SymLinkedFileNode
 from jeolm.node.latex import LaTeXNode
+from jeolm.node.text import TextNode
 from jeolm.node_factory import DocumentNode
 
 _MAX_MTIME = datetime.datetime.max.timestamp()
@@ -42,10 +42,8 @@ class _ArchiveManager:
         if not isinstance(node, FilelikeNode):
             raise RuntimeError(node)
 
-        if (isinstance(node, FileNode) and
-                isinstance(node.command, LazyWriteTextCommand)):
-            return self.add_member_str(
-                path, node.command.textfunc(), time.time() )
+        if isinstance(node, TextNode):
+            return self.add_member_str(path, node.text, time.time())
 
         assert node.updated
         node_stat = node.stat(follow_symlinks=True)

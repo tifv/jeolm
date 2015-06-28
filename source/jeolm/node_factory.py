@@ -3,8 +3,6 @@ from functools import wraps
 from itertools import chain
 from contextlib import suppress
 
-import hashlib
-
 from pathlib import PurePosixPath
 
 import jeolm
@@ -13,6 +11,7 @@ import jeolm.node
 import jeolm.node.directory
 import jeolm.node.symlink
 import jeolm.node.latex
+import jeolm.node.text
 import jeolm.records
 import jeolm.target
 
@@ -28,9 +27,8 @@ class TargetNode(jeolm.node.Node):
 
 class TargetNodeFactory:
 
-    def __init__(self, *, local, driver, text_node_shelf):
+    def __init__(self, *, local, driver):
         self.local = local
-        self.text_node_shelf = text_node_shelf
         self.driver = driver
 
         self.source_node_factory = SourceNodeFactory(local=self.local)
@@ -47,7 +45,6 @@ class TargetNodeFactory:
                 name='package:dir',
                 path=self.local.build_dir/'packages', parents=True ),
             source_node_factory=self.source_node_factory,
-            text_node_shelf=self.text_node_shelf,
         )
         self.document_node_factory = DocumentNodeFactory(
             local=self.local, driver=self.driver,
@@ -57,7 +54,6 @@ class TargetNodeFactory:
             source_node_factory=self.source_node_factory,
             package_node_factory=self.package_node_factory,
             figure_node_factory=self.figure_node_factory,
-            text_node_shelf=self.text_node_shelf,
         )
 
     def __call__(self, targets, *, delegate=True, name='target'):
@@ -133,8 +129,7 @@ class DocumentNodeFactory:
 
     def __init__(self, *, local, driver,
         build_dir_node,
-        source_node_factory, package_node_factory, figure_node_factory,
-        text_node_shelf
+        source_node_factory, package_node_factory, figure_node_factory
     ):
         self.local = local
         self.driver = driver
@@ -142,7 +137,6 @@ class DocumentNodeFactory:
         self.source_node_factory = source_node_factory
         self.package_node_factory = package_node_factory
         self.figure_node_factory = figure_node_factory
-        self.text_node_shelf = text_node_shelf
 
         self._nodes = dict()
 
@@ -190,7 +184,7 @@ class DocumentNodeFactory:
         )
         build_dir_node.post_check_node.append_needs(document_node)
         document_node = self._ProxyDocumentNode(
-            source=document_node,
+            source=document_node, name='{}:proxy'.format(document_node.name),
             needs=(build_dir_node.post_check_node,), )
         # pylint: disable=attribute-defined-outside-init
         document_node.figure_nodes = figure_nodes
@@ -243,14 +237,11 @@ class DocumentNodeFactory:
             package_nodes, figure_nodes ).
         """
         build_dir = build_dir_node.path
-        main_source_node = TextNode(
+        main_source_node = jeolm.node.text.TextNode(
             name='document:{}:source:main'.format(target),
             path=build_dir/'Main.tex',
-            needs=(build_dir_node,),
-            text_node_shelf=self.text_node_shelf,
-            local=self.local )
-        main_source_node.set_command(jeolm.node.WriteTextCommand(
-            main_source_node, text=recipe['document'] ))
+            text=recipe['document'],
+            build_dir_node=build_dir_node )
         build_dir_node.register_node(main_source_node)
 
         source_nodes = list()
@@ -334,14 +325,11 @@ class DocumentNodeFactory:
             path=build_dir/'{}.dtx'.format(package_name),
             needs=(build_dir_node,) )
         build_dir_node.register_node(dtx_node)
-        ins_node = TextNode(
+        ins_node = jeolm.node.text.TextNode(
             name='document:{}:source:ins'.format(target),
             path=build_dir/'driver.ins',
-            needs=(build_dir_node,),
-            text_node_shelf=self.text_node_shelf,
-            local=self.local )
-        ins_node.set_command(jeolm.node.WriteTextCommand( ins_node,
-            self._substitute_driver_ins(package_name=package_name) ))
+            text=self._substitute_driver_ins(package_name=package_name),
+            build_dir_node=build_dir_node )
         build_dir_node.register_node(ins_node)
         drv_node = jeolm.node.ProductFileNode(
             name='document:{}:source:drv'.format(target),
@@ -372,7 +360,7 @@ class DocumentNodeFactory:
                 r"{\from{$package_name.dtx}{driver}}"
         r"}" '\n'
         r"\endbatchfile" '\n'
-        r"\endinput"
+        r"\endinput" '\n'
     )
     _substitute_driver_ins = Template(_driver_ins_template).substitute
 
@@ -382,13 +370,12 @@ class PackageNodeFactory:
 
     def __init__(self, *, local, driver,
         build_dir_node,
-        source_node_factory, text_node_shelf
+        source_node_factory
     ):
         self.local = local
         self.driver = driver
         self.build_dir_node = build_dir_node
         self.source_node_factory = source_node_factory
-        self.text_node_shelf = text_node_shelf
 
         self._nodes = dict()
 
@@ -448,58 +435,93 @@ class PackageNodeFactory:
         return node
 
     # pylint: disable=no-self-use,unused-argument,unused-variable
+    def _metapath_build_dir_key(self, metapath):
+        return metapath, 'dir', 'dir'
+    # pylint: enable=no-self-use,unused-argument,unused-variable
+
+    @_cache_node(_metapath_build_dir_key)
+    def _get_metapath_build_dir(self, metapath):
+        parent_dir_node = self.build_dir_node
+        buildname = '-'.join(metapath.parts)
+        assert '.' not in buildname
+        return jeolm.node.directory.DirectoryNode(
+                name='package:{}:dir'.format(metapath),
+                path=parent_dir_node.path/buildname,
+                needs=(parent_dir_node,) )
+
+    # pylint: disable=no-self-use,unused-argument,unused-variable
     def _build_dir_key(self, metapath, *, package_type):
         return metapath, package_type, 'dir'
     # pylint: enable=no-self-use,unused-argument,unused-variable
 
     @_cache_node(_build_dir_key)
     def _get_build_dir(self, metapath, *, package_type):
-        if package_type == 'dir':
-            parent_dir_node = self.build_dir_node
-            buildname = '-'.join(metapath.parts)
-            assert '.' not in buildname
-            return jeolm.node.directory.DirectoryNode(
-                    name='package:{}:dir'.format(metapath),
-                    path=parent_dir_node.path/buildname,
-                    needs=(parent_dir_node,) )
-        elif package_type == 'dtx':
-            parent_dir_node = self._get_build_dir( metapath,
-                package_type='dir' )
-            return jeolm.node.directory.DirectoryNode(
-                    name = 'package:{}:{}:dir'.format(metapath, package_type),
-                    path=parent_dir_node.path/package_type,
-                    needs=(parent_dir_node,) )
+        if package_type == 'dtx':
+            parent_dir_node = self._get_metapath_build_dir(metapath)
+            return jeolm.node.directory.BuildDirectoryNode(
+                name = 'package:{}:{}:dir'.format(metapath, package_type),
+                path=parent_dir_node.path/package_type,
+                needs=(parent_dir_node,) )
+        else:
+            raise RuntimeError
+
+    # pylint: disable=no-self-use,unused-argument,unused-variable
+    def _output_dir_key(self, metapath, *, package_type):
+        return metapath, package_type, 'output-dir'
+    # pylint: enable=no-self-use,unused-argument,unused-variable
+
+    @_cache_node(_output_dir_key)
+    def _get_output_dir(self, metapath, *, package_type):
+        if package_type == 'dtx':
+            build_dir_node = self._get_build_dir( metapath,
+                package_type=package_type )
+            output_dir_node = jeolm.node.directory.DirectoryNode(
+                name = 'package:{}:{}:output-dir'
+                    .format(metapath, package_type),
+                path=build_dir_node.path/'output',
+                needs=(build_dir_node,) )
+            build_dir_node.register_node(output_dir_node)
+            return output_dir_node
         else:
             raise RuntimeError
 
     def _get_package_node_dtx(self, metapath, *, package_record):
         build_dir_node = self._get_build_dir( metapath,
             package_type='dtx' )
+        build_dir = build_dir_node.path
+        output_dir_node = self._get_output_dir( metapath,
+            package_type='dtx' )
+        output_dir = output_dir_node.path
         source_dtx_node = self.source_node_factory(
             package_record['source'] )
         package_name = package_record['name']
         dtx_node = jeolm.node.symlink.SymLinkedFileNode(
             name='package:{}:source:dtx'.format(metapath),
             source=source_dtx_node,
-            path=build_dir_node.path/'{}.dtx'.format(package_name),
+            path=build_dir/'{}.dtx'.format(package_name),
             needs=(build_dir_node,) )
-        ins_node = TextNode(
+        build_dir_node.register_node(dtx_node)
+        ins_node = jeolm.node.text.TextNode(
             name='package:{}:source:ins'.format(metapath),
-            path=build_dir_node.path/'package.ins',
-            needs=(build_dir_node,),
-            text_node_shelf=self.text_node_shelf,
-            local=self.local )
-        ins_node.set_command(jeolm.node.WriteTextCommand( ins_node,
-            self._substitute_ins(package_name=package_name) ))
+            path=build_dir/'package.ins',
+            text=self._substitute_ins(package_name=package_name),
+            build_dir_node=build_dir_node )
+        build_dir_node.register_node(ins_node)
         sty_node = jeolm.node.ProductFileNode(
             name='package:{}:sty'.format(metapath),
             source=dtx_node,
-            path=build_dir_node.path/'{}.sty'.format(package_name),
-            needs=(ins_node,) )
+            path=output_dir/'{}.sty'.format(package_name),
+            needs=(ins_node, build_dir_node.pre_cleanup_node) )
         sty_node.set_subprocess_command(
             ( 'latex', '-interaction=nonstopmode', '-halt-on-error',
+                '-output-directory={}'.format(
+                    output_dir.relative_to(build_dir) ),
                 ins_node.path.name ),
             cwd=build_dir_node.path )
+        build_dir_node.post_check_node.append_needs(sty_node)
+        sty_node = jeolm.node.symlink.ProxyFileNode(
+            source=sty_node, name='{}:proxy'.format(sty_node.name),
+            needs=(build_dir_node.post_check_node,) )
         return sty_node
 
     _ins_template = (
@@ -513,7 +535,8 @@ class PackageNodeFactory:
                 r"{\from{$package_name.dtx}{package}}"
         r"}" '\n'
         r"\endbatchfile" '\n'
-        r"\endinput" )
+        r"\endinput" '\n'
+    )
     _substitute_ins = Template(_ins_template).substitute
 
     def _get_package_node_proxy(self, metapath, *, package_record):
@@ -684,27 +707,53 @@ class FigureNodeFactory:
             raise RuntimeError
 
     # pylint: disable=no-self-use,unused-argument,unused-variable
+    def _metapath_build_dir_key(self, metapath):
+        return metapath, 'dir', 'dir'
+    # pylint: enable=no-self-use,unused-argument,unused-variable
+
+    @_cache_node(_metapath_build_dir_key)
+    def _get_metapath_build_dir(self, metapath):
+        parent_dir_node = self.build_dir_node
+        buildname = '-'.join(metapath.parts)
+        assert '.' not in buildname
+        return jeolm.node.directory.DirectoryNode(
+            name='figure:{}:dir'.format(metapath),
+            path=parent_dir_node.path/buildname,
+            needs=(parent_dir_node,) )
+
+    # pylint: disable=no-self-use,unused-argument,unused-variable
     def _build_dir_key(self, metapath, *, figure_type):
         return metapath, figure_type, 'dir'
     # pylint: enable=no-self-use,unused-argument,unused-variable
 
     @_cache_node(_build_dir_key)
     def _get_build_dir(self, metapath, *, figure_type):
-        if figure_type == 'dir':
-            parent_dir_node = self.build_dir_node
-            buildname = '-'.join(metapath.parts)
-            assert '.' not in buildname
-            return jeolm.node.directory.DirectoryNode(
-                name='figure:{}:dir'.format(metapath),
-                path=parent_dir_node.path/buildname,
-                needs=(parent_dir_node,) )
-        elif figure_type in {'asy', 'svg'}:
-            parent_dir_node = self._get_build_dir( metapath,
-                figure_type='dir' )
-            return jeolm.node.directory.DirectoryNode(
+        if figure_type in {'asy', 'svg'}:
+            parent_dir_node = self._get_metapath_build_dir(metapath)
+            return jeolm.node.directory.BuildDirectoryNode(
                 name = 'figure:{}:{}:dir'.format(metapath, figure_type),
                 path=parent_dir_node.path/figure_type,
                 needs=(parent_dir_node,) )
+        else:
+            raise RuntimeError
+
+    # pylint: disable=no-self-use,unused-argument,unused-variable
+    def _output_dir_key(self, metapath, *, figure_type):
+        return metapath, figure_type, 'output-dir'
+    # pylint: enable=no-self-use,unused-argument,unused-variable
+
+    @_cache_node(_output_dir_key)
+    def _get_output_dir(self, metapath, *, figure_type):
+        if figure_type in {'asy', 'svg'}:
+            build_dir_node = self._get_build_dir( metapath,
+                figure_type=figure_type )
+            output_dir_node = jeolm.node.directory.DirectoryNode(
+                name = 'figure:{}:{}:output-dir'
+                    .format(metapath, figure_type),
+                path=build_dir_node.path/'output',
+                needs=(build_dir_node,) )
+            build_dir_node.register_node(output_dir_node)
+            return output_dir_node
         else:
             raise RuntimeError
 
@@ -715,20 +764,34 @@ class FigureNodeFactory:
     ):
         build_dir_node = self._get_build_dir( metapath,
             figure_type='asy' )
+        build_dir = build_dir_node.path
+        output_dir_node = self._get_output_dir( metapath,
+            figure_type='asy' )
+        output_dir = output_dir_node.path
         main_asy_node = self._get_figure_node_asy_source( metapath,
             figure_record=figure_record )
         other_asy_nodes = main_asy_node.other_asy_nodes
-        assert main_asy_node.path.parent == build_dir_node.path
-        node = jeolm.node.ProductFileNode(
+        assert main_asy_node.path.parent == build_dir
+        figure_node = jeolm.node.ProductFileNode(
             name='figure:{}:asy:{}'.format(metapath, figure_format),
             source=main_asy_node,
-            path=build_dir_node.path/self._main_file_names[figure_format],
-            needs=chain((build_dir_node,), other_asy_nodes) )
-        node.set_subprocess_command(
+            path=output_dir/self._main_file_names[figure_format],
+            needs=chain(
+                (build_dir_node.pre_cleanup_node, output_dir_node),
+                other_asy_nodes )
+        )
+        figure_node.set_subprocess_command(
             ( 'asy', '-outformat={}'.format(figure_format), '-offscreen',
-                main_asy_node.path.name ),
+                main_asy_node.path.name,
+                '-outname={}'.format(
+                    figure_node.path.relative_to(build_dir) ),
+            ),
             cwd=build_dir_node.path )
-        return node
+        build_dir_node.post_check_node.append_needs(figure_node)
+        figure_node = jeolm.node.symlink.ProxyFileNode(
+            source=figure_node, name='{}:proxy'.format(figure_node.name),
+            needs=(build_dir_node.post_check_node,) )
+        return figure_node
 
     # pylint: disable=no-self-use,unused-argument,unused-variable
     def _figure_node_asy_source_key(self, metapath, *, figure_record):
@@ -744,6 +807,7 @@ class FigureNodeFactory:
             source=self.source_node_factory(figure_record['source']),
             path=build_dir_node.path/'Main.asy',
             needs=(build_dir_node,) )
+        build_dir_node.register_node(main_asy_node)
         other_asy_nodes = main_asy_node.other_asy_nodes = list()
         for accessed_name, inpath in figure_record['accessed_sources'].items():
             if accessed_name == 'Main.asy':
@@ -751,12 +815,13 @@ class FigureNodeFactory:
                     "Cannot symlink non-main asy file as Main.asy: "
                     "{} wants to access {}"
                     .format(metapath, inpath) )
-            node = jeolm.node.symlink.SymLinkedFileNode(
+            asy_node = jeolm.node.symlink.SymLinkedFileNode(
                 name='figure:{}:asy:source:{}'.format(metapath, accessed_name),
                 source=self.source_node_factory(inpath),
                 path=build_dir_node.path/accessed_name,
                 needs=(build_dir_node,) )
-            other_asy_nodes.append(node)
+            other_asy_nodes.append(asy_node)
+            build_dir_node.register_node(asy_node)
         return main_asy_node
 
     def _get_figure_node_svg( self, metapath,
@@ -764,20 +829,32 @@ class FigureNodeFactory:
     ):
         build_dir_node = self._get_build_dir( metapath,
             figure_type='svg' )
+        build_dir = build_dir_node.path
+        output_dir_node = self._get_output_dir( metapath,
+            figure_type='svg' )
+        output_dir = output_dir_node.path
         svg_node = self._get_figure_node_svg_source( metapath,
             figure_record=figure_record )
-        assert svg_node.path.parent == build_dir_node.path
-        node = jeolm.node.ProductFileNode(
+        assert svg_node.path.parent == build_dir
+        figure_node = jeolm.node.ProductFileNode(
             name='figure:{}:svg:{}'.format(metapath, figure_format),
             source=svg_node,
-            path=build_dir_node.path/self._main_file_names[figure_format],
-            needs=(build_dir_node,) )
-        node.set_subprocess_command(
+            path=output_dir/self._main_file_names[figure_format],
+            needs=(build_dir_node.pre_cleanup_node, output_dir_node)
+        )
+        figure_node.set_subprocess_command(
             ( 'inkscape', '--without-gui',
-                '--export-{}={}'.format(figure_format, node.path.name),
-                svg_node.path.name ),
+                '--export-{}={}'.format(
+                    figure_format,
+                    figure_node.path.relative_to(build_dir) ),
+                svg_node.path.name
+            ),
             cwd=build_dir_node.path )
-        return node
+        build_dir_node.post_check_node.append_needs(figure_node)
+        figure_node = jeolm.node.symlink.ProxyFileNode(
+            source=figure_node, name='{}:proxy'.format(figure_node.name),
+            needs=(build_dir_node.post_check_node,) )
+        return figure_node
 
     # pylint: disable=no-self-use,unused-argument,unused-variable
     def _figure_node_svg_source_key(self, metapath, *, figure_record):
@@ -788,11 +865,13 @@ class FigureNodeFactory:
     def _get_figure_node_svg_source(self, metapath, *, figure_record):
         build_dir_node = self._get_build_dir( metapath,
             figure_type='svg' )
-        return jeolm.node.symlink.SymLinkedFileNode(
+        source_svg_node = jeolm.node.symlink.SymLinkedFileNode(
             name='figure:{}:svg:source'.format(metapath),
             source=self.source_node_factory(figure_record['source']),
             path=build_dir_node.path/'Main.svg',
             needs=(build_dir_node,) )
+        build_dir_node.register_node(source_svg_node)
+        return source_svg_node
 
     def _get_figure_node_proxy( self, metapath,
         *, figure_format, figure_record
@@ -828,40 +907,4 @@ class SourceNodeFactory:
                     "does not exist as file",
                 dict(inpath=inpath) )
         return source_node
-
-
-class TextNode(jeolm.node.FileNode):
-
-    def __init__(self, path, *, name=None, needs=(),
-        text_node_shelf, local
-    ):
-        super().__init__(path, name=name, needs=needs)
-        self._shelf = text_node_shelf
-        self._key = str(self.path.relative_to(local.build_dir))
-        self._text_hash = None
-
-    @property
-    def text_hash(self):
-        if self._text_hash is not None:
-            return self._text_hash
-        assert self.command is not None, self
-        assert isinstance(self.command, jeolm.node.WriteTextCommand), self
-        self._text_hash = hashlib.sha256(self.command.text.encode()).digest()
-        return self._text_hash
-
-    def _needs_build(self):
-        if super()._needs_build():
-            return True
-        old_text_hash = self._shelf.get(self._key)
-        if self.text_hash != old_text_hash:
-            self.logger.info("Change in content detected")
-            return True
-        else:
-            self.logger.debug("No change in content detected")
-        return False
-
-    def _run_command(self):
-        super()._run_command()
-        self._shelf[self._key] = self.text_hash
-        self.logger.debug("Text database updated")
 

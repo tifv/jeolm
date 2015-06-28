@@ -3,9 +3,7 @@ This module manages local features of jeolm project.
 """
 
 import shutil
-from contextlib import contextmanager, suppress
-import dbm.gnu
-import shelve
+from contextlib import suppress
 
 from pathlib import Path, PurePosixPath
 
@@ -197,11 +195,6 @@ class LocalManager:
         from jeolm.metadata import MetadataManager
         return MetadataManager
 
-    @contextmanager
-    def open_text_node_shelf(self):
-        shelf_db = dbm.gnu.open(str(self.build_dir / 'textnodes.db'), 'cf')
-        with shelve.Shelf(shelf_db) as shelf:
-            yield shelf
 
 def report_missing_root():
     logger.critical(

@@ -95,21 +95,18 @@ def main_build(args, *, local):
     node_updater = _build_get_node_updater(args.jobs)
     driver = jeolm.commands.simple_load_driver(local)
 
-    with local.open_text_node_shelf() as text_node_shelf:
-        target_node_factory = TargetNodeFactory(
-            local=local, driver=driver, text_node_shelf=text_node_shelf )
-        target_node = target_node_factory(
-            args.targets, delegate=args.delegate )
-        if args.force is None:
-            pass
-        elif args.force == 'latex':
-            _build_force_latex(target_node)
-        elif args.force == 'generate':
-            _build_force_generate(target_node)
-        else:
-            raise RuntimeError(args.force)
-        with suppress(NodeErrorReported):
-            node_updater.update(target_node)
+    target_node_factory = TargetNodeFactory(local=local, driver=driver)
+    target_node = target_node_factory(args.targets, delegate=args.delegate)
+    if args.force is None:
+        pass
+    elif args.force == 'latex':
+        _build_force_latex(target_node)
+    elif args.force == 'generate':
+        _build_force_generate(target_node)
+    else:
+        raise RuntimeError(args.force)
+    with suppress(NodeErrorReported):
+        node_updater.update(target_node)
 
 def _build_force_latex(target_node):
     from jeolm.node.latex import LaTeXNode
@@ -156,12 +153,9 @@ def main_buildline(args, *, local):
     PathNode.root = local.root
     node_updater = _build_get_node_updater(args.jobs)
 
-    with local.open_text_node_shelf() as text_node_shelf:
-        buildline = BuildLine(
-            local=local, text_node_shelf=text_node_shelf,
-            node_updater=node_updater, )
-        with buildline.readline_setup():
-            return buildline.main()
+    buildline = BuildLine(local=local, node_updater=node_updater)
+    with buildline.readline_setup():
+        return buildline.main()
 
 
 ####################
@@ -277,16 +271,14 @@ def main_makefile(args, *, local):
     node_updater = _build_get_node_updater(jobs=1)
     driver = jeolm.commands.simple_load_driver(local)
 
-    with local.open_text_node_shelf() as text_node_shelf:
-        target_node_factory = TargetNodeFactory(
-            local=local, driver=driver, text_node_shelf=text_node_shelf)
-        makefile_string, unbuildable_nodes, unrepresentable_nodes = \
-            MakefileGenerator.generate(
-                target_node_factory(args.targets, name='first'),
-                viewpoint=local.root )
-        with suppress(NodeErrorReported):
-            for node in unbuildable_nodes:
-                node_updater.update(node)
+    target_node_factory = TargetNodeFactory(local=local, driver=driver)
+    makefile_string, unbuildable_nodes, unrepresentable_nodes = \
+        MakefileGenerator.generate(
+            target_node_factory(args.targets, name='first'),
+            viewpoint=local.root )
+    with suppress(NodeErrorReported):
+        for node in unbuildable_nodes:
+            node_updater.update(node)
     for node in unrepresentable_nodes:
         node.logger.warning(
             "Node has no possible representation in Makefile" )
@@ -340,27 +332,25 @@ def main_excerpt(args, *, local):
     node_updater = _build_get_node_updater(args.jobs)
 
     driver = jeolm.commands.simple_load_driver(local)
-    with local.open_text_node_shelf() as text_node_shelf:
-        target_node_factory = TargetNodeFactory(
-            local=local, driver=driver, text_node_shelf=text_node_shelf )
-        document_node_factory = target_node_factory.document_node_factory
-        figure_node_factory = document_node_factory.figure_node_factory
-        document_node = document_node_factory(args.target)
+    target_node_factory = TargetNodeFactory(local=local, driver=driver)
+    document_node_factory = target_node_factory.document_node_factory
+    figure_node_factory = document_node_factory.figure_node_factory
+    document_node = document_node_factory(args.target)
+    if args.output is not None:
+        output_file = open(args.output, 'wb')
+    else:
+        from sys import stdout
+        output_file = stdout.buffer
+    try:
+        excerpt_document( document_node, stream=output_file,
+            include_pdf=args.include_pdf, archive_format=args.format,
+            figure_node_factory=figure_node_factory,
+            node_updater=node_updater )
+    except NodeErrorReported:
+        pass
+    finally:
         if args.output is not None:
-            output_file = open(args.output, 'wb')
-        else:
-            from sys import stdout
-            output_file = stdout.buffer
-        try:
-            excerpt_document( document_node, stream=output_file,
-                include_pdf=args.include_pdf, archive_format=args.format,
-                figure_node_factory=figure_node_factory,
-                node_updater=node_updater )
-        except NodeErrorReported:
-            pass
-        finally:
-            if args.output is not None:
-                output_file.close()
+            output_file.close()
 
 
 ####################

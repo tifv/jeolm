@@ -2,8 +2,6 @@ import os
 import os.path
 from stat import S_ISDIR
 
-from pathlib import Path
-
 from . import (
     Node, BuildableNode, PathNode, BuildablePathNode,
     Command,
@@ -186,20 +184,12 @@ class BuildDirectoryNode(DirectoryNode):
             needs=(self, self.pre_cleanup_node),
         )
 
-    def register_name(self, name):
-        if not isinstance(name, str):
-            raise TypeError(type(name))
-        self.approved_names.add(name)
-
-    def register_path(self, path):
-        if not isinstance(path, Path):
-            raise TypeError(type(path))
-        if path.parent != self.path:
-            raise ValueError(path)
-        self.register_name(path.name)
-
     def register_node(self, node):
         if not isinstance(node, PathNode):
             raise TypeError(type(node))
-        self.register_path(node.path)
+        path = node.path
+        if path.parent != self.path:
+            raise ValueError(path)
+        self.approved_names.add(path.name)
+        self.pre_cleanup_node.append_needs(node)
 
