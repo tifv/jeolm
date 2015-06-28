@@ -9,7 +9,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-class _LaTeXCommand(SubprocessCommand):
+class LaTeXCommand(SubprocessCommand):
 
     latex_command = 'latex'
     target_suffix = '.dvi'
@@ -20,6 +20,7 @@ class _LaTeXCommand(SubprocessCommand):
     _max_latex_reruns = 4
 
     def __init__(self, node, *, source_name, output_dir, jobname, cwd):
+        assert isinstance(node, LaTeXNode), type(node)
         output_dir_arg = output_dir.relative_to(cwd)
         callargs = tuple(chain(
             ( self.latex_command,
@@ -192,15 +193,15 @@ class _LaTeXCommand(SubprocessCommand):
         r'(?=[\s)])' # ")" or "\n" or " "
     )
 
-class _PdfLaTeXCommand(_LaTeXCommand):
+class PdfLaTeXCommand(LaTeXCommand):
     latex_command = 'pdflatex'
     target_suffix = '.pdf'
 
-class _XeLaTeXCommand(_LaTeXCommand):
+class XeLaTeXCommand(LaTeXCommand):
     latex_command = 'xelatex'
     target_suffix = '.pdf'
 
-class _LuaLaTeXCommand(_LaTeXCommand):
+class LuaLaTeXCommand(LaTeXCommand):
     latex_command = 'lualatex'
     target_suffix = '.pdf'
 
@@ -214,7 +215,7 @@ class LaTeXNode(ProductFileNode):
     interesting in it.
     """
 
-    _Command = _LaTeXCommand
+    _Command = LaTeXCommand
 
     def __init__( self, source, jobname,
         build_dir_node, output_dir_node,
@@ -246,13 +247,13 @@ class LaTeXNode(ProductFileNode):
         self.set_command(command)
 
 class PdfLaTeXNode(LaTeXNode):
-    _Command = _PdfLaTeXCommand
+    _Command = PdfLaTeXCommand
 
 class XeLaTeXNode(LaTeXNode):
-    _Command = _XeLaTeXCommand
+    _Command = XeLaTeXCommand
 
 class LuaLaTeXNode(LaTeXNode):
-    _Command = _LuaLaTeXCommand
+    _Command = LuaLaTeXCommand
 
 
 class LaTeXPDFNode(ProductFileNode):

@@ -141,12 +141,12 @@ class _CleanupCommand(Command):
 
 class _PreCleanupNode(_CheckDirectoryNode, BuildableNode):
 
-    wants_concurrency = False
-
     def __init__(self, path, approved_names, *, name, needs=()):
         super().__init__(path, approved_names, name=name, needs=needs)
         self.set_command(_CleanupCommand(self))
         self.rogue_names = None
+
+    wants_concurrency = False
 
     def _needs_build(self):
         rogue_names = self.rogue_names = self._find_rogue_names()
