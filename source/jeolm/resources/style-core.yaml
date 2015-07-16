@@ -10,16 +10,13 @@ $style:
     condition: {or: [compiler-latex, compiler-pdflatex]}
   - package: amsmath
   - package: amssymb
+
+  - delegate: jeolm
+
   - delegate: font-config
     condition: {not: no-font-config}
   - delegate: math-font-config
     condition: {not: no-font-config}
-
-  - delegate: jeolm
-
-  - delegate: math-symbols-config
-    condition: {not: no-font-config}
-
   - delegate: language-config
     condition: {not: no-language-config}
   - verbatim: '\pagestyle{empty}'
@@ -27,6 +24,40 @@ $style:
     condition: {not: no-pagestyle}
 
   - delegate: optional
+
+$style[-font-select-guard]:
+  - delegate: font-select[font-select-guard]
+$style[-font-select-guard,compiler-latex]:
+  - delegate: .[font-select-guard]
+$style[-font-select-guard,compiler-pdflatex]:
+  - delegate: .[font-select-guard]
+
+$style[font-select-guard,-language-select-guard]:
+  - delegate: language-select[language-select-guard]
+
+font-select:
+  $style:
+  - delegate: .[default-font]
+  $style[default-font]:
+  - delegate: .[cm,-default-font]
+  $style[cm]:
+  - delegate: ..
+  $style[liberation]:
+  - delegate: ..
+  $style[times]:
+  - delegate: ..
+  $style[palatino]:
+  - delegate: ..
+
+language-select:
+  $style:
+  - delegate: .[default-language]
+  $style[default-language]:
+  - delegate: .[russian,-default-language]
+  $style[russian]:
+  - delegate: ..
+  $style[english]:
+  - delegate: ..
 
 font-config:
   $style[compiler-latex]:
@@ -52,157 +83,228 @@ font-config:
     - verbatim:
         \defaultfontfeatures{Ligatures=TeX,Scale=MatchLowercase}
     - delegate: setfont
+    - verbatim: |-
+        \let\cyrillicfont\normalfont
+        \let\cyrillicfontsf\sffamily
+        \let\cyrillicfonttt\ttfamily
     setfont:
       $style:
+      - error: core misconfiguration
+      $style[cm]:
       - delegate: cm-unicode
-      $style[xits]:
-      - delegate: xits
-      xits:
-        $style:
-        - verbatim: |-
-            \setmainfont
-              [
-                Path = /usr/share/texmf-dist/fonts/opentype/public/xits/,
-                Extension=.otf,
-                UprightFont=*-regular,
-                BoldFont=*-bold,
-                ItalicFont=*-italic,
-                BoldItalicFont=*-bolditalic,
-              ]
-              {xits}
-            \let\cyrillicfont\normalfont
-          provide: setmainfont
-        - delegate: ../liberation/sans
-        - delegate: ../liberation/mono
+      $style[liberation]:
+      - delegate: liberation
+      $style[times]:
+      - delegate: corefonts/times
+      - delegate: corefonts/arial
+      - delegate: liberation/mono
+      $style[palatino]:
+      - delegate: palladio
+      - delegate: croscorefonts/arimo
+      - delegate: croscorefonts/cousine
       cm-unicode:
         $style:
-        - delegate: main
-        - delegate: sans
-        - delegate: mono
-        main:
+        - delegate: serif
+        - delegate: sans-serif
+        - delegate: typewriter
+        serif:
           $style:
-          - verbatim: |-
-              \setmainfont[
-                Path = /usr/share/texmf-dist/fonts/opentype/public/cm-unicode/,
-                Extension=.otf,
-                BoldFont=cmunbx, ItalicFont=cmunti, BoldItalicFont=cmunbi,
-                SlantedFont=cmunsl,
-                SmallCapsFont=cmunrm, SmallCapsFeatures={Letters=SmallCaps},
-              ]{cmunrm}
-              \let\cyrillicfont\normalfont
+          - verbatim: \setmainfont{CMU Serif}
             provide: setmainfont
+        sans-serif:
+          $style:
+          - verbatim: \setsansfont{CMU Sans Serif}
+            provide: setsansfont
+        typewriter:
+          $style:
+          - verbatim: \setmonofont{CMU Typewriter Text}
+            provide: setmonofont
+      xits:
+        # Problem with combining accents
+        $style:
+        - verbatim: \setmainfont{XITS}
+          provide: setmainfont
+      dejavu:
+        $style:
+        - delegate: serif
+        - delegate: sans
+        - delegate: sans-mono
+        serif:
+          $style:
+          - verbatim: \setmainfont{DejaVu Serif}
+            provide: setmainfont
+          condensed:
+            $style:
+            - verbatim: \setmainfont{DejaVu Serif Condensed}
+              provide: setmainfont
         sans:
           $style:
-          - verbatim: |-
-              \setsansfont[
-                Path = /usr/share/texmf-dist/fonts/opentype/public/cm-unicode/,
-                Extension=.otf,
-                BoldFont=cmunsx, ItalicFont=cmunsi, BoldItalicFont=cmunso,
-              ]{cmunss}
-              \let\cyrillicfontsf\sffamily
+          - verbatim: \setsansfont{DejaVu Sans}
             provide: setsansfont
-        mono:
+          condensed:
+            $style:
+            - verbatim: \setsansfont{DejaVu Sans Condensed}
+              provide: setsansfont
+        sans-mono:
           $style:
-          - verbatim: |-
-              \setmonofont[
-                Path = /usr/share/texmf-dist/fonts/opentype/public/cm-unicode/,
-                Extension=.otf,
-                BoldFont=cmuntb, ItalicFont=cmunit, BoldItalicFont=cmuntx,
-                SlantedFont=cmunst,
-              ]{cmuntt}
-              \let\cyrillicfonttt\ttfamily
+          - verbatim: \setmonofont{DejaVu Sans Mono}
             provide: setmonofont
       liberation:
         $style:
-        - delegate: main
+        - delegate: serif
         - delegate: sans
         - delegate: mono
-        main:
+        serif:
           $style:
-          - verbatim: |-
-              \setmainfont{Liberation Serif}
-              \let\cyrillicfont\normalfont
+          - verbatim: \setmainfont{Liberation Serif}
             provide: setmainfont
         sans:
           $style:
-          - verbatim: |-
-              \setsansfont{Liberation Sans}
-              \let\cyrillicfontsf\sffamily
+          - verbatim: \setsansfont{Liberation Sans}
             provide: setsansfont
         mono:
           $style:
-          - verbatim: |-
-              \setmonofont{Liberation Mono}
-              \let\cyrillicfonttt\ttfamily
+          - verbatim: \setmonofont{Liberation Mono}
             provide: setmonofont
-      tinos:
+      tex-gyre:
+        # No cyrillic
+        termes:
+          $style:
+          - verbatim: \setmainfont{TeX Gyre Termes}
+            provide: setmainfont
+        pagella:
+          $style:
+          - verbatim: \setmainfont{TeX Gyre Pagella}
+            provide: setmainfont
+        bonum:
+          $style:
+          - verbatim: \setmainfont{TeX Gyre Bonum}
+            provide: setmainfont
+        schola:
+          $style:
+          - verbatim: \setmainfont{TeX Gyre Schola}
+            provide: setmainfont
+        heros:
+          $style:
+          - verbatim: \setsansfont{TeX Gyre Heros}
+            provide: setsansfont
+        adventor:
+          $style:
+          - verbatim: \setsansfont{TeX Gyre Adventor}
+            provide: setsansfont
+        cursor:
+          $style:
+          - verbatim: \setmonofont{TeX Gyre Cursor}
+            provide: setmonofont
+      corefonts:
         $style:
-        - verbatim: |-
-            \setmainfont{Tinos}
-            \let\cyrillicfont\normalfont
+        - delegate: times
+        - delegate: arial
+        - delegate: courier
+        times:
+          $style:
+          - verbatim: \setmainfont{Times New Roman}
+            provide: setmainfont
+        arial:
+          $style:
+          - verbatim: \setsansfont{Arial}
+            provide: setsansfont
+        courier:
+          $style:
+          - verbatim: \setmonofont{Courier New}
+            provide: setmonofont
+      palladio:
+        # Problem with combining accents
+        $style:
+        - verbatim: \setmainfont{URW Palladio L}
           provide: setmainfont
-      arimo:
+      croscorefonts:
         $style:
-        - verbatim: |-
-            \setsansfont{Arimo}
-            \let\cyrillicfontsf\sffamily
-          provide: setsansfont
-      cousine:
-        $style:
-        - verbatim: |-
-            \setmonofont{Cousine}
-            \let\cyrillicfonttt\ttfamily
-          provide: setmonofont
+        - delegate: tinos
+        - delegate: arimo
+        - delegate: cousine
+        tinos:
+          $style:
+          - verbatim: \setmainfont{Tinos}
+            provide: setmainfont
+        arimo:
+          $style:
+          - verbatim: \setsansfont{Arimo}
+            provide: setsansfont
+        cousine:
+          $style:
+          - verbatim: \setmonofont{Cousine}
+            provide: setmonofont
 
 math-font-config:
   $style[compiler-latex]:
-    []
+  - delegate: swap-vargreek/cm
+  - delegate: ineq-slanted
   $style[compiler-pdflatex]:
-    []
+  - delegate: swap-vargreek/cm
+  - delegate: ineq-slanted
   $style[compiler-lualatex]:
-    []
+  - delegate: unicode-math
+  - delegate: swap-vargreek/unicode
+  - delegate: ineq-slanted
   $style[compiler-xelatex]:
   - delegate: unicode-math
+  - delegate: swap-vargreek/unicode
+  - delegate: ineq-slanted
+
+  swap-vargreek:
+    cm:
+      $style:
+      - verbatim: \AtBeginDocument{\swapvargreek{phi}\swapvargreek{epsilon}}
+      - delegate: ../unicode
+    unicode:
+      $style:
+      - verbatim: \AtBeginDocument{\swapvargreek{kappa}}
+
+  ineq-slanted:
+    $style:
+    - verbatim: \AtBeginDocument{\let\geq\geqslant\let\leq\leqslant}
+      condition: russian
 
   unicode-math:
     $style:
-    - delegate: latinmodern
-    $style[xits]:
-    - delegate: xits
-    _package:
+    - package: unicode-math
+      options:
+      - vargreek-shape=unicode
+    - delegate: setfont
+    setfont:
       $style:
-      - package: unicode-math
-        options:
-        - vargreek-shape=unicode
-    latinmodern:
-      $style:
-      - delegate: ../_package
-      - verbatim: |-
-          \setmathfont{latinmodern-math.otf}
-        provide: setmathfont
-    xits:
-      $style:
-      - delegate: ../_package
-      - verbatim: |-
-          \setmathfont
-            [Path=/usr/share/texmf-dist/fonts/opentype/public/xits/]
-            {xits-math.otf}
-        provide: setmathfont
-
-math-symbols-config:
-  $style[compiler-latex]:
-  - delegate: swap-cm-vargreek
-  $style[compiler-pdflatex]:
-  - delegate: swap-cm-vargreek
-  $style[compiler-xelatex]:
-    []
-  $style[compiler-lualatex]:
-    []
-
-  swap-cm-vargreek:
-    $style:
-    - verbatim:
-        \swapvargreek{phi} \swapvargreek{epsilon} \swapvargreek{kappa}
+      - delegate: .[cm]
+      $style[cm]:
+      - delegate: lm
+      $style[times]:
+      - delegate: tex-gyre/termes
+      $style[times,xits]:
+      - delegate: xits
+      $style[palatino]:
+      - delegate: asana
+      lm:
+        $style:
+        - verbatim: \setmathfont{Latin Modern Math}
+          provide: setmathfont
+      xits:
+        # too small 'divide by' operator
+        $style:
+        - verbatim: \setmathfont{XITS Math}
+          provide: setmathfont
+      asana:
+        $style:
+        - verbatim: \setmathfont{Asana Math}
+          provide: setmathfont
+      tex-gyre:
+        termes:
+          $style:
+          - verbatim: \setmathfont{TeX Gyre Termes Math}
+            provide: setmathfont
+        pagella:
+          $style:
+          - verbatim: \setmathfont{TeX Gyre Pagella Math}
+            provide: setmathfont
 
 language-config:
   $style[compiler-latex]:
@@ -216,14 +318,27 @@ language-config:
 
   babel:
     $style:
+    - error: core misconfiguration
+    $style[russian]:
     - package: babel
       options: [russian]
+    $style[english]:
+    - package: babel
+      options: [english]
 
   polyglossia:
     $style:
     - package: polyglossia
-    - verbatim: \setdefaultlanguage{russian}
-      provide: setdefaultlanguage
+    - delegate: setlanguage
+    setlanguage:
+      $style:
+      - error: core misconfiguration
+      $style[russian]:
+      - verbatim: \setdefaultlanguage{russian}
+        provide: setdefaultlanguage
+      $style[english]:
+      - verbatim: \setdefaultlanguage{english}
+        provide: setdefaultlanguage
 
 jeolm:
   $target$able: on
