@@ -809,7 +809,7 @@ class FigureNodeFactory:
             needs=(build_dir_node,) )
         build_dir_node.register_node(main_asy_node)
         other_asy_nodes = main_asy_node.other_asy_nodes = list()
-        for accessed_name, inpath in figure_record['accessed_sources'].items():
+        for accessed_name, inpath in figure_record['other_sources'].items():
             if accessed_name == 'Main.asy':
                 raise ValueError(
                     "Cannot symlink non-main asy file as Main.asy: "

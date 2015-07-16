@@ -89,18 +89,13 @@ class TournDriver(RegularDriver):
         return wrapper
 
     # Extension
-    @processing_target_aspect(aspect='matter metabody [tourn]', wrap_generator=True)
+    @processing_target_aspect( aspect='matter metabody [tourn]',
+        wrap_generator=True )
     @classifying_items(aspect='metabody', default='verbatim')
-    def generate_matter_metabody(self, target, metarecord,
-        *, matter_key=None, matter=None
-    ):
-        no_tourn = ( '$tourn$key' not in metarecord or
-            matter_key is not None or
-            matter is not None)
+    def generate_auto_metabody(self, target, metarecord):
+        no_tourn = '$tourn$key' not in metarecord
         if no_tourn:
-            yield from super().generate_matter_metabody(
-                target, metarecord,
-                matter_key=matter_key, matter=matter )
+            yield from super().generate_auto_metabody(target, metarecord)
             return
 
         tourn_key = metarecord['$tourn$key']

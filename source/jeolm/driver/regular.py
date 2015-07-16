@@ -475,7 +475,7 @@ class RegularDriver(RecordsManager, metaclass=DriverMetaclass):
 
         In case of Asymptote file ('asy' type), figure_record must also
         contain:
-        'accessed_sources'
+        'other_sources'
             {accessed_name : inpath for each accessed inpath}
             where accessed_name is a filename with '.asy' extension,
             and inpath has '.asy' extension
@@ -497,7 +497,7 @@ class RegularDriver(RecordsManager, metaclass=DriverMetaclass):
             if figure_record['type'] != figure_type:
                 raise RuntimeError
             if figure_record['type'] == 'asy':
-                if 'accessed_sources' not in keys:
+                if 'other_sources' not in keys:
                     raise RuntimeError
         return figure_records
 
@@ -1477,8 +1477,9 @@ class RegularDriver(RecordsManager, metaclass=DriverMetaclass):
                 'type' : figure_type,
                 'source' : inpath }
             if figure_type == 'asy':
-                figure_record['accessed_sources'] = \
-                    self._find_figure_asy_sources(figure_path, metarecord)
+                figure_record['other_sources'] = \
+                    self._find_figure_asy_other_sources(
+                        figure_path, metarecord )
             yield figure_type, figure_record
 
     _figure_types = ('asy', 'svg', 'pdf', 'eps', 'png', 'jpg',)
@@ -1491,31 +1492,34 @@ class RegularDriver(RecordsManager, metaclass=DriverMetaclass):
     def _get_figure_suffix(figure_type):
         return '.{}'.format(figure_type)
 
-    def _find_figure_asy_sources(self, figure_path, metarecord):
-        accessed_sources = dict()
+    def _find_figure_asy_other_sources(self, figure_path, metarecord):
+        other_sources = dict()
         for accessed_name, inpath in (
-            self._trace_figure_asy_sources(figure_path, metarecord)
+            self._trace_figure_asy_other_sources(figure_path, metarecord)
         ):
-            self.check_and_set(accessed_sources, accessed_name, inpath)
-        return accessed_sources
+            self.check_and_set(other_sources, accessed_name, inpath)
+        return other_sources
 
-    def _trace_figure_asy_sources(self, figure_path, metarecord,
+    def _trace_figure_asy_other_sources(self, figure_path, metarecord=None,
         *, seen_items=None
     ):
         """Yield (accessed_name, inpath) pairs."""
         if seen_items is None:
             seen_items = set()
+        if metarecord is None:
+            metarecord = self.getitem(figure_path)
         accessed_paths = metarecord.get('$figure$asy$accessed', {})
         for accessed_name, accessed_path_s in accessed_paths.items():
             accessed_path = RecordPath(figure_path, accessed_path_s)
-            if (accessed_name, accessed_path) in seen_items:
+            accessed_item = (accessed_name, accessed_path)
+            if accessed_item in seen_items:
                 continue
             else:
-                seen_items.add((accessed_name, accessed_path))
+                seen_items.add(accessed_item)
             inpath = accessed_path.as_inpath(suffix='.asy')
             yield accessed_name, inpath
-            yield from self._trace_figure_asy_sources(
-                figure_path, metarecord, seen_items=seen_items )
+            yield from self._trace_figure_asy_other_sources(
+                accessed_path, seen_items=seen_items )
 
 
     ##########
