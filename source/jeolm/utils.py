@@ -4,7 +4,10 @@ from collections import OrderedDict
 import logging
 logger = logging.getLogger(__name__)
 
-def check_and_set(mapping, key, value, *, error_class=ValueError):
+class ClashingValueError(ValueError):
+    pass
+
+def check_and_set(mapping, key, value):
     """
     Set mapping[key] to value if key is not in mapping.
 
@@ -12,15 +15,16 @@ def check_and_set(mapping, key, value, *, error_class=ValueError):
     Return False if key is present and values was the same.
     Raise DriverError if key is present, but value is different.
     """
-    assert value is not None
-    other = mapping.get(key)
-    if other is None:
+    try:
+        other = mapping[key]
+    except KeyError:
         mapping[key] = value
         return True
-    elif other == value:
+    if other == value:
         return False
     else:
-        raise error_class( "Key {} has clashing values: {} and {}"
+        raise ClashingValueError(
+            "Key {} has clashing values: {} and {}"
             .format(key, value, other) )
 
 

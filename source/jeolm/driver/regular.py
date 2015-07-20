@@ -6,23 +6,22 @@ Keys recognized in metarecords:
   $build$able (boolean)
     - if false then raise error on outrecord stage
     - propagates to children, assumed true by default
-  $build$special  (one of 'standalone', 'latexdoc')
-    - if present then outrecord generation will trigger a special case
-    - set to 'latexdoc' by metadata grabber on .dtx files
   $source$able (boolean)
     - if false then raise error on auto metabody stage
       (hence, not checked if a suitable $matter key is found)
     - false by default
-    - set to true by metadata grabber on .tex files
-    - set to false by metadata grabber on .tex files with
-      $build$special set to 'standalone'
+    - set to true by metadata grabber on .tex and .dtx files
+  $source$type$tex, $source$type$dtx (boolean)
+    - set to true by metadata grabber on respectively .tex and .dtx
+      files
   $source$figures (ordered dict)
     { alias_name : accessed_path for all accessed paths }
     - set by metadata grabber
   $figure$able (boolean)
     - if false then raise error on figure_record stage
     - assumed false by default
-    - set to true by metadata grabber on .asy, .svg and .eps files
+    - set to true by metadata grabber on .asy, .svg, .pdf, .eps, .png
+      and .jpg files
   $figure$type$* (boolean)
     - set to true by metadata grabber on respectively .asy, .svg, .pdf,
       .eps, .png and .jpg files
@@ -32,7 +31,7 @@ Keys recognized in metarecords:
     - if false then raise error on package_record stage
     - assumed false by default
     - set to true by metadata grabber on .dtx and .sty files
-  $package$format$dtx, $package$format$sty (boolean)
+  $package$type$dtx, $package$type$sty (boolean)
     - set to true by metadata grabber on respectively .dtx and .sty
       files
   $package$name
@@ -120,7 +119,7 @@ from jeolm.flags import FlagError
 from jeolm.target import TargetError
 from jeolm.records import RecordError, RecordNotFoundError
 
-from jeolm.utils import check_and_set
+from jeolm.utils import check_and_set, ClashingValueError
 
 import logging
 logger = logging.getLogger(__name__)
@@ -404,7 +403,7 @@ class RegularDriver(RecordsManager, metaclass=DriverMetaclass):
         with suppress(KeyError):
             return self._cache['outrecords'][target]
         outrecord = self._cache['outrecords'][target] = \
-            self.generate_outrecord(target)
+            self._generate_outrecord(target)
         keys = outrecord.keys()
         if not keys >= {'outname', 'type', 'compiler'}:
             raise RuntimeError(keys)
@@ -542,7 +541,6 @@ class RegularDriver(RecordsManager, metaclass=DriverMetaclass):
             parent_record.get('$target$able', True) )
         child_record.setdefault('$build$able',
             parent_record.get('$build$able', True) )
-        self._derive_compiler_default(parent_record, child_record, path=path)
         if '$include' in child_record:
             already_included = set()
             included_paths = [
@@ -563,23 +561,6 @@ class RegularDriver(RecordsManager, metaclass=DriverMetaclass):
                 self._include_dict(child_record, included_value)
                 already_included.add(included_path)
 
-    @classmethod
-    def _derive_compiler_default( cls, parent_record, child_record, *, path,
-        _compiler_default_key = '$build$compiler$default'
-    ):
-        if _compiler_default_key not in child_record:
-            if _compiler_default_key not in parent_record:
-                compiler_default = 'latex'
-                logger.warning(
-                    "No <MAGENTA>%(key)s<NOCOLOUR> key set "
-                    "at %(path)s, asserting '<CYAN>%(compiler)s<NOCOLOUR>'",
-                    dict(
-                        key=_compiler_default_key, path=path,
-                        compiler=compiler_default )
-                )
-            else:
-                compiler_default = parent_record[_compiler_default_key]
-            child_record[_compiler_default_key] = compiler_default
 
     @classmethod
     def _include_dict(cls, dest_dict, source_dict):
@@ -698,6 +679,8 @@ class RegularDriver(RecordsManager, metaclass=DriverMetaclass):
     class SourceBodyItem(MetabodyItem):
         """These items represent inclusion of a source file."""
         __slots__ = ['metapath', 'alias', 'figure_map']
+        include_command = r'\input'
+        file_suffix = '.tex'
 
         def __init__(self, metapath):
             if not isinstance(metapath, RecordPath):
@@ -707,7 +690,7 @@ class RegularDriver(RecordsManager, metaclass=DriverMetaclass):
 
         @property
         def inpath(self):
-            return self.metapath.as_inpath(suffix='.tex')
+            return self.metapath.as_inpath(suffix=self.file_suffix)
 
     class ClearPageBodyItem(VerbatimBodyItem):
         __slots__ = []
@@ -728,7 +711,10 @@ class RegularDriver(RecordsManager, metaclass=DriverMetaclass):
 
         def __init__(self, key, value):
             self.key = key
-            self.value = value
+            if value is None:
+                self.value = None
+            else:
+                self.value = str(value)
             super().__init__()
 
     class RequirePackageBodyItem(ControlBodyItem):
@@ -749,6 +735,11 @@ class RegularDriver(RecordsManager, metaclass=DriverMetaclass):
         def __init__(self, package):
             self.package = str(package)
             super().__init__()
+
+    class DocSourceBodyItem(SourceBodyItem):
+        __slots__ = []
+        include_command = r'\DocInput'
+        file_suffix = '.dtx'
 
     @classmethod
     def classify_resolved_metabody_item(cls, item, *, default):
@@ -799,7 +790,17 @@ class RegularDriver(RecordsManager, metaclass=DriverMetaclass):
         __slots__ = ['value']
 
         def __init__(self, value):
-            self.value = str(value)
+            if value is None:
+                self.value = None
+            else:
+                self.value = str(value)
+            super().__init__()
+
+    class CompilerItem(MetapreambleItem):
+        __slots__ = ['compiler']
+
+        def __init__(self, compiler):
+            self.compiler = str(compiler)
             super().__init__()
 
     class DocumentClassItem(MetapreambleItem):
@@ -884,6 +885,9 @@ class RegularDriver(RecordsManager, metaclass=DriverMetaclass):
                 value=cls.substitute_selectfont(
                     size=float(size), skip=float(skip)
                 ), key='AtBeginDocument:fontsize' )
+        elif item.keys() == {'compiler'}:
+            return cls.CompilerItem(
+                compiler=item['compiler'] )
         elif item.keys() == {'document class'}:
             return cls.DocumentClassItem(
                 document_class=item['document class'] )
@@ -921,52 +925,26 @@ class RegularDriver(RecordsManager, metaclass=DriverMetaclass):
 
     @fetching_metarecord
     @processing_target_aspect(aspect='outrecord')
-    def generate_outrecord(self, target, metarecord):
+    def _generate_outrecord(self, target, metarecord):
         if not metarecord.get('$target$able', True) or \
                 not metarecord.get('$build$able', True):
             raise DriverError( "Target {target} is not buildable"
                 .format(target=target) )
         if target.path.is_root():
             raise DriverError("Direct building of '/' is prohibited." )
-        if '$build$special' in metarecord:
-            return self.generate_special_outrecord(target, metarecord)
-        else:
-            return self.generate_regular_outrecord(target)
-
-    @fetching_metarecord
-    @processing_target_aspect(aspect='special outrecord')
-    def generate_special_outrecord(self, target, metarecord):
-        special_type = metarecord['$build$special']
-        if special_type not in {'standalone', 'latexdoc'}:
-            raise DriverError(
-                "Unknown type of special '{}'".format(special_type) )
-        outrecord = {'type' : special_type}
-        self._set_outrecord_compiler(target, metarecord, outrecord=outrecord)
-        outrecord['outname'] = self.select_outname(
-            target, metarecord, date=None )
-        suffix = {'latexdoc' : '.dtx', 'standalone' : '.tex'}[special_type]
-        outrecord['source'] = target.path.as_inpath(suffix=suffix)
-        if special_type == 'latexdoc':
-            package_name_key = self._get_package_name_key('dtx')
-            package_name = outrecord['name'] = metarecord[package_name_key]
-            outrecord['package_paths'] = {package_name : target.path}
-        return outrecord
+        return self._generate_regular_outrecord(target)
 
     @fetching_metarecord
     @processing_target_aspect(aspect='regular outrecord')
-    def generate_regular_outrecord(self, target, metarecord):
+    def _generate_regular_outrecord(self, target, metarecord):
         """
-        Return protorecord.
+        Return outrecord.
         """
         date_set = set()
         additional_flags = set()
 
         outrecord = {'type' : 'regular'}
         outrecord.update(self._find_build_options(target, metarecord))
-        additional_flags.update(
-            self._set_outrecord_compiler( target, metarecord,
-                outrecord=outrecord )
-        )
         extended_target = target.flags_union(additional_flags)
         extended_target.flags.utilize(additional_flags)
 
@@ -980,6 +958,7 @@ class RegularDriver(RecordsManager, metaclass=DriverMetaclass):
         figures = outrecord['figures'] = OrderedDict()
         package_paths = outrecord['package_paths'] = OrderedDict()
         outrecord.setdefault('date', self.min_date(date_set))
+        compilers = list()
 
         metabody = list(self._digest_metabody(
             extended_target, metabody,
@@ -987,13 +966,19 @@ class RegularDriver(RecordsManager, metaclass=DriverMetaclass):
             metapreamble=metapreamble ))
         metapreamble = list(self._digest_metapreamble(
             extended_target, metapreamble,
-            package_paths=package_paths ))
+            package_paths=package_paths,
+            compilers=compilers ))
 
         target.check_unutilized_flags()
 
         if 'outname' not in outrecord:
             outrecord['outname'] = self.select_outname(
                 target, metarecord, date=outrecord['date'] )
+        if not compilers:
+            raise DriverError("Compiler is not specified")
+        if len(compilers) > 1:
+            raise DriverError("Compiler is specified multiple times")
+        outrecord['compiler'], = compilers
 
         with self.process_target_aspect(target, 'document'):
             outrecord['document'] = self.constitute_document(
@@ -1013,20 +998,10 @@ class RegularDriver(RecordsManager, metaclass=DriverMetaclass):
                     .format(type(options).__name__) )
             if options.keys() & {
                     'type', 'document', 'sources',
-                    'figures', 'package_paths', }:
+                    'figures', 'package_paths', 'compiler' }:
                 raise DriverError("Bad options {}".format(options) )
             return options
 
-    @processing_target_aspect(aspect='outrecord compiler')
-    def _set_outrecord_compiler(self, target, metarecord, *, outrecord):
-        """Return additional flags for the target."""
-        if 'compiler' not in outrecord:
-            outrecord['compiler'] = metarecord['$build$compiler$default']
-        if outrecord['compiler'] not in {
-                'latex', 'pdflatex', 'xelatex', 'lualatex' }:
-            raise DriverError( "Unknown compiler detected: {}"
-                .format(outrecord['compiler']) )
-        return {'compiler-{}'.format(outrecord['compiler'])}
 
     def select_outname(self, target, metarecord, date=None):
         outname_pieces = []
@@ -1180,23 +1155,44 @@ class RegularDriver(RecordsManager, metaclass=DriverMetaclass):
     @processing_target_aspect(aspect='auto metabody', wrap_generator=True)
     @classifying_items(aspect='metabody', default='verbatim')
     def generate_auto_metabody(self, target, metarecord):
+        if not target.flags.intersection(('header', 'no-header')):
+            yield target.flags_union({'header'})
+            return
         if not metarecord.get('$source$able', False):
             raise DriverError( "Target {target} is not sourceable"
                 .format(target=target) )
-        yield from self.generate_source_metabody(
+        yield from self._generate_source_metabody(
             target, metarecord )
-
-    @processing_target_aspect(aspect='source metabody', wrap_generator=True)
-    @classifying_items(aspect='metabody', default='verbatim')
-    def generate_source_metabody(self, target, metarecord):
-        assert metarecord.get('$source$able', False)
-        if not target.flags.intersection(('header', 'no-header')):
-            yield target.flags_union({'header'})
-            return # recurse
-        yield self.SourceBodyItem(metapath=target.path)
         if 'multidate' in target.flags:
             yield from self._generate_source_datestamp_metabody(
                 target, metarecord )
+
+    @processing_target_aspect(aspect='source metabody', wrap_generator=True)
+    @classifying_items(aspect='metabody', default='verbatim')
+    def _generate_source_metabody(self, target, metarecord):
+        assert metarecord.get('$source$able', False)
+        has_source_tex = metarecord.get(
+            self._get_source_type_key('tex'), False )
+        has_source_dtx = metarecord.get(
+            self._get_source_type_key('dtx'), False )
+        if has_source_tex:
+            yield self.SourceBodyItem(metapath=target.path)
+        elif has_source_dtx:
+            yield self.DocSourceBodyItem(metapath=target.path)
+        else:
+            raise RuntimeError
+        if has_source_tex and has_source_dtx:
+            logger.warning(
+                "File <MAGENTA>%(dtx_path)s<NOCOLOUR> is shadowed by "
+                "<MAGENTA>%(tex_path)s<NOCOLOUR>",
+                dict(
+                    dtx_path=target.path.as_inpath(suffix='.dtx'),
+                    tex_path=target.path.as_inpath(suffix='.tex') )
+            )
+
+    @staticmethod
+    def _get_source_type_key(source_type):
+        return '$source$type${}'.format(source_type)
 
     def _generate_source_datestamp_metabody(self, target, metarecord):
         if 'no-date' in target.flags:
@@ -1347,7 +1343,7 @@ class RegularDriver(RecordsManager, metaclass=DriverMetaclass):
         if not metarecord.get('$source$able', False):
             raise RuntimeError( "Path {path} is not sourceable"
                 .format(path=item.metapath) )
-        item.alias = self.select_alias(item.inpath, suffix='.tex')
+        item.alias = self.select_alias(item.inpath, suffix=item.file_suffix)
         self.check_and_set(sources, item.alias, item.inpath)
         item.figure_map = OrderedDict()
         figure_refs = metarecord.get('$source$figures', ())
@@ -1376,7 +1372,7 @@ class RegularDriver(RecordsManager, metaclass=DriverMetaclass):
     r'$')
 
     def _digest_metapreamble(self, target, metapreamble,
-        *, package_paths
+        *, package_paths, compilers
     ):
         """
         Yield metapreamble items.
@@ -1404,9 +1400,9 @@ class RegularDriver(RecordsManager, metaclass=DriverMetaclass):
                 yield self.ProvidePreamblePreambleItem(key=key, value=value)
             elif isinstance(item, self.ProhibitPackagePreambleItem):
                 key = 'usepackage:{}'.format(item.package)
-                value = '%' + self.substitute_usepackage( package=item.package,
-                    options=self.constitute_options([]) )
-                yield self.ProvidePreamblePreambleItem(key=key, value=value)
+                yield self.ProvidePreamblePreambleItem(key=key, value=None)
+            elif isinstance(item, self.CompilerItem):
+                compilers.append(item.compiler)
             else:
                 yield item
 
@@ -1528,12 +1524,13 @@ class RegularDriver(RecordsManager, metaclass=DriverMetaclass):
     @classmethod
     def constitute_document(cls, outrecord, metapreamble, metabody):
         return cls.substitute_document(
+            compiler=outrecord['compiler'],
             preamble=cls.constitute_preamble(outrecord, metapreamble),
             body=cls.constitute_body(outrecord, metabody)
         )
 
     document_template = (
-        r'% Auto-generated by jeolm' '\n\n'
+        r'% Auto-generated by jeolm for compiling with $compiler' '\n\n'
         r'$preamble' '\n\n'
         r'\begin{document}' '\n\n'
         r'$body' '\n\n'
@@ -1548,7 +1545,7 @@ class RegularDriver(RecordsManager, metaclass=DriverMetaclass):
             if isinstance(item, cls.DocumentClassItem):
                 if preamble_lines[0] is not None:
                     raise DriverError(
-                        "Multiple definitions of document class" )
+                        "Document class is specified multiple times" )
                 preamble_lines[0] = cls.substitute_documentclass(
                     document_class=item.document_class,
                     options=cls.constitute_options(item.options) )
@@ -1557,9 +1554,13 @@ class RegularDriver(RecordsManager, metaclass=DriverMetaclass):
                 if not cls.check_and_set( provided_preamble,
                         item.key, item.value ):
                     continue
-            preamble_lines.append(cls.constitute_preamble_item(item))
+            preamble_line = cls.constitute_preamble_item(item)
+            if preamble_line is None:
+                continue
+            preamble_lines.append(preamble_line)
         if preamble_lines[0] is None:
-            raise DriverError("No document class provided")
+            raise DriverError(
+                "Document class is not specified")
         return '\n'.join(preamble_lines)
 
     documentclass_template = r'\documentclass$options{$document_class}'
@@ -1599,6 +1600,7 @@ class RegularDriver(RecordsManager, metaclass=DriverMetaclass):
             return item.value
         elif isinstance(item, cls.SourceBodyItem):
             return cls._constitute_body_input(
+                include_command=item.include_command,
                 alias=item.alias,
                 figure_map=item.figure_map,
                 inpath=item.inpath, metapath=item.metapath )
@@ -1611,16 +1613,17 @@ class RegularDriver(RecordsManager, metaclass=DriverMetaclass):
 
     @classmethod
     def _constitute_body_input( cls, *,
-        alias, figure_map, metapath, inpath
+        include_command, alias, figure_map, metapath, inpath
     ):
         body = cls.substitute_input(
+            command=include_command,
             filename=alias,
             metapath=metapath, inpath=inpath )
         if figure_map:
             body = cls.constitute_figure_map(figure_map) + '\n' + body
         return body
 
-    input_template = r'\input{$filename}% $metapath'
+    input_template = r'$command{$filename}% $metapath'
 
     @classmethod
     def constitute_figure_map(cls, figure_map):
@@ -1700,5 +1703,8 @@ class RegularDriver(RecordsManager, metaclass=DriverMetaclass):
         Return False if key is present and values was the same.
         Raise DriverError if key is present, but value is different.
         """
-        return check_and_set(mapping, key, value, error_class=DriverError)
+        try:
+            return check_and_set(mapping, key, value)
+        except ClashingValueError as error:
+            raise DriverError from error
 

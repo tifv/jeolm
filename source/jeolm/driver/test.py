@@ -17,18 +17,12 @@ class TestDriver(RegularDriver):
     @processing_target_aspect( aspect='source metabody [test]',
         wrap_generator=True )
     @classifying_items(aspect='metabody', default='verbatim')
-    def generate_source_metabody(self, target, metarecord):
-        super_metabody = super().generate_source_metabody(target, metarecord)
-        if 'no-header' not in target.flags:
-            yield from super_metabody
-            return
-        if not metarecord.get('$test', False):
-            yield from super_metabody
-            return
-        if 'exclude-test' in target.flags:
-            return
-        if 'no-test-postword' in target.flags:
-            yield from super_metabody
+    def _generate_source_metabody(self, target, metarecord):
+        no_postword = (
+            not metarecord.get('$test', False) or
+            'no-test-postword' in target.flags )
+        if no_postword:
+            yield from super()._generate_source_metabody(target, metarecord)
             return
 
         yield target.flags_union({'no-test-postword'})
@@ -38,7 +32,7 @@ class TestDriver(RegularDriver):
         wrap_generator=True )
     @classifying_items(aspect='metabody', default='verbatim')
     def _generate_test_postword(self, target, metarecord):
-        problem_scores = self._get_problem_scores(metarecord)
+        problem_scores = metarecord.get('$test$problem-scores')
         mark_limits = metarecord.get('$test$mark-limits')
         test_duration = metarecord.get('$test$duration')
         has_problem_scores = ( problem_scores is not None and
@@ -71,10 +65,6 @@ class TestDriver(RegularDriver):
 
     begin_postword_template = r'\begin{flushright}\scriptsize'
     end_postword_template = r'\end{flushright}'
-
-    @classmethod
-    def _get_problem_scores(cls, metarecord):
-        return metarecord.get('$test$problem-scores')
 
     @classmethod
     def _constitute_problem_scores(cls, problem_scores):

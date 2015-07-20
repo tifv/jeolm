@@ -1,6 +1,7 @@
 style:
-  source/_style/jeolm.dtx: jeolm.dtx
   source/_style/core.yaml: style-core.yaml
+  source/_style/jeolm.dtx: jeolm.dtx
+  source/_style/jeolm.yaml: jeolm.yaml
 figure-style:
   source/_style/jeolm.asy: jeolm.asy
 gitignore:

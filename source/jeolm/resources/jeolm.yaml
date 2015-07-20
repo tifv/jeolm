@@ -1,0 +1,21 @@
+jeolm:
+  $target$able: on
+  $build$style:
+  - compiler: pdflatex
+  - document class: ltxdoc
+  - package: inputenc
+    options: [utf8]
+  - package: fontenc
+    options: [T2A]
+  - package: babel
+    options: [russian, english]
+  - package: colordoc
+    options: [braces]
+  - delegate: .
+  - verbatim: |-
+      \makeatletter
+      \c@IndexColumns = 2
+      \makeatother
+  - verbatim: \EnableCrossrefs
+  - verbatim: \CodelineIndex
+

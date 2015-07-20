@@ -15,14 +15,10 @@ class AddToCDriver(RegularDriver):
     @processing_target_aspect( aspect='source metabody [addtoc]',
         wrap_generator=True )
     @classifying_items(aspect='metabody', default='verbatim')
-    def generate_source_metabody(self, target, metarecord):
+    def _generate_source_metabody(self, target, metarecord):
 
-        super_metabody = super().generate_source_metabody(target, metarecord)
-        if 'no-header' not in target.flags:
-            yield from super_metabody
-            return
         if 'add-toc' not in target.flags:
-            yield from super_metabody
+            yield from super()._generate_source_metabody(target, metarecord)
             return
 
         caption = self._find_caption(metarecord)

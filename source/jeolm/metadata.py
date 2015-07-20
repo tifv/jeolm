@@ -231,16 +231,11 @@ class MetadataManager(RecordsManager):
     def _query_tex_file(self, inpath):
         with (self.local.source_dir/inpath).open('r') as tex_file:
             tex_content = tex_file.read()
-        metadata = OrderedDict()
+        metadata = OrderedDict((
+            ('$source$able', True),
+            ('$source$type$tex', True),
+        ))
         metadata.update(self._query_tex_content(inpath, tex_content))
-        if '$build$special' not in metadata:
-            metadata.setdefault('$source$able', True)
-        elif metadata['$build$special'] == 'standalone':
-            metadata.setdefault('$source$able', False)
-        else:
-            logger.warning( "<MAGENTA>%(path)s<NOCOLOUR>: "
-                "<YELLOW>$build$special<NOCOLOUR> value unrecognized",
-                dict(path='source'/inpath) )
         return metadata
 
     def _query_tex_content(self, inpath, tex_content):
@@ -355,7 +350,8 @@ class MetadataManager(RecordsManager):
         metadata = {
             '$package$able' : True,
             '$package$type$dtx' : True,
-            '$build$special' : 'latexdoc' }
+            '$source$able' : True,
+            '$source$type$dtx' : True }
         metadata.update(self._query_package_content(inpath, dtx_content,
             package_type='dtx' ))
         return metadata
@@ -462,11 +458,12 @@ class MetadataManager(RecordsManager):
         '$build$matter' : ('$manner', '$rigid',),
         '$build$style' : (
             '$manner$style', '$manner$options',
-            '$out$options', '$fluid$opt', '$rigid$opt', '$manner$opt', ),
+            '$out$options', '$fluid$opt', '$rigid$opt', '$manner$opt',
+            '$build$special', ),
         '$delegate' : ('$target$delegate',),
         '$target$able' : ('$targetable',),
         '$matter: preamble package' : (
-            '$required$packages', '$latex$packages', '$tex$packages', )
+            '$required$packages', '$latex$packages', '$tex$packages', ),
     }
 
     @classmethod

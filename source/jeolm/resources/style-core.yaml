@@ -2,12 +2,14 @@ $target$able: off
 
 $style:
 
+  - delegate: compiler
+
   - document class: article
     options: [a4paper,10pt]
     condition: {not: no-document-class}
   - package: inputenc
     options: [utf8]
-    condition: {or: [compiler-latex, compiler-pdflatex]}
+    condition: {or: [latex, pdflatex]}
   - package: amsmath
   - package: amssymb
 
@@ -19,54 +21,112 @@ $style:
     condition: {not: no-font-config}
   - delegate: language-config
     condition: {not: no-language-config}
+
   - verbatim: '\pagestyle{empty}'
     provide: pagestyle
     condition: {not: no-pagestyle}
 
   - delegate: optional
 
-$style[-font-select-guard]:
-  - delegate: font-select[font-select-guard]
-$style[-font-select-guard,compiler-latex]:
-  - delegate: .[font-select-guard]
-$style[-font-select-guard,compiler-pdflatex]:
-  - delegate: .[font-select-guard]
+$style[-compiler-selection-guard]:
+  - delegate: compiler-selection[compiler-selection-guard]
 
-$style[font-select-guard,-language-select-guard]:
-  - delegate: language-select[language-select-guard]
+$style[-font-selection-guard,compiler-selection-guard]:
+  - delegate: font-selection[font-selection-guard]
 
-font-select:
+$style[-language-selection-guard,font-selection-guard]:
+  - delegate: language-selection[language-selection-guard]
+
+compiler-selection:
+
+  $style:
+  - delegate: .[default-compiler]
+  $style[default-compiler]:
+  - delegate: .[xelatex,-default-compiler]
+
+  $style[latex]:
+  - delegate: ..
+  $style[pdflatex]:
+  - delegate: ..
+  $style[xelatex]:
+  - delegate: ..
+  $style[lualatex]:
+  - delegate: ..
+
+font-selection:
+
+  $style[latex]:
+  - delegate: ..
+  $style[pdflatex]:
+  - delegate: ..
+
   $style:
   - delegate: .[default-font]
   $style[default-font]:
-  - delegate: .[cm,-default-font]
-  $style[cm]:
+  - delegate: .[computer-modern,computer-modern-math,-default-font]
+
+  $style[computer-modern]:
+  - delegate: .[computer-modern-math]
+  $style[computer-modern,computer-modern-math]:
   - delegate: ..
-  $style[liberation]:
-  - delegate: ..
-  $style[times]:
-  - delegate: ..
-  $style[palatino]:
+  $style[computer-modern,latin-modern]:
   - delegate: ..
 
-language-select:
+  $style[liberation]:
+  - delegate: .[computer-modern-math]
+  $style[liberation,computer-modern-math]:
+  - delegate: ..
+  $style[liberation,latin-modern]:
+  - delegate: ..
+  $style[liberation,xits-math]:
+  - delegate: ..
+
+  $style[times]:
+  - delegate: ..
+  $style[times,xits-math]:
+  - delegate: ..
+
+  $style[xits]:
+  - delegate: .[xits-math]
+  $style[xits,xits-math]:
+  - delegate: ..
+
+  $style[palatino]:
+  - delegate: .[asana-math]
+  $style[palatino,asana-math]:
+  - delegate: ..
+
+language-selection:
+
   $style:
   - delegate: .[default-language]
   $style[default-language]:
   - delegate: .[russian,-default-language]
+
   $style[russian]:
   - delegate: ..
+
   $style[english]:
   - delegate: ..
 
+compiler:
+  $style[latex]:
+  - compiler: latex
+  $style[pdflatex]:
+  - compiler: pdflatex
+  $style[xelatex]:
+  - compiler: xelatex
+  $style[lualatex]:
+  - compiler: lualatex
+
 font-config:
-  $style[compiler-latex]:
+  $style[latex]:
   - delegate: fontenc
-  $style[compiler-pdflatex]:
+  $style[pdflatex]:
   - delegate: fontenc
-  $style[compiler-xelatex]:
+  $style[xelatex]:
   - delegate: fontspec
-  $style[compiler-lualatex]:
+  $style[lualatex]:
   - delegate: fontspec
 
   fontenc:
@@ -76,8 +136,6 @@ font-config:
 
   fontspec:
     $style:
-    - package: xparse
-      options: [log-declarations=false]
     - package: fontspec
       options: [no-math]
     - verbatim:
@@ -90,10 +148,14 @@ font-config:
     setfont:
       $style:
       - error: core misconfiguration
-      $style[cm]:
-      - delegate: cm-unicode
+      $style[computer-modern]:
+      - delegate: computer-modern-unicode
       $style[liberation]:
       - delegate: liberation
+      $style[xits]:
+      - delegate: xits
+      - delegate: croscorefonts/arimo
+      - delegate: liberation/mono
       $style[times]:
       - delegate: corefonts/times
       - delegate: corefonts/arial
@@ -102,7 +164,7 @@ font-config:
       - delegate: palladio
       - delegate: croscorefonts/arimo
       - delegate: croscorefonts/cousine
-      cm-unicode:
+      computer-modern-unicode:
         $style:
         - delegate: serif
         - delegate: sans-serif
@@ -237,26 +299,33 @@ font-config:
             provide: setmonofont
 
 math-font-config:
-  $style[compiler-latex]:
-  - delegate: swap-vargreek/cm
-  - delegate: ineq-slanted
-  $style[compiler-pdflatex]:
-  - delegate: swap-vargreek/cm
-  - delegate: ineq-slanted
-  $style[compiler-lualatex]:
-  - delegate: unicode-math
-  - delegate: swap-vargreek/unicode
-  - delegate: ineq-slanted
-  $style[compiler-xelatex]:
-  - delegate: unicode-math
-  - delegate: swap-vargreek/unicode
-  - delegate: ineq-slanted
+
+  $style[latex]:
+    &default-math-font-config
+    - delegate: swap-vargreek/computer-modern
+    - delegate: swap-vargreek/unicode
+    - delegate: ineq-slanted
+      condition: russian
+  $style[pdflatex]:
+    *default-math-font-config
+  $style[xelatex,computer-modern-math]:
+    *default-math-font-config
+  $style[lualatex,computer-modern-math]:
+    *default-math-font-config
+
+  $style[lualatex]:
+    &unicode-math-font-config
+    - delegate: unicode-math
+    - delegate: swap-vargreek/unicode
+    - delegate: ineq-slanted
+      condition: russian
+  $style[xelatex]:
+    *unicode-math-font-config
 
   swap-vargreek:
-    cm:
+    computer-modern:
       $style:
       - verbatim: \AtBeginDocument{\swapvargreek{phi}\swapvargreek{epsilon}}
-      - delegate: ../unicode
     unicode:
       $style:
       - verbatim: \AtBeginDocument{\swapvargreek{kappa}}
@@ -264,7 +333,6 @@ math-font-config:
   ineq-slanted:
     $style:
     - verbatim: \AtBeginDocument{\let\geq\geqslant\let\leq\leqslant}
-      condition: russian
 
   unicode-math:
     $style:
@@ -274,16 +342,16 @@ math-font-config:
     - delegate: setfont
     setfont:
       $style:
-      - delegate: .[cm]
-      $style[cm]:
-      - delegate: lm
-      $style[times]:
+      - error: core misconfiguration
+      $style[latin-modern]:
+      - delegate: latin-modern
+      $style[times,-xits-math]:
       - delegate: tex-gyre/termes
-      $style[times,xits]:
+      $style[xits-math]:
       - delegate: xits
-      $style[palatino]:
-      - delegate: asana
-      lm:
+      $style[asana-math]:
+      - delegate: asana-math
+      latin-modern:
         $style:
         - verbatim: \setmathfont{Latin Modern Math}
           provide: setmathfont
@@ -292,7 +360,7 @@ math-font-config:
         $style:
         - verbatim: \setmathfont{XITS Math}
           provide: setmathfont
-      asana:
+      asana-math:
         $style:
         - verbatim: \setmathfont{Asana Math}
           provide: setmathfont
@@ -307,13 +375,13 @@ math-font-config:
             provide: setmathfont
 
 language-config:
-  $style[compiler-latex]:
+  $style[latex]:
   - delegate: babel
-  $style[compiler-pdflatex]:
+  $style[pdflatex]:
   - delegate: babel
-  $style[compiler-xelatex]:
+  $style[xelatex]:
   - delegate: polyglossia
-  $style[compiler-lualatex]:
+  $style[lualatex]:
   - delegate: polyglossia
 
   babel:
@@ -340,10 +408,6 @@ language-config:
       - verbatim: \setdefaultlanguage{english}
         provide: setdefaultlanguage
 
-jeolm:
-  $target$able: on
-  $build$compiler$default: pdflatex
-
 optional:
   $style:
 
@@ -357,7 +421,10 @@ optional:
     - package: graphicx
       condition: {not: no-package-graphicx}
     - package: anyfontsize
-      condition: {not: no-package-anyfontsize}
+      condition: {and: [
+        {not: no-package-anyfontsize},
+        {or: [latex, pdflatex]}
+      ]}
 
     - delegate: pgfpages
       condition: {not: no-package-pgfpages}
@@ -436,7 +503,7 @@ optional:
     - verbatim: |-
         \renewcommand\pgfsetupphysicalpagesizes{% fix for xelatex
           \pdfpagewidth\pgfphysicalwidth\pdfpageheight\pgfphysicalheight}
-      condition: compiler-xelatex
+      condition: xelatex
     - delegate: uselayout
     uselayout:
       $style[resize-to,-landscape]:
