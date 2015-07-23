@@ -30,10 +30,10 @@ class MakeDirCommand(Command):
         if os.path.lexists(str(path)):
             path.unlink()
         self.logger.debug(
-            "<GREEN>%(command)s %(path)s<NOCOLOUR>",
+            "create directory <ITALIC>%(path)s<UPRIGHT>%(parents)s",
             dict(
-                command='mkdir --parents' if self.parents else 'mkdir',
-                path=self.node.relative_path, )
+                path=self.node.relative_path,
+                parents=' with parents' if self.parents else '')
         )
         # rwxr-xr-x
         path.mkdir(mode=0b111101101, parents=self.parents)

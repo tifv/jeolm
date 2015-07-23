@@ -431,8 +431,8 @@ class SubprocessCommand(Command):
             root_relative = PathNode.root_relative
 
         self.logger.info(
-            "<cwd=<CYAN>%(cwd)s<NOCOLOUR>> "
-            "<GREEN>%(command)s<NOCOLOUR>",
+            "<cwd=<CYAN><ITALIC>%(cwd)s<UPRIGHT><NOCOLOUR>> "
+            "<GREEN><ITALIC>%(command)s<UPRIGHT><NOCOLOUR>",
             dict(
                 cwd=root_relative(self.cwd),
                 command=' '.join(self.callargs), )

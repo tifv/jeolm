@@ -22,7 +22,7 @@ class WriteTextCommand(Command):
 
     def __call__(self):
         self.logger.info(
-            "<GREEN>Write generated text to %(path)s<NOCOLOUR>",
+            "write to <ITALIC>%(path)s<UPRIGHT>",
             dict(path=self.node.relative_path)
         )
         with self.node.open('w') as text_file:
@@ -42,7 +42,7 @@ class CleanupSymLinkCommand(SymLinkCommand):
             old_var_path = self.node.path.with_name(match.group(0))
             if old_var_path.exists():
                 self.logger.debug(
-                    "<GREEN>rm %(path)s<NOCOLOUR>",
+                    "<GREEN>remove <ITALIC>%(path)s<UPRIGHT><NOCOLOUR>",
                     dict(path=self.node.root_relative(old_var_path))
                 )
                 old_var_path.unlink()

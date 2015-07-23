@@ -46,7 +46,8 @@ class SymLinkCommand(Command):
             self._clear_path()
         self.logger.debug(
             "<source=<CYAN>%(source_name)s<NOCOLOUR>> "
-            "<GREEN>ln --symbolic %(link_target)s %(path)s<NOCOLOUR>",
+            "symlink \"<ITALIC>%(link_target)s<UPRIGHT>\" "
+            "to <ITALIC>%(path)s<UPRIGHT>",
             dict(
                 source_name=self.node.source.name,
                 link_target=self.target,

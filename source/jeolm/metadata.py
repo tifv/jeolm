@@ -127,9 +127,9 @@ class MetadataManager(RecordsManager):
                 self.delete(metainpath)
             else:
                 logger.warning(
-                    "Reviewed path was not recorded and does not exist "
-                    "as file: %(path)s",
-                    dict(path='source'/inpath) )
+                    "Reviewed source path was not recorded and "
+                    "does not exist as file: %(path)s",
+                    dict(path=inpath) )
             return
         # path exists
 
@@ -172,8 +172,10 @@ class MetadataManager(RecordsManager):
             subsuffix = subinpath.suffix
             subpath_is_dir = subpath.is_dir()
             def warn(message, subname=subname):
-                logger.warning( "<MAGENTA>%(path)s/<NOCOLOUR>: " +
-                    message, dict(path='source'/inpath, name=subname) )
+                logger.warning(
+                    "Source directory <MAGENTA>%(path)s<NOCOLOUR>: " +
+                        message,
+                    dict(path=inpath, name=subname) )
             if subname.startswith('.'):
                 warn("name <YELLOW>%(name)s<NOCOLOUR> has leading dot")
                 continue
@@ -247,9 +249,10 @@ class MetadataManager(RecordsManager):
 
     def _query_tex_figures(self, inpath, tex_content):
         if self._tex_includegraphics_pattern.search(tex_content) is not None:
-            logger.warning( "<MAGENTA>%(path)s<NOCOLOUR>: "
+            logger.warning(
+                "Source file <MAGENTA>%(path)s<NOCOLOUR>: "
                 r"<YELLOW>\includegraphics<NOCOLOUR> command found",
-                dict(path='source'/inpath) )
+                dict(path=inpath) )
         figure_refs = list()
         figure_refs_set = set()
         for match in self._tex_figure_pattern.finditer(tex_content):
@@ -261,10 +264,11 @@ class MetadataManager(RecordsManager):
                 continue
             figure_refs.append(figure_ref)
         if None in figure_refs_set:
-            logger.warning( "<MAGENTA>%(path)s<NOCOLOUR>: "
+            logger.warning(
+                "Source file <MAGENTA>%(path)s<NOCOLOUR>: "
                 "unable to parse some of the "
                 r"<YELLOW>\jeolmfigure<NOCOLOUR> commands",
-                dict(path='source'/inpath) )
+                dict(path=inpath) )
         if figure_refs:
             return {'$source$figures' : figure_refs}
         else:
@@ -321,9 +325,10 @@ class MetadataManager(RecordsManager):
             piece_io.name = inpath
             piece = jeolm.yaml.load(piece_io)
             if not isinstance(piece, dict) or len(piece) != 1:
-                logger.error( "<MAGENTA>%(path)s<NOCOLOUR>: "
+                logger.error(
+                    "Source file <MAGENTA>%(path)s<NOCOLOUR>: "
                     "unrecognized metadata piece",
-                    dict(path='source'/inpath) )
+                    dict(path=inpath) )
                 raise ValueError(piece)
             (key, value), = piece.items()
             if extend:
@@ -332,9 +337,10 @@ class MetadataManager(RecordsManager):
                 elif isinstance(value, dict):
                     metadata.setdefault(key, {}).update(value)
                 else:
-                    logger.error( "<MAGENTA>%(path)s<NOCOLOUR>: "
+                    logger.error(
+                        "Source file <MAGENTA>%(path)s<NOCOLOUR>: "
                         "extending value may be only a list or a dict",
-                        dict(path='source'/inpath) )
+                        dict(path=inpath) )
                     raise TypeError(value)
             else:
                 metadata[key] = value
@@ -400,9 +406,10 @@ class MetadataManager(RecordsManager):
         for match in self._broken_asy_access_pattern.finditer(asy_content):
             if self._asy_access_pattern.match(match.group()) is not None:
                 continue
-            logger.warning( "<MAGENTA>%(path)s<NOCOLOUR>: "
+            logger.warning(
+                "Source file <MAGENTA>%(path)s<NOCOLOUR>: "
                 "invalid 'access path' line spotted",
-                dict(path='source'/inpath) )
+                dict(path=inpath) )
         if accessed:
             return {'$figure$asy$accessed' : accessed}
         else:
