@@ -165,10 +165,6 @@ class DocumentNodeFactory:
         document_type = recipe['type']
         if document_type == 'regular':
             prebuild_method = self._prebuild_regular
-        elif document_type == 'standalone':
-            prebuild_method = self._prebuild_standalone
-        elif document_type == 'latexdoc':
-            prebuild_method = self._prebuild_latexdoc
         else:
             raise RuntimeError
         main_source_node, source_nodes, package_nodes, figure_nodes = \
@@ -301,68 +297,6 @@ class DocumentNodeFactory:
             figure_nodes.append(figure_node)
             build_dir_node.register_node(figure_node)
         return figure_nodes
-
-    def _prebuild_standalone(self, target, recipe,
-        *, build_dir_node
-    ):
-        build_dir = build_dir_node.path
-        main_source_node = jeolm.node.symlink.SymLinkedFileNode(
-            name='document:{}:source:main'.format(target),
-            source=self.source_node_factory(recipe['source']),
-            path=build_dir/'Main.tex',
-            needs=(build_dir_node,) )
-        build_dir_node.register_node(main_source_node)
-        return main_source_node, (), (), ()
-
-    def _prebuild_latexdoc(self, target, recipe,
-        *, build_dir_node
-    ):
-        build_dir = build_dir_node.path
-        package_name = recipe['name']
-        dtx_node = jeolm.node.symlink.SymLinkedFileNode(
-            name='document:{}:source:dtx'.format(target),
-            source=self.source_node_factory(recipe['source']),
-            path=build_dir/'{}.dtx'.format(package_name),
-            needs=(build_dir_node,) )
-        build_dir_node.register_node(dtx_node)
-        ins_node = jeolm.node.text.TextNode(
-            name='document:{}:source:ins'.format(target),
-            path=build_dir/'driver.ins',
-            text=self._substitute_driver_ins(package_name=package_name),
-            build_dir_node=build_dir_node )
-        build_dir_node.register_node(ins_node)
-        drv_node = jeolm.node.ProductFileNode(
-            name='document:{}:source:drv'.format(target),
-            source=dtx_node,
-            path=build_dir/'{}.drv'.format(package_name),
-            needs=(ins_node,) )
-        drv_node.set_subprocess_command(
-            ( 'latex', '-interaction=nonstopmode', '-halt-on-error',
-                ins_node.path.name ),
-            cwd=build_dir )
-        build_dir_node.register_node(drv_node)
-        sty_node = jeolm.node.symlink.SymLinkedFileNode(
-            name='document:{}:package'.format(target),
-            source=self.package_node_factory(target.path),
-            path=(build_dir/package_name).with_suffix('.sty'),
-            needs=(build_dir_node,) )
-        build_dir_node.register_node(sty_node)
-        return drv_node, (dtx_node,), (sty_node,), ()
-
-    _driver_ins_template = (
-        r"\input docstrip.tex" '\n'
-        r"\keepsilent" '\n'
-        r"\askforoverwritefalse" '\n'
-        r"\nopreamble" '\n'
-        r"\nopostamble" '\n'
-        r"\generate{"
-            r"\file{$package_name.drv}"
-                r"{\from{$package_name.dtx}{driver}}"
-        r"}" '\n'
-        r"\endbatchfile" '\n'
-        r"\endinput" '\n'
-    )
-    _substitute_driver_ins = Template(_driver_ins_template).substitute
 
 
 class PackageNodeFactory:

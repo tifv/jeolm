@@ -372,11 +372,11 @@ class RegularDriver(RecordsManager, metaclass=DriverMetaclass):
         'outname'
             string
         'type'
-            one of 'regular', 'standalone', 'latexdoc'
+            must be 'regular'
         'compiler'
             one of 'latex', 'pdflatex', 'xelatex', 'lualatex'
 
-        regular outrecord must also contain fields:
+        outrecord must also contain fields:
         'sources'
             {alias_name : inpath for each inpath}
             where alias_name is a filename with '.tex' extension, and inpath
@@ -385,20 +385,10 @@ class RegularDriver(RecordsManager, metaclass=DriverMetaclass):
             {alias_stem : (figure_path, figure_type) for each figure}
         'document'
             LaTeX document as a string
-
-        regular and latexdoc outrecord must contain field:
         'package_paths'
             {alias_name : package_path for each local package}
             (for latexdoc, this is the corresponding package)
 
-        standalone and latexdoc outrecord must also contain field:
-        'source'
-            inpath with '.tex' or '.dtx' extension, depending on outrecord
-            type
-
-        latexdoc outrecord must contain field:
-        'name'
-            package name, as in ProvidesPackage.
         """
         with suppress(KeyError):
             return self._cache['outrecords'][target]
@@ -407,24 +397,16 @@ class RegularDriver(RecordsManager, metaclass=DriverMetaclass):
         keys = outrecord.keys()
         if not keys >= {'outname', 'type', 'compiler'}:
             raise RuntimeError(keys)
-        if outrecord['type'] not in {'regular', 'standalone', 'latexdoc'}:
+        if outrecord['type'] not in {'regular'}:
             raise RuntimeError
-        if outrecord['type'] in {'regular'}:
-            if not keys >= {'sources', 'figures', 'document'}:
-                raise RuntimeError
-            for figure_path, figure_type in outrecord['figures'].values():
-                if figure_type not in { None,
-                        'asy', 'svg', 'eps', 'pdf', 'png', 'jpg'}:
-                    raise RuntimeError(figure_type)
-        if outrecord['type'] in {'regular', 'latexdoc'}:
-            if 'package_paths' not in keys:
-                raise RuntimeError
-        if outrecord['type'] in {'standalone', 'latexdoc'}:
-            if 'source' not in keys:
-                raise RuntimeError
-        if outrecord['type'] in {'latexdoc'}:
-            if 'name' not in keys:
-                raise RuntimeError
+        if not keys >= {'sources', 'figures', 'document'}:
+            raise RuntimeError
+        for figure_path, figure_type in outrecord['figures'].values():
+            if figure_type not in { None,
+                    'asy', 'svg', 'eps', 'pdf', 'png', 'jpg'}:
+                raise RuntimeError(figure_type)
+        if 'package_paths' not in keys:
+            raise RuntimeError
         if outrecord['compiler'] not in {
                 'latex', 'pdflatex', 'xelatex', 'lualatex' }:
             raise RuntimeError
