@@ -260,6 +260,7 @@ class RecordsManager:
 
     @classmethod
     def select_flagged_item(cls, mapping, stemkey, flags):
+        """Return (key, value) from mapping."""
         assert isinstance(stemkey, str), type(stemkey)
         assert stemkey.startswith('$'), stemkey
         assert isinstance(flags, FlagContainer), type(flags)
@@ -271,10 +272,11 @@ class RecordsManager:
                 continue
             flags_group = match.group('flags')
             flagset = flags.split_flags_group(flags_group)
+            assert isinstance(flagset, frozenset)
             if flagset in flagset_mapping:
                 raise RecordError("Clashing keys '{}' and '{}'"
                     .format(key, flagset_mapping[flagset][0]) )
             flagset_mapping[flagset] = (key, value)
-        return flags.select_matching_value( flagset_mapping,
-            default=(None, None) )
+        flagset_mapping.setdefault(frozenset(), (None, None))
+        return flags.select_matching_value(flagset_mapping)
 

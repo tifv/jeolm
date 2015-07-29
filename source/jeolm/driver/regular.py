@@ -923,18 +923,15 @@ class RegularDriver(RecordsManager, metaclass=DriverMetaclass):
         Return outrecord.
         """
         date_set = set()
-        additional_flags = set()
 
         outrecord = {'type' : 'regular'}
         outrecord.update(self._find_build_options(target, metarecord))
-        extended_target = target.flags_union(additional_flags)
-        extended_target.flags.utilize(additional_flags)
 
         # We must exhaust generate_metabody() to fill date_set
         metabody = list(self.generate_metabody(
-            extended_target, metarecord, date_set=date_set ))
+            target, metarecord, date_set=date_set ))
         metapreamble = list(self.generate_metapreamble(
-            extended_target, metarecord ))
+            target, metarecord ))
 
         sources = outrecord['sources'] = OrderedDict()
         figures = outrecord['figures'] = OrderedDict()
@@ -943,15 +940,16 @@ class RegularDriver(RecordsManager, metaclass=DriverMetaclass):
         compilers = list()
 
         metabody = list(self._digest_metabody(
-            extended_target, metabody,
+            target, metabody,
             sources=sources, figures=figures,
             metapreamble=metapreamble ))
         metapreamble = list(self._digest_metapreamble(
-            extended_target, metapreamble,
+            target, metapreamble,
             package_paths=package_paths,
             compilers=compilers ))
 
         target.check_unutilized_flags()
+        target.abandon_children()
 
         if 'outname' not in outrecord:
             outrecord['outname'] = self.select_outname(

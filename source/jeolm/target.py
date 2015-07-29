@@ -125,6 +125,9 @@ class Target:
                 .format(target=self)
             ) from error
 
+    def abandon_children(self):
+        self.flags.abandon_children()
+
     def __str__(self):
         return '{target.path!s}{target.flags:optional}'.format(target=self)
 

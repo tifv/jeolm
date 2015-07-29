@@ -1,4 +1,4 @@
-from functools import partial
+from functools import partial, wraps
 from collections.abc import Container
 import traceback
 
@@ -24,13 +24,31 @@ class UnutilizedFlagError(FlagError):
         super().__init__(message)
 
 
+# pylint: disable=protected-access
+
+def _cache_contains(method):
+    """Decorator factory for NodeFactory classes methods."""
+    @wraps(method)
+    def wrapper(self, flag, *, utilize=True):
+        key = (flag, utilize)
+        try:
+            return self._contains_cache[key]
+        except KeyError:
+            pass
+        answer = self._contains_cache[key] = \
+            method(self, flag, utilize=utilize)
+        return answer
+    return wrapper
+
+# pylint: enable=protected-access
+
 class FlagContainer(Container):
     """
     An immutable set-like container, which tracks usage of its elements.
     """
     __slots__ = [
         'flags', 'utilized_flags', 'children',
-        'origin', '_as_frozenset' ]
+        'origin', '_as_frozenset', '_contains_cache' ]
 
     def __init__(self, iterable=(), *, origin=None):
         super().__init__()
@@ -38,6 +56,7 @@ class FlagContainer(Container):
         if any(flag.startswith('-') for flag in flags):
             raise RuntimeError(flags)
         self._as_frozenset = None
+        self._contains_cache = dict()
         self.utilized_flags = set()
         self.children = []
         self.origin = origin
@@ -53,52 +72,63 @@ class FlagContainer(Container):
             return NotImplemented
         return self.as_frozenset == other.as_frozenset
 
-    def __contains__(self, flag,
-        *, utilize_present=True, utilize_missing=True, utilize=None
-    ):
-        if utilize is not None:
-            utilize_present = utilize_missing = utilize
+    def __contains__(self, flag, *, utilize=True):
         if not flag.startswith('-'):
-            return self._contains(flag,
-                utilize_present=utilize_present,
-                utilize_missing=utilize_missing )
+            return self._contains(flag, utilize=utilize)
         else:
-            if flag.startswith('--'):
+            anti_flag = flag[1:]
+            if anti_flag.startswith('-'):
                 raise FlagError(flag)
-            return not self._contains(flag[1:],
-                utilize_present=utilize_missing,
-                utilize_missing=utilize_present )
+            return not self._contains(anti_flag, utilize=utilize)
 
-    def _contains(self, flag,
-        *, utilize_present=True, utilize_missing=True
-    ):
+    @_cache_contains
+    def _contains(self, flag, *, utilize=True):
+        assert not flag.startswith('-'), flag
+        return self._contains_self(flag, utilize=utilize)
+
+    def _contains_self(self, flag, *, utilize=True):
         assert not flag.startswith('-'), flag
         if flag in self.flags:
-            if utilize_present:
+            if utilize:
                 self.utilized_flags.add(flag)
             return True
         return False
 
-    def issuperset(self, iterable, **kwargs):
-        contains = partial(self.__contains__, **kwargs)
+    def issuperset(self, iterable, utilize=True):
+        contains = partial(self.__contains__, utilize=utilize)
         return all([contains(flag) for flag in iterable])
 
-    def intersection(self, iterable, **kwargs):
-        contains = partial(self.__contains__, **kwargs)
+    def intersection(self, iterable, utilize=True):
+        contains = partial(self.__contains__, utilize=utilize)
         return {flag for flag in iterable if contains(flag)}
 
-    def utilize(self, iterable):
+    def utilize(self, flag):
         """
-        Ensure that iterable elements are present in container and utilized.
+        Ensure that flag is present in the container and utilized.
+
+        Raise RuntimeError if flag is missing from the container.
         """
-        if not self.issuperset(iterable):
-            raise RuntimeError(self, iterable)
+        if flag not in self:
+            raise RuntimeError(self, flag)
+
+    def utilize_flags(self, iterable):
+        for flag in iterable:
+            self.utilize(flag)
+
+    def utilize_missing(self, flag):
+        if flag in self:
+            raise RuntimeError(self, flag)
+
+    def utilize_missing_flags(self, iterable):
+        for flag in iterable:
+            self.utilize_missing(flag)
 
     @property
     def as_frozenset(self):
         as_frozenset = self._as_frozenset
         if as_frozenset is None:
-            as_frozenset = self._as_frozenset = self.reconstruct_as_frozenset()
+            as_frozenset = self._as_frozenset = \
+                self.reconstruct_as_frozenset()
         return as_frozenset
 
     #@property
@@ -106,7 +136,6 @@ class FlagContainer(Container):
     #    return set(self.as_frozenset)
 
     def reconstruct_as_frozenset(self):
-        # Useful for overriding
         return self.flags
 
     def check_condition(self, condition):
@@ -134,38 +163,42 @@ class FlagContainer(Container):
                 raise FlagError(
                     "Condition, if a dict, must have key 'not' or 'or'" )
 
-    def select_matching_value(self, flagset_mapping, default=None):
-        issuperset = partial( self.issuperset,
-            utilize_present=False, utilize_missing=True )
+    def select_matching_value(self, flagset_mapping):
+        issuperset = partial(self.issuperset, utilize=False)
+        intersection = partial(self.intersection, utilize=False)
         matched_items = dict()
         for flagset, value in flagset_mapping.items():
             if not isinstance(flagset, frozenset):
                 raise RuntimeError(type(flagset))
             if not issuperset(flagset):
+                missing_flags = flagset - intersection(flagset)
+                if len(missing_flags) < 2:
+                    missing_flag, = missing_flags
+                    self.utilize_missing(missing_flag)
                 continue
-            overmatched = { a_flagset
-                for a_flagset in matched_items
-                if a_flagset < flagset }
-            overmatching = { a_flagset
-                for a_flagset in matched_items
-                if a_flagset > flagset }
-            assert not overmatching or not overmatched
-            if overmatching:
+            lesser_flagsets = { other_flagset
+                for other_flagset in matched_items
+                if other_flagset < flagset }
+            greater_flagsets = { other_flagset
+                for other_flagset in matched_items
+                if other_flagset > flagset }
+            assert not lesser_flagsets or not greater_flagsets
+            if greater_flagsets:
                 continue
-            for a_flagset in overmatched:
-                del matched_items[a_flagset]
+            for other_flagset in lesser_flagsets:
+                del matched_items[other_flagset]
             matched_items[flagset] = value
         if not matched_items:
-            return default
+            raise FlagError("No matches")
         if len(matched_items) > 1:
             raise FlagError(
                 "Multiple flag sets matched, ambiguity unresolved: {}"
                 .format(', '.join(
                     "{!r}".format(flagset) for flagset in matched_items
                 )) )
-        (matched_flagset, matched_value), = matched_items.items()
-        self.utilize(matched_flagset)
-        return matched_value
+        (flagset, value), = matched_items.items()
+        self.utilize_flags(flagset)
+        return value
 
     def union(self, iterable, *, overadd=True, origin=None):
         assert not isinstance(iterable, str)
@@ -224,6 +257,12 @@ class FlagContainer(Container):
         for child in self.children:
             child.check_unutilized_flags()
 
+    def abandon_children(self):
+        """Break some references."""
+        for child in self.children:
+            child.abandon_children()
+        self.children.clear()
+
     @classmethod
     def split_flags_group(cls, flags_group):
         if flags_group is None:
@@ -268,20 +307,29 @@ class ChildFlagContainer(FlagContainer):
         self.parent = parent
 
     def __repr__(self):
-        return ( '{flags.parent!r}.{flags.constructor_name}({flags._flags_repr})'
+        return (
+            '{flags.parent!r}.{flags.constructor_name}'
+            '({flags._flags_repr})'
             .format(flags=self) )
 
 class PositiveFlagContainer(ChildFlagContainer):
     __slots__ = []
     constructor_name = 'union'
 
-    def _contains(self, flag, **kwargs):
-        if super()._contains(flag, **kwargs):
+    # pylint: disable=protected-access
+
+    # Override
+    @_cache_contains
+    def _contains(self, flag, *, utilize=True):
+        assert not flag.startswith('-'), flag
+        if self.parent._contains(flag, utilize=utilize):
             return True
-        elif self.parent._contains(flag, **kwargs):
+        elif self._contains_self(flag, utilize=utilize):
             return True
         else:
             return False
+
+    # pylint: enable=protected-access
 
     def reconstruct_as_frozenset(self):
         return self.parent.as_frozenset.union(self.flags)
@@ -290,19 +338,20 @@ class NegativeFlagContainer(ChildFlagContainer):
     __slots__ = []
     constructor_name = 'difference'
 
-    def _contains(self, flag,
-        *, utilize_present=True, utilize_missing=True
-    ):
-        if super()._contains( flag,
-            utilize_present=utilize_missing, utilize_missing=utilize_present
-        ):
+    # pylint: disable=protected-access
+
+    # Override
+    @_cache_contains
+    def _contains(self, flag, *, utilize=True):
+        assert not flag.startswith('-'), flag
+        if not self.parent._contains(flag, utilize=utilize):
             return False
-        elif self.parent._contains( flag,
-            utilize_present=utilize_present, utilize_missing=utilize_missing
-        ):
-            return True
+        elif self._contains_self(flag, utilize=utilize):
+            return False
         else:
-            return False
+            return True
+
+    # pylint: enable=protected-access
 
     @property
     def unutilized_flags(self):
