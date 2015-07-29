@@ -2,10 +2,14 @@ style:
   source/_style/core.yaml: style-core.yaml
   source/_style/jeolm.dtx: jeolm.dtx
   source/_style/jeolm.yaml: jeolm.yaml
-figure-style:
-  source/_style/jeolm.asy: jeolm.asy
-gitignore:
-  .gitignore: gitignore
-groups:
+
+style-groups:
   source/_style/jeolm-groups.sty: jeolm-groups.sty
   source/_style/jeolm-groups.yaml: jeolm-groups.yaml
+
+figure-style:
+  source/_style/jeolm.asy: jeolm.asy
+
+gitignore:
+  .gitignore: gitignore
+

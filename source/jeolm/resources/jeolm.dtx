@@ -301,6 +301,25 @@
 % \end{macro}
 % \end{macro}
 %
+% \subsection{Labels}
+%
+% \begin{macro}{\jeolmlabel}
+% \begin{macro}{\jeolmref}
+% \begin{environment}{jeolmlabelspace}
+% Redirect labels, allowing multiple inclusion of source files (provided that
+% these files use |\jeolmlabel| and |\jeolmref| instead of normal commands).
+%    \begin{macrocode}
+\newcommand\jeolmlabel[1]{\label{#1}}
+\newcommand\jeolmref[1]{\ref{#1}}
+\newenvironment{jeolmlabelspace}[1]{%
+    \renewcommand\jeolmlabel[1]{\label{#1:##1}}%
+    \renewcommand\jeolmref[1]{\ref{#1:##1}}%
+}{}
+%    \end{macrocode}
+% \end{environment}
+% \end{macro}
+% \end{macro}
+%
 % \subsection{Headers}
 %
 % \begin{macro}{\jeolmheadertemplate}

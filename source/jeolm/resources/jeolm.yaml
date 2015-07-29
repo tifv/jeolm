@@ -1,5 +1,6 @@
 jeolm:
   $target$able: on
+
   $build$style:
   - compiler: pdflatex
   - document class: ltxdoc
@@ -18,6 +19,7 @@ jeolm:
       \makeatother
   - verbatim: \EnableCrossrefs
   - verbatim: \CodelineIndex
+
   $build$matter:
   - delegate: .[no-header]
 

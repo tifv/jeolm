@@ -1,3 +1,5 @@
+# vim: set foldmethod=marker :
+
 $target$able: off
 
 $style:
@@ -12,37 +14,28 @@ $style:
     condition: {or: [latex, pdflatex]}
   - package: amsmath
   - package: amssymb
+  - package: multicol
+  - package: graphicx
 
   - delegate: jeolm
 
-  - delegate: font-config
-    condition: {not: no-font-config}
-  - delegate: math-font-config
-    condition: {not: no-font-config}
-  - delegate: language-config
-    condition: {not: no-language-config}
+  - delegate: text-config
 
-  - verbatim: '\pagestyle{empty}'
-    provide: pagestyle
-    condition: {not: no-pagestyle}
+  - delegate: page-config
 
-  - delegate: optional
+  - delegate: hyperref
+
+# Compiler selection {{{1
 
 $style[-compiler-selection-guard]:
   - delegate: compiler-selection[compiler-selection-guard]
 
-$style[-font-selection-guard,compiler-selection-guard]:
-  - delegate: font-selection[font-selection-guard]
-
-$style[-language-selection-guard,font-selection-guard]:
-  - delegate: language-selection[language-selection-guard]
-
-compiler-selection:
+compiler-selection: # {{{
 
   $style:
   - delegate: .[default-compiler]
   $style[default-compiler]:
-  - delegate: .[xelatex,-default-compiler]
+  - delegate: .[pdflatex,-default-compiler]
 
   $style[latex]:
   - delegate: ..
@@ -53,63 +46,9 @@ compiler-selection:
   $style[lualatex]:
   - delegate: ..
 
-font-selection:
+# }}}
 
-  $style[latex]:
-  - delegate: ..
-  $style[pdflatex]:
-  - delegate: ..
-
-  $style:
-  - delegate: .[default-font]
-  $style[default-font]:
-  - delegate: .[computer-modern,computer-modern-math,-default-font]
-
-  $style[computer-modern]:
-  - delegate: .[computer-modern-math]
-  $style[computer-modern,computer-modern-math]:
-  - delegate: ..
-  $style[computer-modern,latin-modern]:
-  - delegate: ..
-
-  $style[liberation]:
-  - delegate: .[computer-modern-math]
-  $style[liberation,computer-modern-math]:
-  - delegate: ..
-  $style[liberation,latin-modern]:
-  - delegate: ..
-  $style[liberation,xits-math]:
-  - delegate: ..
-
-  $style[times]:
-  - delegate: ..
-  $style[times,xits-math]:
-  - delegate: ..
-
-  $style[xits]:
-  - delegate: .[xits-math]
-  $style[xits,xits-math]:
-  - delegate: ..
-
-  $style[palatino]:
-  - delegate: .[asana-math]
-  $style[palatino,asana-math]:
-  - delegate: ..
-
-language-selection:
-
-  $style:
-  - delegate: .[default-language]
-  $style[default-language]:
-  - delegate: .[russian,-default-language]
-
-  $style[russian]:
-  - delegate: ..
-
-  $style[english]:
-  - delegate: ..
-
-compiler:
+compiler: # {{{
   $style[latex]:
   - compiler: latex
   $style[pdflatex]:
@@ -118,368 +57,572 @@ compiler:
   - compiler: xelatex
   $style[lualatex]:
   - compiler: lualatex
+# }}}
 
-font-config:
-  $style[latex]:
-  - delegate: fontenc
-  $style[pdflatex]:
-  - delegate: fontenc
-  $style[xelatex]:
-  - delegate: fontspec
-  $style[lualatex]:
-  - delegate: fontspec
+# }}}1
 
-  fontenc:
-    $style:
-    - package: fontenc
-      options: [T2A]
+# Text configuration (fonts, language, paragraph) {{{1
+text-config:
 
-  fontspec:
-    $style:
-    - package: fontspec
-      options: [no-math]
-    - verbatim:
-        \defaultfontfeatures{Ligatures=TeX,Scale=MatchLowercase}
-    - delegate: setfont
-    - verbatim: |-
-        \let\cyrillicfont\normalfont
-        \let\cyrillicfontsf\sffamily
-        \let\cyrillicfonttt\ttfamily
-    setfont:
-      $style:
-      - error: core misconfiguration
-      $style[computer-modern]:
-      - delegate: computer-modern-unicode
-      $style[liberation]:
-      - delegate: liberation
-      $style[xits]:
-      - delegate: xits
-      - delegate: croscorefonts/arimo
-      - delegate: liberation/mono
-      $style[times]:
-      - delegate: corefonts/times
-      - delegate: corefonts/arial
-      - delegate: liberation/mono
-      $style[palatino]:
-      - delegate: palladio
-      - delegate: croscorefonts/arimo
-      - delegate: croscorefonts/cousine
-      computer-modern-unicode:
-        $style:
-        - delegate: serif
-        - delegate: sans-serif
-        - delegate: typewriter
-        serif:
-          $style:
-          - verbatim: \setmainfont{CMU Serif}
-            provide: setmainfont
-        sans-serif:
-          $style:
-          - verbatim: \setsansfont{CMU Sans Serif}
-            provide: setsansfont
-        typewriter:
-          $style:
-          - verbatim: \setmonofont{CMU Typewriter Text}
-            provide: setmonofont
-      xits:
-        # Problem with combining accents
-        $style:
-        - verbatim: \setmainfont{XITS}
-          provide: setmainfont
-      dejavu:
-        $style:
-        - delegate: serif
-        - delegate: sans
-        - delegate: sans-mono
-        serif:
-          $style:
-          - verbatim: \setmainfont{DejaVu Serif}
-            provide: setmainfont
-          condensed:
-            $style:
-            - verbatim: \setmainfont{DejaVu Serif Condensed}
-              provide: setmainfont
-        sans:
-          $style:
-          - verbatim: \setsansfont{DejaVu Sans}
-            provide: setsansfont
-          condensed:
-            $style:
-            - verbatim: \setsansfont{DejaVu Sans Condensed}
-              provide: setsansfont
-        sans-mono:
-          $style:
-          - verbatim: \setmonofont{DejaVu Sans Mono}
-            provide: setmonofont
-      liberation:
-        $style:
-        - delegate: serif
-        - delegate: sans
-        - delegate: mono
-        serif:
-          $style:
-          - verbatim: \setmainfont{Liberation Serif}
-            provide: setmainfont
-        sans:
-          $style:
-          - verbatim: \setsansfont{Liberation Sans}
-            provide: setsansfont
-        mono:
-          $style:
-          - verbatim: \setmonofont{Liberation Mono}
-            provide: setmonofont
-      tex-gyre:
-        # No cyrillic
-        termes:
-          $style:
-          - verbatim: \setmainfont{TeX Gyre Termes}
-            provide: setmainfont
-        pagella:
-          $style:
-          - verbatim: \setmainfont{TeX Gyre Pagella}
-            provide: setmainfont
-        bonum:
-          $style:
-          - verbatim: \setmainfont{TeX Gyre Bonum}
-            provide: setmainfont
-        schola:
-          $style:
-          - verbatim: \setmainfont{TeX Gyre Schola}
-            provide: setmainfont
-        heros:
-          $style:
-          - verbatim: \setsansfont{TeX Gyre Heros}
-            provide: setsansfont
-        adventor:
-          $style:
-          - verbatim: \setsansfont{TeX Gyre Adventor}
-            provide: setsansfont
-        cursor:
-          $style:
-          - verbatim: \setmonofont{TeX Gyre Cursor}
-            provide: setmonofont
-      corefonts:
-        $style:
-        - delegate: times
-        - delegate: arial
-        - delegate: courier
-        times:
-          $style:
-          - verbatim: \setmainfont{Times New Roman}
-            provide: setmainfont
-        arial:
-          $style:
-          - verbatim: \setsansfont{Arial}
-            provide: setsansfont
-        courier:
-          $style:
-          - verbatim: \setmonofont{Courier New}
-            provide: setmonofont
-      palladio:
-        # Problem with combining accents
-        $style:
-        - verbatim: \setmainfont{URW Palladio L}
-          provide: setmainfont
-      croscorefonts:
-        $style:
-        - delegate: tinos
-        - delegate: arimo
-        - delegate: cousine
-        tinos:
-          $style:
-          - verbatim: \setmainfont{Tinos}
-            provide: setmainfont
-        arimo:
-          $style:
-          - verbatim: \setsansfont{Arimo}
-            provide: setsansfont
-        cousine:
-          $style:
-          - verbatim: \setmonofont{Cousine}
-            provide: setmonofont
-
-math-font-config:
-
-  $style[latex]:
-    &default-math-font-config
-    - delegate: swap-vargreek/computer-modern
-    - delegate: swap-vargreek/unicode
-    - delegate: ineq-slanted
-      condition: russian
-  $style[pdflatex]:
-    *default-math-font-config
-  $style[xelatex,computer-modern-math]:
-    *default-math-font-config
-  $style[lualatex,computer-modern-math]:
-    *default-math-font-config
-
-  $style[lualatex]:
-    &unicode-math-font-config
-    - delegate: unicode-math
-    - delegate: swap-vargreek/unicode
-    - delegate: ineq-slanted
-      condition: russian
-  $style[xelatex]:
-    *unicode-math-font-config
-
-  swap-vargreek:
-    computer-modern:
-      $style:
-      - verbatim: \AtBeginDocument{\swapvargreek{phi}\swapvargreek{epsilon}}
-    unicode:
-      $style:
-      - verbatim: \AtBeginDocument{\swapvargreek{kappa}}
-
-  ineq-slanted:
-    $style:
-    - verbatim: \AtBeginDocument{\let\geq\geqslant\let\leq\leqslant}
-
-  unicode-math:
-    $style:
-    - package: unicode-math
-      options:
-      - vargreek-shape=unicode
-    - delegate: setfont
-    setfont:
-      $style:
-      - error: core misconfiguration
-      $style[latin-modern]:
-      - delegate: latin-modern
-      $style[times,-xits-math]:
-      - delegate: tex-gyre/termes
-      $style[xits-math]:
-      - delegate: xits
-      $style[asana-math]:
-      - delegate: asana-math
-      latin-modern:
-        $style:
-        - verbatim: \setmathfont{Latin Modern Math}
-          provide: setmathfont
-      xits:
-        # too small 'divide by' operator
-        $style:
-        - verbatim: \setmathfont{XITS Math}
-          provide: setmathfont
-      asana-math:
-        $style:
-        - verbatim: \setmathfont{Asana Math}
-          provide: setmathfont
-      tex-gyre:
-        termes:
-          $style:
-          - verbatim: \setmathfont{TeX Gyre Termes Math}
-            provide: setmathfont
-        pagella:
-          $style:
-          - verbatim: \setmathfont{TeX Gyre Pagella Math}
-            provide: setmathfont
-
-language-config:
-  $style[latex]:
-  - delegate: babel
-  $style[pdflatex]:
-  - delegate: babel
-  $style[xelatex]:
-  - delegate: polyglossia
-  $style[lualatex]:
-  - delegate: polyglossia
-
-  babel:
-    $style:
-    - error: core misconfiguration
-    $style[russian]:
-    - package: babel
-      options: [russian]
-    $style[english]:
-    - package: babel
-      options: [english]
-
-  polyglossia:
-    $style:
-    - package: polyglossia
-    - delegate: setlanguage
-    setlanguage:
-      $style:
-      - error: core misconfiguration
-      $style[russian]:
-      - verbatim: \setdefaultlanguage{russian}
-        provide: setdefaultlanguage
-      $style[english]:
-      - verbatim: \setdefaultlanguage{english}
-        provide: setdefaultlanguage
-
-optional:
   $style:
+  - delegate: font-config
+    condition: {not: no-font-config}
+  - delegate: math-font-config
+    condition: {not: no-font-config}
+  - delegate: language-config
+    condition: {not: no-language-config}
+  - delegate: shrink-formulas
+    condition: shrink-formulas
+  - package: parskip
+    condition: {not: no-parskip}
 
-    - delegate: geometry
-      condition: {not: no-package-geometry}
+  $style[-font-selection-guard]:
+    - delegate: font-selection[font-selection-guard]
 
-    - package: parskip
-      condition: {not: no-package-parskip}
-    - package: multicol
-      condition: {not: no-package-multicol}
-    - package: graphicx
-      condition: {not: no-package-graphicx}
+  $style[-language-selection-guard,font-selection-guard]:
+    - delegate: language-selection[language-selection-guard]
+
+  font-selection: # {{{
+
+    $style[latex]:
+    - delegate: ..
+    $style[pdflatex]:
+    - delegate: ..
+
+    $style:
+    - delegate: .[default-font]
+    $style[default-font]:
+    - delegate: .[computer-modern,computer-modern-math,-default-font]
+
+    $style[computer-modern]:
+    - delegate: .[computer-modern-math]
+    $style[computer-modern,computer-modern-math]:
+    - delegate: ..
+    $style[computer-modern,latin-modern]:
+    - delegate: ..
+
+    $style[liberation]:
+    - delegate: .[computer-modern-math]
+    $style[liberation,computer-modern-math]:
+    - delegate: ..
+    $style[liberation,latin-modern]:
+    - delegate: ..
+    $style[liberation,xits-math]:
+    - delegate: ..
+
+    $style[times]:
+    - delegate: ..
+    $style[times,xits-math]:
+    - delegate: ..
+
+    $style[xits]:
+    - delegate: .[xits-math]
+    $style[xits,xits-math]:
+    - delegate: ..
+
+    $style[palatino]:
+    - delegate: .[asana-math]
+    $style[palatino,asana-math]:
+    - delegate: ..
+
+  # }}}
+
+  language-selection: # {{{
+
+    $style:
+    - delegate: .[default-language]
+    $style[default-language]:
+    - delegate: .[russian,-default-language]
+
+    $style[russian]:
+    - delegate: ..
+
+    $style[english]:
+    - delegate: ..
+
+  # }}}
+
+  font-config: # {{{
+
+    $style[latex]:
+    - delegate: fontenc
     - package: anyfontsize
-      condition: {and: [
-        {not: no-package-anyfontsize},
-        {or: [latex, pdflatex]}
-      ]}
+    $style[pdflatex]:
+    - delegate: fontenc
+    - package: anyfontsize
+    $style[xelatex]:
+    - delegate: fontspec
+    $style[lualatex]:
+    - delegate: fontspec
 
-    - delegate: pgfpages
-      condition: {not: no-package-pgfpages}
-    - delegate: hyperref
-      condition: {not: no-package-hyperref}
-    - delegate: shrink-formulas
-      condition: shrink-formulas
+    fontenc: # {{{
+      $style:
+      - package: fontenc
+        options: [T2A]
+    # }}}
 
-  $style[-print,-paper-guard]:
-  - delegate: .[a5paper,paper-guard]
-    condition: {not: {or: [a3paper, a4paper, a5paper, a6paper]}}
-  - delegate: .[paper-guard]
-    condition: {or: [a3paper, a4paper, a5paper, a6paper]}
+    fontspec: # {{{
 
-  $style[print,tiled4,-paper-guard,-layout-guard]:
-  - delegate: .[a6paper,landscape,4-on-1,-tiled4]
+      $style:
+      - package: fontspec
+        options: [no-math]
+      - verbatim:
+          \defaultfontfeatures{Ligatures=TeX,Scale=MatchLowercase}
+      - delegate: setfont
+      - verbatim: |-
+          \let\cyrillicfont\normalfont
+          \let\cyrillicfontsf\sffamily
+          \let\cyrillicfonttt\ttfamily
 
-  $style[print,-paper-guard,-layout-guard]:
-  - delegate: .[a5paper,paper-guard]
-    condition: {not: {or: [a3paper, a4paper, a5paper, a6paper]}}
-  - delegate: .[paper-guard]
-    condition: {or: [a3paper, a4paper, a5paper, a6paper]}
+      setfont: # {{{
 
-  $style[print,paper-guard,-layout-guard]:
-  - delegate: .[2-on-1,layout-guard]
-    condition: {and: [
-      {not: {or: [resize-to, 2-on-1, 4-on-1]}},
-      a5paper,
-    ]}
-  - delegate: .[4-on-1,layout-guard]
-    condition: {and: [
-      {not: {or: [resize-to, 2-on-1, 4-on-1]}},
-      a6paper,
-    ]}
-  - delegate: .[layout-guard]
-    condition: {and: [
-      {not: {or: [resize-to, 2-on-1, 4-on-1]}},
-      {not: {or: [a5paper, a6paper]}},
-    ]}
-  - delegate: .[layout-guard]
-    condition: {or: [resize-to, 2-on-1, 4-on-1]}
+        $style:
+        - error: core misconfiguration
 
-  geometry:
+        $style[computer-modern]:
+        - delegate: computer-modern-unicode
+
+        $style[liberation]:
+        - delegate: liberation
+
+        $style[xits]:
+        - delegate: xits
+        - delegate: croscorefonts/arimo
+        - delegate: liberation/mono
+
+        $style[times]:
+        - delegate: corefonts/times
+        - delegate: corefonts/arial
+        - delegate: liberation/mono
+
+        $style[palatino]:
+        - delegate: palladio
+        - delegate: croscorefonts/arimo
+        - delegate: croscorefonts/cousine
+
+        computer-modern-unicode: # {{{
+          $style:
+          - delegate: serif
+          - delegate: sans-serif
+          - delegate: typewriter
+          serif:
+            $style:
+            - verbatim: \setmainfont{CMU Serif}
+              provide: setmainfont
+          sans-serif:
+            $style:
+            - verbatim: \setsansfont{CMU Sans Serif}
+              provide: setsansfont
+          typewriter:
+            $style:
+            - verbatim: \setmonofont{CMU Typewriter Text}
+              provide: setmonofont
+        # }}}
+
+        xits: # {{{
+          # Problem with combining accents
+          $style:
+          - verbatim: \setmainfont{XITS}
+            provide: setmainfont
+        # }}}
+
+        dejavu: # {{{
+          $style:
+          - delegate: serif
+          - delegate: sans
+          - delegate: sans-mono
+          serif:
+            $style:
+            - verbatim: \setmainfont{DejaVu Serif}
+              provide: setmainfont
+            condensed:
+              $style:
+              - verbatim: \setmainfont{DejaVu Serif Condensed}
+                provide: setmainfont
+          sans:
+            $style:
+            - verbatim: \setsansfont{DejaVu Sans}
+              provide: setsansfont
+            condensed:
+              $style:
+              - verbatim: \setsansfont{DejaVu Sans Condensed}
+                provide: setsansfont
+          sans-mono:
+            $style:
+            - verbatim: \setmonofont{DejaVu Sans Mono}
+              provide: setmonofont
+        # }}}
+
+        liberation: # {{{
+          $style:
+          - delegate: serif
+          - delegate: sans
+          - delegate: mono
+          serif:
+            $style:
+            - verbatim: \setmainfont{Liberation Serif}
+              provide: setmainfont
+          sans:
+            $style:
+            - verbatim: \setsansfont{Liberation Sans}
+              provide: setsansfont
+          mono:
+            $style:
+            - verbatim: \setmonofont{Liberation Mono}
+              provide: setmonofont
+        # }}}
+
+        tex-gyre: # {{{
+          # No cyrillic
+          termes:
+            $style:
+            - verbatim: \setmainfont{TeX Gyre Termes}
+              provide: setmainfont
+          pagella:
+            $style:
+            - verbatim: \setmainfont{TeX Gyre Pagella}
+              provide: setmainfont
+          bonum:
+            $style:
+            - verbatim: \setmainfont{TeX Gyre Bonum}
+              provide: setmainfont
+          schola:
+            $style:
+            - verbatim: \setmainfont{TeX Gyre Schola}
+              provide: setmainfont
+          heros:
+            $style:
+            - verbatim: \setsansfont{TeX Gyre Heros}
+              provide: setsansfont
+          adventor:
+            $style:
+            - verbatim: \setsansfont{TeX Gyre Adventor}
+              provide: setsansfont
+          cursor:
+            $style:
+            - verbatim: \setmonofont{TeX Gyre Cursor}
+              provide: setmonofont
+        # }}}
+
+        corefonts: # {{{
+          $style:
+          - delegate: times
+          - delegate: arial
+          - delegate: courier
+          times:
+            $style:
+            - verbatim: \setmainfont{Times New Roman}
+              provide: setmainfont
+          arial:
+            $style:
+            - verbatim: \setsansfont{Arial}
+              provide: setsansfont
+          courier:
+            $style:
+            - verbatim: \setmonofont{Courier New}
+              provide: setmonofont
+        # }}}
+
+        palladio: # {{{
+          # Problem with combining accents
+          $style:
+          - verbatim: \setmainfont{URW Palladio L}
+            provide: setmainfont
+        # }}}
+
+        croscorefonts: # {{{
+          $style:
+          - delegate: tinos
+          - delegate: arimo
+          - delegate: cousine
+          tinos:
+            $style:
+            - verbatim: \setmainfont{Tinos}
+              provide: setmainfont
+          arimo:
+            $style:
+            - verbatim: \setsansfont{Arimo}
+              provide: setsansfont
+          cousine:
+            $style:
+            - verbatim: \setmonofont{Cousine}
+              provide: setmonofont
+        # }}}
+
+      # }}}
+
+    # }}}
+
+  # }}}
+
+  math-font-config: # {{{
+
+    $style[latex]:
+      &default-math-font-config
+      - delegate: swap-vargreek/computer-modern
+      - delegate: swap-vargreek/unicode
+      - delegate: ineq-slanted
+        condition: russian
+    $style[pdflatex]:
+      *default-math-font-config
+    $style[xelatex,computer-modern-math]:
+      *default-math-font-config
+    $style[lualatex,computer-modern-math]:
+      *default-math-font-config
+
+    $style[lualatex]:
+      &unicode-math-font-config
+      - delegate: unicode-math
+      - delegate: swap-vargreek/unicode
+      - delegate: ineq-slanted
+        condition: russian
+    $style[xelatex]:
+      *unicode-math-font-config
+
+    swap-vargreek: # {{{
+      computer-modern:
+        $style:
+        - verbatim: \AtBeginDocument{\swapvargreek{phi}\swapvargreek{epsilon}}
+      unicode:
+        $style:
+        - verbatim: \AtBeginDocument{\swapvargreek{kappa}}
+    # }}}
+
+    ineq-slanted:
+      $style:
+      - verbatim: \AtBeginDocument{\let\geq\geqslant\let\leq\leqslant}
+
+    unicode-math: # {{{
+
+      $style:
+      - package: unicode-math
+        options:
+        - vargreek-shape=unicode
+      - delegate: setfont
+
+      setfont: # {{{
+
+        $style:
+        - error: core misconfiguration
+
+        $style[latin-modern]:
+        - delegate: latin-modern
+
+        $style[times,-xits-math]:
+        - delegate: tex-gyre/termes
+
+        $style[xits-math]:
+        - delegate: xits
+
+        $style[asana-math]:
+        - delegate: asana-math
+
+        latin-modern: # {{{
+          $style:
+          - verbatim: \setmathfont{Latin Modern Math}
+            provide: setmathfont
+        # }}}
+
+        xits: # {{{
+          # too small 'divide by' operator
+          $style:
+          - verbatim: \setmathfont{XITS Math}
+            provide: setmathfont
+        # }}}
+
+        asana-math: # {{{
+          $style:
+          - verbatim: \setmathfont{Asana Math}
+            provide: setmathfont
+        # }}}
+
+        tex-gyre: # {{{
+          termes:
+            $style:
+            - verbatim: \setmathfont{TeX Gyre Termes Math}
+              provide: setmathfont
+          pagella:
+            $style:
+            - verbatim: \setmathfont{TeX Gyre Pagella Math}
+              provide: setmathfont
+        # }}}
+
+      # }}}
+
+    # }}}
+
+  # }}}
+
+  language-config: # {{{
+
+    $style[latex]:
+    - delegate: babel
+    $style[pdflatex]:
+    - delegate: babel
+    $style[xelatex]:
+    - delegate: polyglossia
+    $style[lualatex]:
+    - delegate: polyglossia
+
+    babel: # {{{
+
+      $style:
+      - error: core misconfiguration
+
+      $style[russian]:
+      - package: babel
+        options: [russian]
+
+      $style[english]:
+      - package: babel
+        options: [english]
+
+    # }}}
+
+    polyglossia: # {{{
+
+      $style:
+      - package: polyglossia
+      - delegate: setlanguage
+
+      setlanguage: # {{{
+
+        $style:
+        - error: core misconfiguration
+
+        $style[russian]:
+        - verbatim: \setdefaultlanguage{russian}
+          provide: setdefaultlanguage
+
+        $style[english]:
+        - verbatim: \setdefaultlanguage{english}
+          provide: setdefaultlanguage
+
+      # }}}
+
+    # }}}
+
+  # }}}
+
+  shrink-formulas: # {{{
+    $style:
+    - verbatim: |-
+        \AtBeginDocument{\abovedisplayskip=10pt minus 7pt}
+        \AtBeginDocument{\belowdisplayskip=\abovedisplayskip}
+  # }}}
+
+# }}}1
+
+# Page configuration (size, orientation, layout) {{{1
+page-config:
+
+  $style:
+  - verbatim: '\pagestyle{empty}'
+    provide: pagestyle
+    condition: {not: no-pagestyle}
+  - delegate: geometry
+    condition: {not: no-geometry}
+  - delegate: pgfpages
+    condition: {not: no-pgfpages}
+
+  $style[-paper-selection-guard]:
+    - delegate: paper-selection[paper-selection-guard]
+
+  $style[-orientation-selection-guard,paper-selection-guard]:
+    - delegate: orientation-selection[orientation-selection-guard]
+
+  $style[-layout-selection-guard,orientation-selection-guard]:
+    - delegate: layout-selection[layout-selection-guard]
+
+  paper-selection: # {{{
+
+    $style:
+    - delegate: .[default-paper]
+    $style[default-paper]:
+    - delegate: .[a5paper,-default-paper]
+    $style[print,default-paper]:
+    - delegate: .[a5paper,-default-paper]
+    $style[print,tiled4,default-paper]:
+    - delegate: .[a6paper,-default-paper]
+
+    $style[no-geometry]:
+    - delegate: ..
+
+    $style[a3paper]:
+    - delegate: ..
+    $style[a4paper]:
+    - delegate: ..
+    $style[a5paper]:
+    - delegate: ..
+    $style[a6paper]:
+    - delegate: ..
+
+  # }}}
+
+  orientation-selection: # {{{
+
+    $style:
+    - delegate: .[default-orientation]
+    $style[default-orientation]:
+    - delegate: .[portrait,-default-orientation]
+    $style[print,default-orientation]:
+    - delegate: .[portrait,-default-orientation]
+    $style[print,tiled4,default-orientation]:
+    - delegate: .[landscape,-default-orientation]
+
+    $style[no-geometry]:
+    - delegate: ..
+
+    $style[portrait]:
+    - delegate: ..
+    $style[landscape]:
+    - delegate: ..
+
+  # }}}
+
+  layout-selection: # {{{
+
+    $style[-print,-no-pgfpages]:
+    - delegate: .[no-pgfpages]
+
+    $style:
+    - delegate: .[default-layout]
+    $style[-tiled4,default-layout]:
+    - delegate: .[no-pgfpages,-default-layout]
+    $style[a5paper,-tiled4,default-layout]:
+    - delegate: .[2-on-1,-default-layout]
+    $style[a6paper,-tiled4,default-layout]:
+    - delegate: .[4-on-1,-default-layout]
+    $style[tiled4,default-layout]:
+    - delegate: .[4-on-1,-default-layout]
+
+    $style[no-pgfpages]:
+    - delegate: ..
+
+    $style[resize-to]:
+    - delegate: ..
+    $style[2-on-1]:
+    - delegate: ..
+    $style[4-on-1]:
+    - delegate: ..
+
+  # }}}
+
+  geometry: # {{{
+
+    $style[no-geometry]:
+    - error: core misconfiguration
+
     $style:
     - package: geometry
     - delegate: set-paper-size
+    - delegate: set-orientation
     - verbatim: '\geometry{vmargin={2em,2em},hmargin={2em,2em}}'
       provide: geometry:margin
-    - verbatim: '\geometry{landscape}'
-      provide: geometry:landscape
-      condition: landscape
-    - verbatim: '%\geometry{landscape}'
-      provide: geometry:landscape
-      condition: {not: landscape}
-    set-paper-size:
+
+    set-paper-size: # {{{
+      $style:
+      - error: core misconfiguration
       $style[a3paper]:
       - verbatim: '\geometry{a3paper}'
         provide: geometry:paper
@@ -492,20 +635,38 @@ optional:
       $style[a6paper]:
       - verbatim: '\geometry{a6paper}'
         provide: geometry:paper
+    # }}}
+
+    set-orientation: # {{{
       $style:
       - error: core misconfiguration
+      $style[portrait]:
+      - verbatim: '\geometry{portrait}'
+        provide: geometry:orientation
+      $style[landscape]:
+      - verbatim: '\geometry{landscape}'
+        provide: geometry:orientation
+    # }}}
 
-  pgfpages:
-    $style[-print]: # pgfpages is incompatible with hyperref
-    - no package: pgfpages
+  # }}}
+
+  pgfpages: # {{{
+
+    $style[no-pgfpages]:
+    - error: core misconfiguration
+
     $style:
     - package: pgfpages
+    - no package: hyperref
     - verbatim: |-
         \renewcommand\pgfsetupphysicalpagesizes{% fix for xelatex
           \pdfpagewidth\pgfphysicalwidth\pdfpageheight\pgfphysicalheight}
       condition: xelatex
     - delegate: uselayout
-    uselayout:
+
+    uselayout: # {{{
+      $style:
+      - error: core misconfiguration
       $style[resize-to,-landscape]:
       - verbatim: '\pgfpagesuselayout{resize to}[a4paper]'
         provide: pgfpagesuselayout
@@ -524,18 +685,19 @@ optional:
       $style[4-on-1,landscape]:
       - verbatim: '\pgfpagesuselayout{4 on 1}[a4paper,landscape]'
         provide: pgfpagesuselayout
-      $style:
-      - error: core misconfiguration
+    # }}}
 
-  hyperref:
-    $style[print]: # hyperref is incompatible with pgfpages
-    - no package: hyperref
-    $style:
-    - package: hyperref
+  # }}}
 
-  shrink-formulas:
-    $style:
-    - verbatim: |-
-        \AtBeginDocument{\abovedisplayskip=10pt minus 7pt}
-        \AtBeginDocument{\belowdisplayskip=\abovedisplayskip}
+# }}}1
+
+hyperref: # {{{
+
+  $style[print]: []
+
+  $style:
+  - package: hyperref
+  - no package: pgfpages
+
+# }}}
 
