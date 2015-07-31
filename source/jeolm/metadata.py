@@ -9,12 +9,31 @@ from pathlib import PurePosixPath
 
 import jeolm.yaml
 
-from .record_path import RecordPath
-from .records import Records
+from .record_path import RecordPath, NAME_PATTERN, RELATIVE_NAME_PATTERN
+from .records import Records, ATTRIBUTE_KEY_PATTERN
 
 import logging
 logger = logging.getLogger(__name__)
 
+
+DIR_NAME_PATTERN = NAME_PATTERN
+FILE_NAME_PATTERN = '(?:' + NAME_PATTERN + ')' + r'\.\w+'
+
+FIGURE_REF_PATTERN = (
+    r'(?P<figure>'
+        '/?'
+        '(?:(?:' + RELATIVE_NAME_PATTERN + ')/)*'
+        '(?:' + NAME_PATTERN + ')'
+    r')'
+    r'(?:\.(?P<figure_type>'
+        'asy|svg|pdf|eps|png|jpg'
+    r'))?'
+)
+
+ASY_ACCESSED_PATH_PATTERN = (
+    r'/?'
+    r'(?:(?:' + RELATIVE_NAME_PATTERN + r')/)+'
+)
 
 class MetadataPath(RecordPath):
     @property
@@ -45,14 +64,14 @@ class MetadataPath(RecordPath):
             name[:self._suffix_pos(name)] + suffix )
 
 
-class MetadataManager(Records):
+class Metadata(Records):
     Dict = dict
     Path = MetadataPath
-    name_pattern = re.compile(r'^(?:\w+-)*\w+(?:\.\w+)?$')
+    dir_name_regex = re.compile(DIR_NAME_PATTERN)
+    file_name_regex = re.compile(FILE_NAME_PATTERN)
+    name_regex = re.compile(DIR_NAME_PATTERN + '|' + FILE_NAME_PATTERN)
 
     source_types = {
-
-        ''      : 'directory',
         '.yaml' : 'metadata in YAML',
 
         '.tex'  : 'LaTeX source',
@@ -66,7 +85,6 @@ class MetadataManager(Records):
 
         '.png'  : 'PNG image',
         '.jpg'  : 'JPEG image',
-
     }
 
     def __init__(self, *, local):
@@ -130,27 +148,22 @@ class MetadataManager(Records):
             return
         # path exists
 
-        suffix = inpath.suffix
         is_dir = path.is_dir()
-        if any('.' in part for part in inpath.parts[:-1]):
-            raise ValueError( "Reviewed path has dot in directory parts: {}"
-                .format('source'/inpath) )
-        if inpath.name.startswith('.'):
-            raise ValueError( "Reviewed path name has leading dot: {}"
-                .format('source'/inpath) )
-        if len(inpath.suffixes) > 1:
-            raise ValueError( "Reviewed path name has multiple suffixes: {}"
-                .format('source'/inpath) )
-        if not suffix in self.source_types:
-            raise ValueError( "Reviewed path name has unrecognized suffix: {}"
-                .format('source'/inpath) )
-        if suffix == '' and not is_dir:
-            raise ValueError( "Reviewed file name has no suffix: {}"
-                .format('source'/inpath) )
-        if suffix != '' and is_dir:
-            raise ValueError( "Reviewed directory name has suffix: {}"
-                .format('source'/inpath) )
-        assert is_dir == (suffix == ''), (is_dir, suffix)
+        dir_names = inpath.parts if is_dir else inpath.parts[:-1]
+        for dir_name in dir_names:
+            if not self.dir_name_regex.fullmatch(dir_name):
+                raise ValueError(
+                    "Nonconfirming directory name {name} in path {path}"
+                    .format(name=dir_name, path='source'/inpath) )
+        if not is_dir:
+            if not self.file_name_regex.fullmatch(inpath.name):
+                raise ValueError( "Nonconfirming file name in path {path}"
+                    .format(path='source'/inpath) )
+            suffix = inpath.suffix
+            if suffix not in self.source_types:
+                raise ValueError( "Unknown file suffix in path {path}"
+                    .format(path='source'/inpath) )
+
         if is_dir and recorded:
             self.clear(metainpath)
         if is_dir:
@@ -166,28 +179,27 @@ class MetadataManager(Records):
                 continue
             subinpath = inpath/subname
             subpath = self.local.source_dir/subinpath
-            subsuffix = subinpath.suffix
             subpath_is_dir = subpath.is_dir()
             def warn(message, subname=subname):
                 logger.warning(
                     "Source directory <MAGENTA>%(path)s<NOCOLOUR>: " +
                         message,
                     dict(path=inpath, name=subname) )
-            if subname.startswith('.'):
-                warn("name <YELLOW>%(name)s<NOCOLOUR> has leading dot")
-                continue
-            if len(subinpath.suffixes) > 1:
-                warn("name <YELLOW>%(name)s<NOCOLOUR> has multiple suffixes")
-                continue
-            if subsuffix not in self.source_types:
-                warn("name <YELLOW>%(name)s<NOCOLOUR> has unrecognized suffix")
-                continue
-            if subsuffix != '' and subpath_is_dir:
-                warn("directory name <YELLOW>%(name)s<NOCOLOUR> has suffix")
-                continue
-            if subsuffix == '' and not subpath_is_dir:
-                warn("file name <YELLOW>%(name)s<NOCOLOUR> has no suffix")
-                continue
+            if subpath_is_dir:
+                if not self.dir_name_regex.fullmatch(subname):
+                    warn( "nonconforming directory name "
+                        "<YELLOW>%(name)s<NOCOLOUR>" )
+                    continue
+            if not subpath_is_dir:
+                if not self.file_name_regex.fullmatch(subname):
+                    warn( "nonconforming file name "
+                        "<YELLOW>%(name)s<NOCOLOUR>" )
+                    continue
+                subsuffix = subinpath.suffix
+                if subsuffix not in self.source_types:
+                    warn( "unknown suffix in file name "
+                        "<YELLOW>%(name)s<NOCOLOUR>" )
+                    continue
             self.review(subinpath)
 
     def _query_file(self, inpath):
@@ -245,14 +257,14 @@ class MetadataManager(Records):
         return metadata
 
     def _query_tex_figures(self, inpath, tex_content):
-        if self._tex_includegraphics_pattern.search(tex_content) is not None:
+        if self._tex_includegraphics_regex.search(tex_content) is not None:
             logger.warning(
                 "Source file <MAGENTA>%(path)s<NOCOLOUR>: "
                 r"<YELLOW>\includegraphics<NOCOLOUR> command found",
                 dict(path=inpath) )
         figure_refs = list()
         figure_refs_set = set()
-        for match in self._tex_figure_pattern.finditer(tex_content):
+        for match in self._tex_figure_regex.finditer(tex_content):
             figure_ref = match.group('figure_ref')
             if figure_ref in figure_refs_set:
                 continue
@@ -271,22 +283,17 @@ class MetadataManager(Records):
         else:
             return {}
 
-    _tex_figure_pattern = re.compile( r'(?m)'
+    _tex_figure_regex = re.compile( r'(?m)'
         r'\\jeolmfigure(?:\s*'
             r'(?:\['
                 r'[\w\s.,=\\]*?'
             r'\])?'
         r'\s*'
             r'\{'
-                r'(?P<figure_ref>'
-                    r'/?'
-                    r'(?:(?:\w+-)*\w+/|../)*'
-                    r'(?:\w+-)*\w+'
-                    r'(?:\.(?P<figure_type>asy|svg|pdf|eps|png|jpg))?'
-                r')'
+                r'(?P<figure_ref>' + FIGURE_REF_PATTERN + r')'
             r'\}'
         r')?')
-    _tex_includegraphics_pattern = re.compile(
+    _tex_includegraphics_regex = re.compile(
         r'\\includegraphics')
 
     # pylint: disable=unused-argument
@@ -294,10 +301,10 @@ class MetadataManager(Records):
     def _query_tex_sections(self, inpath, tex_content):
         sections = [
             match.group('section')
-            for match in self.tex_section_pattern.finditer(tex_content) ]
+            for match in self._tex_section_regex.finditer(tex_content) ]
         return {'$source$sections' : sections} if sections else {}
 
-    tex_section_pattern = re.compile(
+    _tex_section_regex = re.compile( r'(?m)'
         r'\\section\*?\s*'
             r'\{\s*'
                 r'(?P<section>(?:[^\{\}%]|\{[^\{\}%]*\})*)'
@@ -307,7 +314,7 @@ class MetadataManager(Records):
 
     def _query_tex_metadata(self, inpath, tex_content):
         metadata = OrderedDict()
-        for match in self.tex_metadata_pattern.finditer(tex_content):
+        for match in self._tex_metadata_regex.finditer(tex_content):
             piece_lines = match.group(0).splitlines(keepends=True)
             assert all(line.startswith('% ') for line in piece_lines)
             piece_lines = [line[2:] for line in piece_lines]
@@ -343,9 +350,12 @@ class MetadataManager(Records):
                 metadata[key] = value
         return metadata
 
-    tex_metadata_pattern = re.compile('(?m)^'
-        r'% (?P<extend>>> )?\$[\w\$\-_\[\],\{\}]+:.*\n'
-        r'(?:% [ \-#].+\n)*')
+    _tex_metadata_regex = re.compile( r'(?m)'
+        r'^% (?P<extend>>> )?'
+            '(?:' + ATTRIBUTE_KEY_PATTERN + ')'
+            r':.*\n'
+        r'(?:% [ \-#].+\n)*'
+    )
 
     def _query_dtx_file(self, inpath):
         with (self.local.source_dir/inpath).open('r') as dtx_file:
@@ -372,15 +382,15 @@ class MetadataManager(Records):
     def _query_package_content( self, inpath, package_content,
         *, package_type
     ):
-        match = self.package_name_pattern.search(package_content)
+        match = self._package_name_regex.search(package_content)
         if match is not None:
             package_name = match.group('package_name')
         else:
             package_name = inpath.with_suffix('').name
         return {'$package${}$name'.format(package_type) : package_name}
 
-    package_name_pattern = re.compile(
-        r'\\ProvidesPackage\{(?P<package_name>[\w-]+)\}'
+    _package_name_regex = re.compile(
+        r'\\ProvidesPackage\{(?P<package_name>' + NAME_PATTERN + r')\}'
     )
 
     def _query_asy_file(self, inpath):
@@ -398,10 +408,10 @@ class MetadataManager(Records):
 
     def _query_asy_accessed(self, inpath, asy_content):
         accessed = OrderedDict()
-        for match in self._asy_access_pattern.finditer(asy_content):
+        for match in self._asy_access_regex.finditer(asy_content):
             accessed[match.group('alias_name')] = match.group('accessed_path')
-        for match in self._broken_asy_access_pattern.finditer(asy_content):
-            if self._asy_access_pattern.match(match.group()) is not None:
+        for match in self._broken_asy_access_regex.finditer(asy_content):
+            if self._asy_access_regex.fullmatch(match.group()) is not None:
                 continue
             logger.warning(
                 "Source file <MAGENTA>%(path)s<NOCOLOUR>: "
@@ -412,16 +422,13 @@ class MetadataManager(Records):
         else:
             return {}
 
-    _asy_access_pattern = re.compile(
-        r'(?m)^// access '
-            r'(?P<accessed_path>'
-                r'/?'
-                r'(?:(?:\w+-)*\w+/|../)+'
-            r') '
-        r'as (?P<alias_name>[-a-zA-Z0-9]*?\.asy)$' )
+    _asy_access_regex = re.compile( r'(?m)'
+        r'^// access '
+            r'(?P<accessed_path>' + ASY_ACCESSED_PATH_PATTERN + r') '
+        r'as (?P<alias_name>(?:' + NAME_PATTERN + r')\.asy)$' )
 
-    _broken_asy_access_pattern = re.compile(
-        r'(?m)^// (?:access|use) (?:.*?) as (?:.*?)$' )
+    _broken_asy_access_regex = re.compile( r'(?m)'
+        r'^// (?:access|use) (?:.*?) as (?:.*?)$' )
 
     # pylint: disable=no-self-use,unused-argument
 

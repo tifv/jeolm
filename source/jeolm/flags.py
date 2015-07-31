@@ -6,6 +6,25 @@ import logging
 logger = logging.getLogger(__name__)
 
 
+FLAG_PATTERN = r'\w+(?:-\w+)*'
+RELATIVE_FLAG_PATTERN = r'-?' + FLAG_PATTERN
+
+def _flags_pattern_tight(flag_pattern):
+    return ( r'(?:'
+        r'(?:' + flag_pattern + r')'
+        r'(?:,(?:' + flag_pattern + r'))*'
+    r')?' )
+def _flags_pattern_loose(flag_pattern):
+    return ( r'(?:'
+        r'(?: *(?:' + flag_pattern + r'))?'
+        r'(?: *, *(?:' + flag_pattern + r')| *,)*'
+    r' *)' )
+FLAGS_PATTERN_TIGHT = _flags_pattern_tight(FLAG_PATTERN)
+FLAGS_PATTERN_LOOSE = _flags_pattern_loose(FLAG_PATTERN)
+RELATIVE_FLAGS_PATTERN_TIGHT = _flags_pattern_tight(RELATIVE_FLAG_PATTERN)
+RELATIVE_FLAGS_PATTERN_LOOSE = _flags_pattern_loose(RELATIVE_FLAG_PATTERN)
+
+
 class FlagError(Exception):
     pass
 

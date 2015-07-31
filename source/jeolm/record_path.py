@@ -8,6 +8,21 @@ import logging
 logger = logging.getLogger(__name__)
 
 
+NAME_PATTERN = r'\w+(?:-\w+)*'
+RELATIVE_NAME_PATTERN = (
+    NAME_PATTERN + '|' + '.' + '|' + '..'
+)
+
+def _path_pattern(name_pattern):
+    return (
+        r'/?'
+        '(?:(?:' + name_pattern + ')/)*'
+        '(?:' + name_pattern + ')?'
+    )
+PATH_PATTERN = _path_pattern(NAME_PATTERN)
+RELATIVE_PATH_PATTERN = _path_pattern(RELATIVE_NAME_PATTERN)
+
+
 class RecordPath:
     __slots__ = ['_parts', '_parent']
 
@@ -117,7 +132,10 @@ class RecordPath:
 
     @property
     def name(self):
-        return self.parts[-1]
+        try:
+            return self.parts[-1]
+        except IndexError:
+            raise ValueError("Root does not have a name.")
 
     @property
     def ancestry(self):

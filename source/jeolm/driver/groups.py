@@ -46,8 +46,8 @@ class GroupsDriver(RegularDriver):
     def _get_groups(self):
         groups = OrderedDict()
         for key, value in self.getitem(RecordPath()).items():
-            match = self.flagged_pattern.match(key)
-            if match is None or match.group('key') != '$groups':
+            match = self.attribute_key_regex.fullmatch(key)
+            if match is None or match.group('stem') != '$groups':
                 continue
             group_flags = FlagContainer.split_flags_group(
                 match.group('flags') )

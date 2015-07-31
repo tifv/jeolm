@@ -34,11 +34,11 @@ class BuildLine:
         self.local = local
         self.node_updater = node_updater
         metadata_class = self.local.metadata_class
-        if not issubclass(NotifiedMetadataManager, metadata_class):
-            metadata_class = type( '_MetadataManager',
-                (metadata_class, NotifiedMetadataManager), {} )
+        if not issubclass(NotifiedMetadata, metadata_class):
+            metadata_class = type( '_Metadata',
+                (metadata_class, NotifiedMetadata), {} )
         else:
-            metadata_class = NotifiedMetadataManager
+            metadata_class = NotifiedMetadata
         self.metadata = metadata_class(local=self.local)
         self.metadata.review(PurePosixPath())
         self.driver = (self.local.driver_class)()
@@ -145,7 +145,7 @@ class BuildLine:
         with suppress(NodeErrorReported):
             self.node_updater.update(target_node)
 
-class NotifiedMetadataManager(jeolm.metadata.MetadataManager):
+class NotifiedMetadata(jeolm.metadata.Metadata):
 
     # pylint: disable=no-member
     creative_mask = (
@@ -199,12 +199,12 @@ class NotifiedMetadataManager(jeolm.metadata.MetadataManager):
                 continue
             yield path
 
-    def _create_record(self, path, parent_record, key):
+    def _create_record(self, path, parent_record):
         if path.suffix == '':
             source_path = str(self.local.source_dir/path.as_inpath())
             self.descriptors.add(self.watch.add_watch(
                 source_path, self.mask, rec=False ))
-        return super()._create_record(path, parent_record, key)
+        return super()._create_record(path, parent_record)
 
     def _delete_record(self, path, *args, **kwargs):
         if path.suffix == '':

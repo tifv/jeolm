@@ -1,11 +1,26 @@
 import re
 
-from .record_path import RecordPath
-from .flags import FlagContainer, FlagError, UnutilizedFlagError
+from .record_path import ( RecordPath,
+    PATH_PATTERN, RELATIVE_PATH_PATTERN )
+from .flags import ( FlagContainer, FlagError, UnutilizedFlagError,
+    FLAGS_PATTERN_LOOSE as FLAGS_PATTERN,
+    RELATIVE_FLAGS_PATTERN_LOOSE as RELATIVE_FLAGS_PATTERN )
 
 import logging
 logger = logging.getLogger(__name__)
 
+TARGET_PATTERN = (
+    r'(?P<path>' + PATH_PATTERN + r')'
+    r'(?:\['
+        r'(?P<flags>' + FLAGS_PATTERN + r')'
+    r'\])?'
+)
+RELATIVE_TARGET_PATTERN = (
+    r'(?P<path>' + RELATIVE_PATH_PATTERN + r')'
+    r'(?:\['
+        r'(?P<flags>' + RELATIVE_FLAGS_PATTERN + r')'
+    r'\])?'
+)
 
 class TargetError(Exception):
     pass
@@ -22,20 +37,16 @@ class Target:
         if not isinstance(flags, FlagContainer):
             flags = FlagContainer(flags, origin=origin)
         elif origin is not None:
-            raise RuntimeError(origin)
+            raise ValueError
         self.flags = flags
 
-    _pattern = re.compile(
-        r'^(?P<path>[^\[\]]+)'
-        r'(?:\['
-            r'(?P<flags>[^\[\]]*)'
-        r'\])?$' )
+    regex = re.compile(TARGET_PATTERN)
 
     @classmethod
     def from_string(cls, string, *, origin=None):
         if not isinstance(string, str):
             raise TargetError(type(string))
-        match = cls._pattern.match(string)
+        match = cls.regex.fullmatch(string)
         if match is None:
             raise TargetError( "Failed to parse target '{}'."
                 .format(string) )
@@ -49,17 +60,18 @@ class Target:
         try:
             flags = FlagContainer.split_flags_group(flags_group)
         except FlagError as error:
-            raise TargetError( "Error while parsing subtarget '{}' flags."
+            raise TargetError( "Error while parsing target '{}' flags."
                 .format(match.group(0))) from error
         if any(flag.startswith('-') for flag in flags):
-            raise TargetError( "Target '{}' contains a negative flag."
-                .format(match.group(0)) )
+            raise RuntimeError
         return cls(path, flags, origin=origin)
+
+    relative_regex = re.compile(RELATIVE_TARGET_PATTERN)
 
     def derive_from_string(self, string, *, origin=None):
         if not isinstance(string, str):
             raise TargetError(type(string))
-        match = self._pattern.match(string)
+        match = self.relative_regex.fullmatch(string)
         if match is None:
             raise TargetError( "Failed to parse subtarget '{}'."
                 .format(string) )

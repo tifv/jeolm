@@ -131,10 +131,10 @@ import argparse
 import jeolm.commands
 
 def _date_arg( arg_s, *,
-    date_pattern=re.compile(
-        '^(?P<year>[0-9]{4})-(?P<month>[0-9]{2})-(?P<day>[0-9]{2})$' )
+    date_regex=re.compile(
+        '(?P<year>[0-9]{4})-(?P<month>[0-9]{2})-(?P<day>[0-9]{2})' )
 ):
-    match = date_pattern.match(arg_s)
+    match = date_regex.fullmatch(arg_s)
     if match is None:
         raise RuntimeError(arg_s)
     return date_type(

@@ -118,6 +118,7 @@ from jeolm.records import MetaRecords
 from jeolm.flags import FlagError
 from jeolm.target import TargetError
 from jeolm.records import RecordError, RecordNotFoundError
+from jeolm.metadata import FIGURE_REF_PATTERN
 
 from jeolm.utils import check_and_set, ClashingValueError
 
@@ -1348,7 +1349,7 @@ class RegularDriver(MetaRecords, metaclass=DriverMetaclass):
         item.figure_map = OrderedDict()
         figure_refs = metarecord.get('$source$figures', ())
         for figure_ref in figure_refs:
-            match = self._figure_ref_pattern.match(figure_ref)
+            match = self._figure_ref_regex.fullmatch(figure_ref)
             if match is None:
                 raise RuntimeError(figure_ref)
             figure = match.group('figure')
@@ -1362,14 +1363,7 @@ class RegularDriver(MetaRecords, metaclass=DriverMetaclass):
                 self.check_and_set( figures,
                     figure_alias_stem, (figure_path, figure_type) )
 
-    _figure_ref_pattern = re.compile( r'^'
-        r'(?P<figure>'
-            r'/?'
-            r'(?:(?:\w+-)\w+/|../)*'
-            r'(?:\w+-)*\w+'
-        r')'
-        r'(?:\.(?P<figure_type>asy|svg|pdf|eps|png|jpg))?'
-    r'$')
+    _figure_ref_regex = re.compile(FIGURE_REF_PATTERN)
 
     def _digest_metapreamble(self, target, metapreamble,
         *, package_paths, compilers

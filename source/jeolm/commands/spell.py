@@ -130,14 +130,14 @@ class LaTeXSpeller:
                 else:
                     yield IncorrectWord(text_piece.string)
 
-    spell_pattern = re.compile('(?m)'
+    spell_regex = re.compile('(?m)'
         r'% spell (?P<words>.*)$')
 
     @classmethod
     def prepare_text(cls, text, *, lang):
         if lang == 'ru_RU':
             text = text.replace('ё', 'е')
-        for match in cls.spell_pattern.finditer(text):
+        for match in cls.spell_regex.finditer(text):
             for word in match.group('words').split(' '):
                 text = text.replace(word, '')
         return text
@@ -204,7 +204,7 @@ class LaTeXSlicer:
 
         text = self.text
         length = len(text)
-        patterns = [
+        regexes = [
             (name, re.compile(pattern))
             for name, pattern in self.LATEX_PATTERNS.items()
         ]
@@ -212,8 +212,8 @@ class LaTeXSlicer:
         pos = clean_pos = 0
         stack = self.LaTeXStack()
         while pos < length:
-            for name, pattern in patterns:
-                match = pattern.match(text, pos)
+            for name, regex in regexes:
+                match = regex.match(text, pos)
                 if match is not None:
                     break
             else:

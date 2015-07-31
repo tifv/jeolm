@@ -31,13 +31,13 @@ class WriteTextCommand(Command):
 
 class CleanupSymLinkCommand(SymLinkCommand):
 
-    _var_name_pattern = re.compile(r'(?P<name>.+)\.(?P<hash>[0-9a-f]{64})')
+    _var_name_regex = re.compile(r'(?P<name>.+)\.(?P<hash>[0-9a-f]{64})')
 
     def _clear_path(self):
         super()._clear_path()
         if self.node.old_target is None:
             return
-        match = self._var_name_pattern.match(self.node.old_target)
+        match = self._var_name_regex.fullmatch(self.node.old_target)
         if match is not None and match.group('name') == self.node.path.name:
             old_var_path = self.node.path.with_name(match.group(0))
             if old_var_path.exists():

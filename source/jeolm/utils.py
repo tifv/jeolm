@@ -41,11 +41,11 @@ def unique(*iterables):
                 seen_items.add(item)
     return unique_items
 
-def natural_keyfunc(string, pattern=re.compile(r'(\d+)|\.')):
+def natural_keyfunc(string, regex=re.compile(r'(\d+)|\.')):
     assert isinstance(string, str), type(string)
     return [
         int(item) if item.isdigit() else item
-        for item in pattern.split(string)
+        for item in regex.split(string)
         if item is not None
     ]
 

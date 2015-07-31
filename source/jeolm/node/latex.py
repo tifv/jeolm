@@ -51,10 +51,10 @@ class LaTeXCommand(SubprocessCommand):
 
     @classmethod
     def _latex_output_requests_rerun(cls, latex_output):
-        match = cls._latex_output_rerun_pattern.search(latex_output)
+        match = cls._latex_output_rerun_regex.search(latex_output)
         return match is not None
 
-    _latex_output_rerun_pattern = re.compile(
+    _latex_output_rerun_regex = re.compile(
         r'[Rr]erun to (?#get something right)' )
 
     def _print_latex_log(self, latex_output, latex_log_path=None):
@@ -74,10 +74,10 @@ class LaTeXCommand(SubprocessCommand):
 
     @classmethod
     def _latex_output_is_alarming(cls, latex_output):
-        match = cls._latex_output_alarming_pattern.search(latex_output)
+        match = cls._latex_output_alarming_regex.search(latex_output)
         return match is not None
 
-    _latex_output_alarming_pattern = re.compile(
+    _latex_output_alarming_regex = re.compile(
         r'[Ee]rror|'
             # loading warning.sty package should not trigger alarm
             r'(?!warning/warning.sty)(?!(?<=warning/)warning.sty)'
@@ -91,7 +91,7 @@ class LaTeXCommand(SubprocessCommand):
         next(file_namer) # initialize coroutine
 
         matches = list(
-            self._latex_log_overfull_pattern.finditer(latex_log_text) )
+            self._latex_log_overfull_regex.finditer(latex_log_text) )
         if not matches:
             return
         header = "Overfulls and underfulls detected by LaTeX:<RESET>"
@@ -101,7 +101,7 @@ class LaTeXCommand(SubprocessCommand):
                 for match in matches )
         )))
 
-    _latex_log_overfull_pattern = re.compile(
+    _latex_log_overfull_regex = re.compile(
         r'(?m)^'
         r'(?P<overfull_type>Overfull|Underfull) '
         r'(?P<box_type>\\hbox|\\vbox) '
@@ -170,12 +170,12 @@ class LaTeXCommand(SubprocessCommand):
         finder = (
             (match.end(), int(match.group('page_number')) + 1)
             for match
-            in cls._latex_log_page_number_pattern.finditer(latex_log_text)
+            in cls._latex_log_page_number_regex.finditer(latex_log_text)
         )
         return cls._inverse_monotonic(
             chain( ((0,1),), finder), 0, len(latex_log_text) )
 
-    _latex_log_page_number_pattern = re.compile(
+    _latex_log_page_number_regex = re.compile(
         r'\[(?P<page_number>\d+)\s*\]' )
 
     @classmethod
@@ -183,11 +183,11 @@ class LaTeXCommand(SubprocessCommand):
         finder = (
             (match.end(), match.group('file_name'))
             for match
-            in cls._latex_log_file_name_pattern.finditer(latex_log_text)
+            in cls._latex_log_file_name_regex.finditer(latex_log_text)
         )
         return cls._inverse_monotonic(finder, 0, len(latex_log_text))
 
-    _latex_log_file_name_pattern = re.compile(
+    _latex_log_file_name_regex = re.compile(
         r'(?<=\(\./)' # "(./"
         r'(?P<file_name>.+?)' # "<file name>"
         r'(?=[\s)])' # ")" or "\n" or " "

@@ -191,9 +191,9 @@ class LocalManager:
     @property
     def metadata_class(self):
         with suppress(AttributeError):
-            return self.local_module.MetadataManager
-        from jeolm.metadata import MetadataManager
-        return MetadataManager
+            return self.local_module.Metadata
+        from jeolm.metadata import Metadata
+        return Metadata
 
 
 def report_missing_root():

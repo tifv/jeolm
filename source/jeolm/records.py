@@ -4,8 +4,9 @@ from contextlib import suppress
 
 from .utils import unique, mapping_ordered_keys, mapping_ordered_items
 
-from .record_path import RecordPath
-from .flags import FlagContainer
+from .record_path import RecordPath, NAME_PATTERN
+from .flags import ( FlagContainer,
+    RELATIVE_FLAGS_PATTERN_TIGHT as FLAGS_PATTERN )
 
 import logging
 logger = logging.getLogger(__name__)
@@ -20,7 +21,7 @@ class RecordNotFoundError(RecordError, LookupError):
 class Records:
     Dict = OrderedDict
     Path = RecordPath
-    name_pattern = re.compile(r'^.+$')
+    name_regex = re.compile(r'.+')
 
     def __init__(self):
         self._records = self.Dict()
@@ -98,7 +99,7 @@ class Records:
         child_record = record.get(key)
         if child_record is None:
             child_record = self._create_record(
-                path/key, parent_record=record, key=key )
+                path/key, parent_record=record )
         self._absorb_into(
             value, path/key, child_record, overwrite=overwrite )
 
@@ -115,12 +116,13 @@ class Records:
 
     # pylint: enable=unused-argument,no-self-use
 
-    def _create_record(self, path, parent_record, key):
-        if not self.name_pattern.match(key):
+    def _create_record(self, path, parent_record):
+        name = path.name
+        if not self.name_regex.fullmatch(name):
             raise ValueError(
                 "Nonconforming record name {name} (path {path})"
-                .format(name=key, path=path) )
-        record = parent_record[key] = self.Dict()
+                .format(name=name, path=path) )
+        record = parent_record[name] = self.Dict()
         return record
 
     def _clear_record(self, path, record=None):
@@ -263,42 +265,20 @@ class Records:
             yield from cls.compare_items(records1, records2, path/key,
                 original=original )
 
+
+ATTRIBUTE_KEY_PATTERN = (
+    r'(?P<stem>'
+        r'(?:\$\w+(?:-\w+)*)+'
+    r')'
+    r'(?:\['
+        r'(?P<flags>' + FLAGS_PATTERN + r')'
+    r'\])?'
+)
+
 class MetaRecords(Records):
-    name_pattern = re.compile(r'^(?:\w+-)*\w+$')
+    name_regex = re.compile(NAME_PATTERN)
 
-    flagged_pattern = re.compile(
-        r'^(?P<key>\$[^\[\]]+)'
-        r'(?:\['
-            r'(?P<flags>[^\[\]]*)'
-        r'\])?$' )
-
-    @classmethod
-    def select_flagged_item(cls, mapping, key_stem, flags):
-        """Return (key, value) from mapping."""
-        if not isinstance(key_stem, str):
-            raise TypeError(type(key_stem))
-        if not key_stem.startswith('$'):
-            raise ValueError(key_stem)
-        if not isinstance(flags, FlagContainer):
-            raise TypeError(type(flags))
-
-        flagset_mapping = dict()
-        for key, value in mapping.items():
-            match = cls.flagged_pattern.match(key)
-            if match is None or match.group('key') != key_stem:
-                continue
-            flags_group = match.group('flags')
-            flagset = flags.split_flags_group(flags_group)
-            assert isinstance(flagset, frozenset)
-            if flagset in flagset_mapping:
-                raise RecordError("Clashing keys '{}' and '{}'"
-                    .format(key, flagset_mapping[flagset][0]) )
-            flagset_mapping[flagset] = (key, value)
-        flagset_mapping.setdefault(frozenset(), (None, None))
-        return flags.select_matching_value(flagset_mapping)
-
-    dropped_keys = {
-    }
+    attribute_key_regex = re.compile(ATTRIBUTE_KEY_PATTERN)
 
     # pylint: disable=unused-argument,no-self-use
 
@@ -306,13 +286,13 @@ class MetaRecords(Records):
         key, value, path, record, *,
         overwrite=True
     ):
-        match = self.flagged_pattern.match(key)
+        match = self.attribute_key_regex.fullmatch(key)
         if match is None:
             raise RecordError(
                 "Nonconforming attribute key {key} (path {path})"
                 .format(key=key, path=path)
             )
-        key_stem = match.group('key')
+        key_stem = match.group('stem')
         if key_stem in self.dropped_keys:
             logger.warning(
                 "Dropped key <RED>%(key)s<NOCOLOUR> "
@@ -327,4 +307,32 @@ class MetaRecords(Records):
             overwrite=overwrite )
 
     # pylint: enable=unused-argument,no-self-use
+
+    @classmethod
+    def select_flagged_item(cls, mapping, key_stem, flags):
+        """Return (key, value) from mapping."""
+        if not isinstance(key_stem, str):
+            raise TypeError(type(key_stem))
+        if not key_stem.startswith('$'):
+            raise ValueError(key_stem)
+        if not isinstance(flags, FlagContainer):
+            raise TypeError(type(flags))
+
+        flagset_mapping = dict()
+        for key, value in mapping.items():
+            match = cls.attribute_key_regex.fullmatch(key)
+            if match is None or match.group('stem') != key_stem:
+                continue
+            flags_group = match.group('flags')
+            flagset = flags.split_flags_group(flags_group)
+            assert isinstance(flagset, frozenset)
+            if flagset in flagset_mapping:
+                raise RecordError("Clashing keys '{}' and '{}'"
+                    .format(key, flagset_mapping[flagset][0]) )
+            flagset_mapping[flagset] = (key, value)
+        flagset_mapping.setdefault(frozenset(), (None, None))
+        return flags.select_matching_value(flagset_mapping)
+
+    dropped_keys = {
+    }
 
