@@ -17,13 +17,13 @@ class RecordError(Exception):
 class RecordNotFoundError(RecordError, LookupError):
     pass
 
-class RecordsManager:
+class Records:
     Dict = OrderedDict
     Path = RecordPath
-    name_pattern = re.compile(r'^(?:\w+-)*\w+$')
+    name_pattern = re.compile(r'^.+$')
 
     def __init__(self):
-        self.records = self.Dict()
+        self._records = self.Dict()
         self._records_cache = {}
         self._cache = {'records' : self._records_cache}
 
@@ -38,7 +38,8 @@ class RecordsManager:
             raise TypeError(type(path))
         for part in reversed(path.parts):
             data = {part : data}
-        self._absorb_into(data, self.Path(), self.records, overwrite=overwrite)
+        self._absorb_into( data, self.Path(), self._records,
+            overwrite=overwrite )
         self._clear_cache()
 
     def delete(self, path):
@@ -73,41 +74,51 @@ class RecordsManager:
         if data is None:
             return
         if not isinstance(data, dict):
-            raise RecordError("Only able to absorb a dict, found {!r}"
+            raise TypeError("Only able to absorb a dict, found {!r}"
                 .format(type(data)) )
         for key, value in mapping_ordered_items(data):
             self._absorb_item_into(
                 key, value, path, record, overwrite=overwrite )
 
-    def _absorb_item_into(self, key, value, path, record, *, overwrite=True):
+    def _absorb_item_into( self,
+        key, value, path, record, *,
+        overwrite=True
+    ):
         if not isinstance(key, str):
-            raise RecordError("Only able to absorb string keys, found {!r}"
+            raise TypeError("Only able to absorb string keys, found {!r}"
                 .format(type(key)) )
-        if '/' in key:
-            if key.startswith('/'):
-                raise ValueError(key)
-            data = value
-            for part in reversed(self.Path(key).parts):
-                data = {part : data}
-            return self._absorb_into(data, path, record, overwrite=overwrite)
-
         if key.startswith('$'):
-            if overwrite or key not in record:
-                record[key] = value
-            else:
-                pass # discard value
+            self._absorb_attribute_into(
+                key, value, path, record,
+                overwrite=overwrite )
+            return
+        if '/' in key:
+            raise ValueError(key)
+
+        child_record = record.get(key)
+        if child_record is None:
+            child_record = self._create_record(
+                path/key, parent_record=record, key=key )
+        self._absorb_into(
+            value, path/key, child_record, overwrite=overwrite )
+
+    # pylint: disable=unused-argument,no-self-use
+
+    def _absorb_attribute_into( self,
+        key, value, path, record, *,
+        overwrite=True
+    ):
+        if overwrite or key not in record:
+            record[key] = value
         else:
-            child_record = record.get(key)
-            if child_record is None:
-                child_record = self._create_record(
-                    path/key, parent_record=record, key=key )
-            self._absorb_into(
-                value, path/key, child_record, overwrite=overwrite )
+            pass # discard value
+
+    # pylint: enable=unused-argument,no-self-use
 
     def _create_record(self, path, parent_record, key):
         if not self.name_pattern.match(key):
             raise ValueError(
-                "Refusing to add record with name {name} (path {path})"
+                "Nonconforming record name {name} (path {path})"
                 .format(name=key, path=path) )
         record = parent_record[key] = self.Dict()
         return record
@@ -158,7 +169,7 @@ class RecordsManager:
         return record
 
     def _get_root(self, original=False):
-        record = self.records
+        record = self._records
         if not original:
             record = record.copy()
             self._derive_attributes({}, record, name=None)
@@ -252,23 +263,29 @@ class RecordsManager:
             yield from cls.compare_items(records1, records2, path/key,
                 original=original )
 
+class MetaRecords(Records):
+    name_pattern = re.compile(r'^(?:\w+-)*\w+$')
+
     flagged_pattern = re.compile(
-        r'^(?P<key>[^\[\]]+)'
+        r'^(?P<key>\$[^\[\]]+)'
         r'(?:\['
             r'(?P<flags>[^\[\]]*)'
         r'\])?$' )
 
     @classmethod
-    def select_flagged_item(cls, mapping, stemkey, flags):
+    def select_flagged_item(cls, mapping, key_stem, flags):
         """Return (key, value) from mapping."""
-        assert isinstance(stemkey, str), type(stemkey)
-        assert stemkey.startswith('$'), stemkey
-        assert isinstance(flags, FlagContainer), type(flags)
+        if not isinstance(key_stem, str):
+            raise TypeError(type(key_stem))
+        if not key_stem.startswith('$'):
+            raise ValueError(key_stem)
+        if not isinstance(flags, FlagContainer):
+            raise TypeError(type(flags))
 
         flagset_mapping = dict()
         for key, value in mapping.items():
             match = cls.flagged_pattern.match(key)
-            if match is None or match.group('key') != stemkey:
+            if match is None or match.group('key') != key_stem:
                 continue
             flags_group = match.group('flags')
             flagset = flags.split_flags_group(flags_group)
@@ -279,4 +296,35 @@ class RecordsManager:
             flagset_mapping[flagset] = (key, value)
         flagset_mapping.setdefault(frozenset(), (None, None))
         return flags.select_matching_value(flagset_mapping)
+
+    dropped_keys = {
+    }
+
+    # pylint: disable=unused-argument,no-self-use
+
+    def _absorb_attribute_into( self,
+        key, value, path, record, *,
+        overwrite=True
+    ):
+        match = self.flagged_pattern.match(key)
+        if match is None:
+            raise RecordError(
+                "Nonconforming attribute key {key} (path {path})"
+                .format(key=key, path=path)
+            )
+        key_stem = match.group('key')
+        if key_stem in self.dropped_keys:
+            logger.warning(
+                "Dropped key <RED>%(key)s<NOCOLOUR> "
+                "detected in <YELLOW>%(path)s<NOCOLOUR> "
+                "(replace it with %(modern_key)s)",
+                dict(
+                    key=key_stem, path=path,
+                    modern_key=self.dropped_keys[key_stem], )
+            )
+        super()._absorb_attribute_into(
+            key, value, path, record,
+            overwrite=overwrite )
+
+    # pylint: enable=unused-argument,no-self-use
 

@@ -1,7 +1,7 @@
 import re
 
 from .record_path import RecordPath
-from .flags import FlagContainer, UnutilizedFlagError
+from .flags import FlagContainer, FlagError, UnutilizedFlagError
 
 import logging
 logger = logging.getLogger(__name__)
@@ -48,7 +48,7 @@ class Target:
         flags_group = match.group('flags')
         try:
             flags = FlagContainer.split_flags_group(flags_group)
-        except TargetError as error:
+        except FlagError as error:
             raise TargetError( "Error while parsing subtarget '{}' flags."
                 .format(match.group(0))) from error
         if any(flag.startswith('-') for flag in flags):
@@ -71,7 +71,7 @@ class Target:
         flags_group = match.group('flags')
         try:
             flags = FlagContainer.split_flags_group(flags_group)
-        except TargetError as error:
+        except FlagError as error:
             raise TargetError( "Error while parsing subtarget '{}' flags."
                 .format(match.group(0)) ) from error
         positive = set()

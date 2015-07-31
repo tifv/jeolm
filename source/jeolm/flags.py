@@ -54,7 +54,7 @@ class FlagContainer(Container):
         super().__init__()
         self.flags = flags = frozenset(iterable)
         if any(flag.startswith('-') for flag in flags):
-            raise RuntimeError(flags)
+            raise ValueError(flags)
         self._as_frozenset = None
         self._contains_cache = dict()
         self.utilized_flags = set()

@@ -113,7 +113,7 @@ from pathlib import PurePosixPath
 
 from jeolm.record_path import RecordPath
 from jeolm.target import Target
-from jeolm.records import RecordsManager
+from jeolm.records import MetaRecords
 
 from jeolm.flags import FlagError
 from jeolm.target import TargetError
@@ -199,7 +199,7 @@ class DriverError(Exception):
 class DriverMetaclass(Substitutioner, Decorationer):
     pass
 
-class RegularDriver(RecordsManager, metaclass=DriverMetaclass):
+class RegularDriver(MetaRecords, metaclass=DriverMetaclass):
 
     driver_errors = (DriverError, TargetError, RecordError, FlagError)
 
@@ -582,6 +582,26 @@ class RegularDriver(RecordsManager, metaclass=DriverMetaclass):
                 continue
             assert '/' not in key
             yield from self.generate_metapaths(path=path/key)
+
+    dropped_keys = dict()
+    dropped_keys.update(MetaRecords.dropped_keys)
+    dropped_keys.update({
+        '$manner' : '$build$matter',
+        '$rigid'  : '$build$matter',
+        '$fluid'  : '$matter',
+        '$manner$style'   : '$build$style',
+        '$manner$options' : '$build$style',
+        '$out$options'    : '$build$style',
+        '$fluid$opt'      : '$build$style',
+        '$rigid$opt'      : '$build$style',
+        '$manner$opt'     : '$build$style',
+        '$build$special'  : '$build$style',
+        '$required$packages' : '$matter: preamble package',
+        '$latex$packages'    : '$matter: preamble package',
+        '$tex$packages'      : '$matter: preamble package',
+        '$target$delegate' : '$delegate',
+        '$targetable' : '$target$able',
+    })
 
     ##########
     # Record-level functions (delegate)

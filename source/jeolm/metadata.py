@@ -10,7 +10,7 @@ from pathlib import PurePosixPath
 import jeolm.yaml
 
 from .record_path import RecordPath
-from .records import RecordsManager
+from .records import Records
 
 import logging
 logger = logging.getLogger(__name__)
@@ -45,7 +45,7 @@ class MetadataPath(RecordPath):
             name[:self._suffix_pos(name)] + suffix )
 
 
-class MetadataManager(RecordsManager):
+class MetadataManager(Records):
     Dict = dict
     Path = MetadataPath
     name_pattern = re.compile(r'^(?:\w+-)*\w+(?:\.\w+)?$')
@@ -84,7 +84,7 @@ class MetadataManager(RecordsManager):
         self.absorb(cache)
 
     def dump_metadata_cache(self):
-        pickled_cache = pickle.dumps(self.records)
+        pickled_cache = pickle.dumps(self._records)
         new_path = self.local.build_dir / '.metadata.cache.pickle.new'
         with new_path.open('wb') as cache_file:
             cache_file.write(pickled_cache)
@@ -96,7 +96,7 @@ class MetadataManager(RecordsManager):
 
     _metadata_cache_name = 'metadata.cache.pickle'
 
-    def feed_metadata(self, metarecords, *, warn_dropped_keys=True):
+    def feed_metadata(self, metarecords):
         for metainpath, record in self.items():
             if metainpath.is_root() or metainpath.suffix == '':
                 assert '$metadata' not in record
@@ -107,9 +107,6 @@ class MetadataManager(RecordsManager):
                 metapath = metainpath.with_suffix('')
             metadata = record.get('$metadata')
             metarecords.absorb(metadata, metapath, overwrite=False)
-        if warn_dropped_keys:
-            for metapath, metarecord in metarecords.items():
-                self.check_dropped_metarecord_keys(metarecord, metapath)
         return metarecords
 
     def review(self, inpath):
@@ -459,35 +456,4 @@ class MetadataManager(RecordsManager):
         return metadata
 
     # pylint: enable=no-self-use,unused-argument
-
-    dropped_keys = {
-        '$matter' : ('$fluid',),
-        '$build$matter' : ('$manner', '$rigid',),
-        '$build$style' : (
-            '$manner$style', '$manner$options',
-            '$out$options', '$fluid$opt', '$rigid$opt', '$manner$opt',
-            '$build$special', ),
-        '$delegate' : ('$target$delegate',),
-        '$target$able' : ('$targetable',),
-        '$matter: preamble package' : (
-            '$required$packages', '$latex$packages', '$tex$packages', ),
-    }
-
-    @classmethod
-    def check_dropped_metarecord_keys(cls, metarecord, metapath):
-        for modern_key, dropped_keys in cls.dropped_keys.items():
-            assert not isinstance(dropped_keys, str), dropped_keys
-            for dropped_key in dropped_keys:
-                for key in metarecord:
-                    match = cls.flagged_pattern.match(key)
-                    if match.group('key') != dropped_key:
-                        continue
-                    logger.warning(
-                        "Dropped key <RED>%(key)s<NOCOLOUR> "
-                        "detected in <YELLOW>%(metapath)s<NOCOLOUR> "
-                        "(replace it with %(modern_key)s)",
-                        dict(
-                            key=dropped_key, metapath=metapath,
-                            modern_key=modern_key, )
-                    )
 
