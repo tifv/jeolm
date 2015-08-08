@@ -4,33 +4,16 @@ many small pieces distributed to course listeners over time.
 Application includes build system implemented in Python, and
 complementary LaTeX package.
 
-#### Dependencies
+#### Required dependencies
 
-* Python 3.3 or greater; the following non-standard packages must be installed:
-  * [PyYAML](http://pyyaml.org/)
-  * [pathlib](http://docs.python.org/3/library/pathlib.html) of some specific versions:
-    - version included in Python 3.4.2 will work
-    - [recent version](http://hg.python.org/cpython/file/4a55b98314cd/Lib/pathlib.py) will work too
-    - unfortunately, version included in Python 3.4.1 won't work due to a [bug](http://bugs.python.org/issue20639)
-  * [pyinotify](http://github.com/seb-m/pyinotify) (imported and used only by 'jeolm buildline' shell)
-  * [pyenchant](http://pythonhosted.org/pyenchant/) (imported and used only by 'jeolm spell' subcommand)
-* LaTeX
+* Python 3.4.2 or greater; the following non-standard packages are required:
+  * [PyYAML](http://pyyaml.org/);
+* LaTeX, pdfLaTeX, XeLaTeX or LuaLaTeX.
 
-Following programs will be invoked occasionally:
+#### Optional dependencies
 
-* [Asymptote](http://asymptote.sourceforge.net/) (on .asy to .eps compilation)
-* [Inkscape](http://inkscape.org/) (on .svg to .eps conversion)
-
-#### Invocation
-
-    $ python3 -m jeolm --help
-    $ python3 -m jeolm init gitignore style
-    $ cat <<EOF > source/_style.yaml
-    \$style:
-    - /_style
-    - verbatim: \def\jeolmheader\jeolmheadertemplate{institution}{date range}{group name}
-    EOF
-    $ python3 -m jeolm review source/
-    $ python3 -m jeolm build /_style/jeolm # build documentation of LaTeX package
-    $ python3 -m jeolm buildline
-    jeolm>
+* Python non-standard packages:
+  * [pyinotify](http://github.com/seb-m/pyinotify) is required for `jeolm buildline` subcommand;
+  * [pyenchant](http://pythonhosted.org/pyenchant/) is required for `jeolm spell` subcommand';
+* [Asymptote](http://asymptote.sourceforge.net/) is required to compile `.asy` figures;
+* [Inkscape](http://inkscape.org/) is required to convert `.svg` figures.
