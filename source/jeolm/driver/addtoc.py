@@ -4,17 +4,21 @@ Keys recognized in metarecords:
   $source$sections
 """
 
-from jeolm.driver.regular import RegularDriver, DriverError
+from string import Template
+
+from jeolm.target import Target
+
+from jeolm.driver.regular import RegularDriver
+
+from . import DriverError, processing_target, ensure_type_items
 
 import logging
 logger = logging.getLogger(__name__)
 
-
 class AddToCDriver(RegularDriver):
 
-    @processing_target_aspect( aspect='source metabody [addtoc]',
-        wrap_generator=True )
-    @classifying_items(aspect='metabody', default='verbatim')
+    @ensure_type_items((RegularDriver.MetabodyItem, Target))
+    @processing_target
     def _generate_source_metabody(self, target, metarecord):
 
         if 'add-toc' not in target.flags:
@@ -28,12 +32,13 @@ class AddToCDriver(RegularDriver):
         if 'print' not in target.flags:
             # with hyperref, \phantomsection is required
             yield self.RequirePackageBodyItem(package='hyperref')
-            yield self.substitute_phantomsection()
+            yield self.VerbatimBodyItem(
+                self.phantomsection_template.substitute() )
         else:
             # without hyperref, \phantomsection won't work
             yield self.ProhibitPackageBodyItem(package='hyperref')
-            pass
-        yield self.substitute_addtoc(line=caption)
+        yield self.VerbatimBodyItem(
+            self.addtoc_template.substitute(line=caption) )
         yield target.flags_difference({'add-toc'})
 
     @classmethod
@@ -45,8 +50,10 @@ class AddToCDriver(RegularDriver):
         else:
             return None
 
-    addtoc_template = r'\addcontentsline{toc}{section}{$line}'
-    phantomsection_template = r'\phantomsection'
+    addtoc_template = Template(
+        r'\addcontentsline{toc}{section}{$line}' )
+    phantomsection_template = Template(
+        r'\phantomsection' )
 
     ##########
     # LaTeX-level functions

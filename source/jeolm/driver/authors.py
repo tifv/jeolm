@@ -4,24 +4,30 @@ Keys recognized in metarecords:
 """
 
 from functools import partial
+from string import Template
 
-from jeolm.driver.regular import RegularDriver, DriverError
+from jeolm.driver.regular import RegularDriver
+
+from . import DriverError, ensure_type_items
 
 class AuthorsDriver(RegularDriver):
 
+    @ensure_type_items((RegularDriver.MetabodyItem))
     def _generate_header_def_metabody(self, target, metarecord, *, date):
         author_list = metarecord.get('$authors')
         if author_list is not None:
-            yield self._constitute_authors_def(author_list)
+            yield self.VerbatimBodyItem(
+                self._constitute_authors_def(author_list) )
         yield from super()._generate_header_def_metabody(
             target, metarecord, date=date )
 
     ##########
     # LaTeX-level functions
 
+    @classmethod
     def _constitute_authors_def(cls, author_list):
         if isinstance(author_list, list):
-            return cls.substitute_authors_def(
+            return cls.authors_def_template.substitute(
                 authors=cls._constitute_authors(author_list))
         else:
             raise DriverError("Authors must be a list")
@@ -40,5 +46,6 @@ class AuthorsDriver(RegularDriver):
         *names, last = author.split(' ')
         return thin_space.join([name[0] + '.' for name in names] + [last])
 
-    authors_def_template = r'\def\jeolmauthors{$authors}'
+    authors_def_template = Template(
+        r'\def\jeolmauthors{$authors}' )
 

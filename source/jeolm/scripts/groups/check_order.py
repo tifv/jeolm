@@ -31,12 +31,12 @@ def clear_order(metadata):
     """
     root = metadata.Path()
     order_paths = { path
-        for path in metadata.keys()
+        for path in metadata.paths()
         if path != root
         if path.name == '_Order.yaml' }
     for path in order_paths:
         assert isinstance(path, metadata.Path), type(path)
-        metadata_record = metadata.getitem(path)
+        metadata_record = metadata.get(path)
         metadata.delete(path)
         metadata_piece = metadata_record['$metadata']
         for name in metadata_piece:

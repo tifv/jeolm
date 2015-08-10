@@ -21,7 +21,16 @@ class RecordNotFoundError(RecordError, LookupError):
 class Records:
     Dict = OrderedDict
     Path = RecordPath
-    name_regex = re.compile(r'.+')
+    name_regex = re.compile(r'(?!\$).+')
+
+    @classmethod
+    def _check_name(cls, name, path=None):
+        if not cls.name_regex.fullmatch(name):
+            message = ( "Nonconforming record name {name}"
+                .format(name=name) )
+            if path is not None:
+                message += " (path {path})".format(path=path)
+            raise ValueError(message)
 
     def __init__(self):
         self._records = self.Dict()
@@ -38,38 +47,11 @@ class Records:
         if not isinstance(path, self.Path):
             raise TypeError(type(path))
         for part in reversed(path.parts):
+            self._check_name(part, path=path)
             data = {part : data}
         self._absorb_into( data, self.Path(), self._records,
             overwrite=overwrite )
         self._clear_cache()
-
-    def delete(self, path):
-        if not isinstance(path, self.Path):
-            raise TypeError(type(path))
-        if path.is_root():
-            raise RuntimeError("Deleting root is impossible")
-        self._delete_record(path)
-        self._clear_cache()
-
-    def clear(self, path=None):
-        if path is None:
-            path = self.Path()
-        if not isinstance(path, self.Path):
-            raise TypeError(type(path))
-        self._clear_record(path)
-        self._clear_cache()
-
-    def reorder(self, path, sample):
-        self.reorder_omap(self.getitem(path, original=True), sample)
-
-    @staticmethod
-    def reorder_omap(omap, sample):
-        if not isinstance(omap, OrderedDict):
-            raise RuntimeError(type(omap))
-        swap = omap.copy()
-        for key in mapping_ordered_keys(sample):
-            omap[key] = swap.pop(key)
-        omap.update(swap)
 
     def _absorb_into(self, data, path, record, *, overwrite=True):
         if data is None:
@@ -118,16 +100,41 @@ class Records:
 
     def _create_record(self, path, parent_record):
         name = path.name
-        if not self.name_regex.fullmatch(name):
-            raise ValueError(
-                "Nonconforming record name {name} (path {path})"
-                .format(name=name, path=path) )
+        self._check_name(name, path=path)
         record = parent_record[name] = self.Dict()
         return record
 
+    def reorder(self, path, sample):
+        self._reorder_omap(self.get(path, original=True), sample)
+
+    @staticmethod
+    def _reorder_omap(omap, sample):
+        if not isinstance(omap, OrderedDict):
+            raise RuntimeError(type(omap))
+        swap = omap.copy()
+        for key in mapping_ordered_keys(sample):
+            omap[key] = swap.pop(key)
+        omap.update(swap)
+
+    def clear(self, path=None):
+        if path is None:
+            path = self.Path()
+        if not isinstance(path, self.Path):
+            raise TypeError(type(path))
+        self._clear_record(path)
+        self._clear_cache()
+
+    def delete(self, path):
+        if not isinstance(path, self.Path):
+            raise TypeError(type(path))
+        if path.is_root():
+            raise RuntimeError("Deleting root is impossible")
+        self._delete_record(path)
+        self._clear_cache()
+
     def _clear_record(self, path, record=None):
         if record is None:
-            record = self.getitem(path, original=True)
+            record = self.get(path, original=True)
         while record:
             key, subrecord = record.popitem()
             if key.startswith('$'):
@@ -137,70 +144,66 @@ class Records:
     def _delete_record(self, path, parent_record=None, popped_record=None):
         if popped_record is None:
             if parent_record is None:
-                parent_record = self.getitem(path.parent, original=True)
+                parent_record = self.get(path.parent, original=True)
             popped_record = parent_record.pop(path.name)
+        else:
+            if parent_record is not None:
+                raise RuntimeError
         self._clear_record(path, popped_record)
 
-    def getitem(self, path, *, original=False):
+    def get(self, path, *, original=False):
         if not isinstance(path, self.Path):
             raise TypeError(type(path))
-        use_cache = not original
-        if use_cache:
-            with suppress(KeyError):
-                return self._records_cache[path]
+        with suppress(KeyError):
+            return self._records_cache[path, original]
 
         if path.is_root():
             record = self._get_root(original=original)
         else:
-            name = path.name
-            if name.startswith('$'):
-                raise ValueError(path)
             try:
                 # Recurse, making use of cache
-                parent_record = self.getitem(path.parent, original=original)
+                parent_record = self.get(path.parent, original=original)
                 record = self._get_child(
-                    parent_record, name, original=original )
+                    parent_record, path, original=original )
             except RecordNotFoundError as error:
                 if error.args == ():
                     raise RecordNotFoundError(
                         "Record {} not found".format(path) ) from None
                 raise
 
-        if use_cache:
-            self._records_cache[path] = record
+        self._records_cache[path, original] = record
         return record
 
     def _get_root(self, original=False):
         record = self._records
         if not original:
             record = record.copy()
-            self._derive_attributes({}, record, name=None)
+            self._derive_record({}, record, path=RecordPath())
         return record
 
-    def _get_child(self, record, name, *, original=False):
+    def _get_child(self, parent_record, path, *, original=False):
+        name = path.name
+        self._check_name(name, path=path)
         try:
-            child_record = record[name]
+            child_record = parent_record[name]
         except KeyError:
             raise RecordNotFoundError from None
         assert isinstance(child_record, dict), child_record
         if not original:
             child_record = child_record.copy()
-            self._derive_attributes(record, child_record, name)
+            self._derive_record(parent_record, child_record, path)
         return child_record
 
-    def _derive_attributes(self, parent_record, child_record, name):
-        parent_path = parent_record.get('$path')
-        if parent_path is None:
-            path = self.Path()
-        else:
-            path = parent_path / name
-        child_record['$path'] = path
+    # pylint: disable=unused-argument
+    def _derive_record(self, parent_record, child_record, path):
+        pass
+    # pylint: enable=unused-argument
 
     def items(self, path=None):
         """Yield (path, record) pairs."""
         if path is None:
             path = self.Path()
-        record = self.getitem(path)
+        record = self.get(path)
         yield path, record
         for key in mapping_ordered_keys(record):
             if key.startswith('$'):
@@ -209,38 +212,22 @@ class Records:
 
     # pylint: disable=unused-variable
 
-    def keys(self, path=None):
+    def paths(self, path=None):
         """Yield paths."""
         if path is None:
             path = self.Path()
         for subpath, subrecord in self.items(path=path):
             yield subpath
 
-    def values(self, path=None):
-        """Yield paths."""
-        if path is None:
-            path = self.Path()
-        for subpath, subrecord in self.items(path=path):
-            yield subrecord
-
     # pylint: enable=unused-variable
 
     def __contains__(self, path):
         try:
-            self.getitem(path)
+            self.get(path)
         except RecordNotFoundError:
             return False
         else:
             return True
-
-    def __getitem__(self, path):
-        return self.getitem(path)
-
-    def get(self, path, default=None, original=False):
-        try:
-            return self.getitem(path, original=original)
-        except RecordNotFoundError:
-            return default
 
     @classmethod
     def compare_items(cls, records1, records2, path=None,
@@ -252,13 +239,20 @@ class Records:
         if path is None:
             path = cls.Path()
 
-        record1 = records1.get(path, original=original)
-        record2 = records2.get(path, original=original)
+        try:
+            record1 = records1.get(path, original=original)
+        except RecordNotFoundError:
+            record1 = {}
+        try:
+            record2 = records2.get(path, original=original)
+        except RecordNotFoundError:
+            record2 = {}
         yield path, record1, record2
 
         keys = unique(
-            mapping_ordered_keys(record1 if record1 is not None else {}),
-            mapping_ordered_keys(record2 if record2 is not None else {}) )
+            mapping_ordered_keys(record1),
+            mapping_ordered_keys(record2),
+        )
         for key in keys:
             if key.startswith('$'):
                 continue

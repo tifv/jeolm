@@ -6,7 +6,13 @@ Keys recognized in metarecords:
   $test$duration
 """
 
-from jeolm.driver.regular import RegularDriver, DriverError
+from string import Template
+
+from jeolm.target import Target
+
+from jeolm.driver.regular import RegularDriver
+
+from . import DriverError, processing_target, ensure_type_items
 
 import logging
 logger = logging.getLogger(__name__)
@@ -14,9 +20,8 @@ logger = logging.getLogger(__name__)
 
 class TestDriver(RegularDriver):
 
-    @processing_target_aspect( aspect='source metabody [test]',
-        wrap_generator=True )
-    @classifying_items(aspect='metabody', default='verbatim')
+    @ensure_type_items((RegularDriver.MetabodyItem, Target))
+    @processing_target
     def _generate_source_metabody(self, target, metarecord):
         no_postword = (
             not metarecord.get('$test', False) or
@@ -28,9 +33,8 @@ class TestDriver(RegularDriver):
         yield target.flags_union({'no-test-postword'})
         yield from self._generate_test_postword(target, metarecord)
 
-    @processing_target_aspect( aspect='test postword [test]',
-        wrap_generator=True )
-    @classifying_items(aspect='metabody', default='verbatim')
+    @ensure_type_items((RegularDriver.MetabodyItem))
+    @processing_target
     def _generate_test_postword(self, target, metarecord):
         problem_scores = metarecord.get('$test$problem-scores')
         mark_limits = metarecord.get('$test$mark-limits')
@@ -44,7 +48,8 @@ class TestDriver(RegularDriver):
             'no-test-duration' not in target.flags )
         if not has_problem_scores and not has_test_duration:
             return # no-op
-        yield {'verbatim' : self.substitute_begin_postword()}
+        yield self.VerbatimBodyItem(
+            self.begin_postword_template.substitute() )
         postword_items = []
         if has_problem_scores:
             postword_items.append(
@@ -58,13 +63,16 @@ class TestDriver(RegularDriver):
         need_newline = False
         for item in postword_items:
             if need_newline:
-                yield {'verbatim' : '\\\\'}
-            yield {'verbatim' : item}
+                yield self.VerbatimBodyItem('\\\\')
+            yield self.VerbatimBodyItem(item)
             need_newline = True
-        yield {'verbatim' : self.substitute_end_postword()}
+        yield self.VerbatimBodyItem(
+            self.end_postword_template.substitute() )
 
-    begin_postword_template = r'\begin{flushright}\scriptsize'
-    end_postword_template = r'\end{flushright}'
+    begin_postword_template = Template(
+        r'\begin{flushright}\scriptsize' )
+    end_postword_template = Template(
+        r'\end{flushright}' )
 
     @classmethod
     def _constitute_problem_scores(cls, problem_scores):
