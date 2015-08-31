@@ -242,18 +242,22 @@ class Records:
         try:
             record1 = records1.get(path, original=original)
         except RecordNotFoundError:
-            record1 = {}
+            record1 = None
+            keys1 = ()
+        else:
+            keys1 = mapping_ordered_keys(record1)
+
         try:
             record2 = records2.get(path, original=original)
         except RecordNotFoundError:
-            record2 = {}
+            record2 = None
+            keys2 = ()
+        else:
+            keys2 = mapping_ordered_keys(record1)
+
         yield path, record1, record2
 
-        keys = unique(
-            mapping_ordered_keys(record1),
-            mapping_ordered_keys(record2),
-        )
-        for key in keys:
+        for key in unique(keys1, keys2):
             if key.startswith('$'):
                 continue
             yield from cls.compare_items(records1, records2, path/key,

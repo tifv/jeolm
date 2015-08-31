@@ -50,11 +50,11 @@ class AddToCDriver(RegularDriver):
         else:
             return None
 
+    ##########
+    # LaTeX-level functions
+
     addtoc_template = Template(
         r'\addcontentsline{toc}{section}{$line}' )
     phantomsection_template = Template(
         r'\phantomsection' )
-
-    ##########
-    # LaTeX-level functions
 

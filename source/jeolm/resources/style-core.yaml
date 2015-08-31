@@ -12,8 +12,6 @@ $style:
   - package: inputenc
     options: [utf8]
     condition: {or: [latex, pdflatex]}
-  - package: amsmath
-  - package: amssymb
   - package: multicol
   - package: graphicx
 
@@ -359,6 +357,9 @@ text-config:
 
     $style[latex]:
       &default-math-font-config
+      - package: amsmath
+      - package: amssymb
+      - package: mathabx
       - delegate: swap-vargreek/computer-modern
       - delegate: swap-vargreek/unicode
       - delegate: ineq-slanted
@@ -372,6 +373,8 @@ text-config:
 
     $style[lualatex]:
       &unicode-math-font-config
+      - package: amsmath
+      - package: amssymb
       - delegate: unicode-math
       - delegate: swap-vargreek/unicode
       - delegate: ineq-slanted
@@ -397,8 +400,11 @@ text-config:
       $style:
       - package: unicode-math
         options:
+        - math-style=ISO
+        - partial=upright
         - vargreek-shape=unicode
       - delegate: setfont
+      - verbatim: \AtBeginDocument{\let\setminus\smallsetminus}
 
       setfont: # {{{
 
