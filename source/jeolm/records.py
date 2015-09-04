@@ -239,21 +239,18 @@ class Records:
         if path is None:
             path = cls.Path()
 
-        try:
-            record1 = records1.get(path, original=original)
-        except RecordNotFoundError:
-            record1 = None
-            keys1 = ()
-        else:
-            keys1 = mapping_ordered_keys(record1)
+        def maybe_get_record_and_keys(records):
+            try:
+                record = records.get(path, original=original)
+            except RecordNotFoundError:
+                record = None
+                keys = ()
+            else:
+                keys = mapping_ordered_keys(record)
+            return record, keys
 
-        try:
-            record2 = records2.get(path, original=original)
-        except RecordNotFoundError:
-            record2 = None
-            keys2 = ()
-        else:
-            keys2 = mapping_ordered_keys(record1)
+        record1, keys1 = maybe_get_record_and_keys(records1)
+        record2, keys2 = maybe_get_record_and_keys(records2)
 
         yield path, record1, record2
 

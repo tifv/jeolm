@@ -52,6 +52,8 @@ def natural_keyfunc(string, regex=re.compile(r'(\d+)|\.')):
 def mapping_is_ordered(mapping):
     return isinstance(mapping, OrderedDict) or len(mapping) <= 1
 
+# pylint: disable=unidiomatic-typecheck
+
 def mapping_ordered_keys(mapping, *, keyfunc=None):
     """
     Return persistently ordered mapping keys.
@@ -59,7 +61,7 @@ def mapping_ordered_keys(mapping, *, keyfunc=None):
     Only works with string keys.
     """
     if mapping_is_ordered(mapping):
-        return mapping.keys()
+        return list(mapping.keys())
     assert type(mapping) is dict, type(mapping)
     if keyfunc is None:
         keyfunc = natural_keyfunc
@@ -80,4 +82,6 @@ def mapping_ordered_items(mapping, *, keyfunc=None):
         key, value = item # pylint: disable=unused-variable
         return keyfunc(key)
     return sorted(mapping.items(), key=item_keyfunc)
+
+# pylint: enable=unidiomatic-typecheck
 
