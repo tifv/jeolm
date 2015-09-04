@@ -1,0 +1,146 @@
+\ProvidesPackage{tourn-local}
+\RequirePackage{jeolm}
+
+\RequirePackage{ifthen}
+
+% default figures placement
+\def\fps@figure{hbp}
+\def\fps@table{hbp}
+
+% \ifdigits
+\newcommand\ifdigits[1]{\jeolm@if@digits1#1\jeolm@stop@digits\end@digits}
+\let\jeolm@stop@digits\relax
+\def\jeolm@if@digits#1#2\end@digits{\ifthenelse{`#1 < `0 \OR `#1 > `9}%
+    {\iffalse}%
+    {%
+        \ifthenelse{\equal{#2}{\jeolm@stop@digits}}%
+            {\iftrue}%
+            {\jeolm@if@digits#2\end@digits}%
+    }}
+
+% \problemscore
+\newcounter{problem@score}
+\newcommand\problemscore[1]{%
+    \ifdigits{#1}\addtocounter{problem@score}{#1}\fi
+    \textsf{(#1)}\hspace{0.5em}\ignorespaces}
+\newcommand\problemscoresum{\arabic{problem@score}\setcounter{problem@score}{0}}
+
+\newcommand\jeolmbriefing[1]{%
+\vspace{1ex}%
+\begin{center}\small\sffamily #1 \end{center}}
+
+\let\briefing\relax
+
+% Miscellaneous templates
+
+% \jeolmhrule
+\newlength{\jeolmhrule@width}%
+\newlength{\jeolmhrule@textwidth}%
+\newcommand\jeolmhrule[1]{\begingroup
+    \settowidth{\jeolmhrule@textwidth}{\hbox{\null\quad#1\quad\null}}%
+    \jeolmhrule@width=0.5\textwidth%
+    \addtolength{\jeolmhrule@width}{-0.5\jeolmhrule@textwidth}%
+    \rule[0.5ex]{\jeolmhrule@width}{0.5pt}%
+    \quad#1\quad
+    \rule[0.5ex]{\jeolmhrule@width}{0.5pt}
+\endgroup}
+
+% \jeolmheader
+\renewcommand\jeolmheader{%
+    \par\begingroup\small\sffamily%
+        \leavevmode\null\hfill%
+            {\bfseries\jeolmevent}%
+        \hfill\null\\\null\hfill%
+        \ifx\jeolmdaterange\relax\else%
+            {\itshape\jeolmdaterange}%
+        \qquad\fi%
+            {\jeolmcity}%
+        \hfill\null\\%
+        \begingroup\large\bfseries%
+            \ifx\jeolmleague\relax%
+                \rule[0.5ex]{\textwidth}{0.5pt}%
+            \else%
+                \jeolmhrule{\jeolmleague}%
+            \fi\linebreak[0]%
+        \endgroup%
+    \endgroup%
+    \@nobreaktrue%
+}
+\def\jeolmevent{Whatever}
+\def\jeolmcity{Wherever}
+\let\jeolmdaterange\relax
+\let\jeolmleague\relax
+
+% \regattablankcaption template
+% {"Team name"}{"Score"}{"Maximum"}{caption}{max mark}
+\newcommand\regattablankcaptiontemplate[5]{%
+    \parbox{0.66\textwidth}{%
+    \vspace{1ex}%
+    \textbf{\Large{#4}}%
+    \par\vspace{2ex}%
+    \textbf{#1:}\ \hbox to 10em{\hrulefill}%
+    \vspace{1ex}}%
+    \parbox{0.33\textwidth}{%
+    \setlength{\fboxsep}{2em}%
+    \texttt{#2{:}\ }\fbox{\phantom{S}}%
+    \par\vspace{1ex}%
+    \texttt{#3{:}\ #5}}%
+    \vspace{3ex}%
+}
+
+%%%%%%%%%%
+% Problem/solution segregation
+
+% Dispatching environments
+\newenvironment{tourn-problems}[1]%
+    {\def\problem@tourn@env{tourn-problems/#1}%
+        \begin{\problem@tourn@env}}%
+    {\end{\problem@tourn@env}}
+\newenvironment{tourn-problems/problems}%
+    {\begin{problems}%
+        \newcommand{\ifproblem}\iftrue
+        \newcommand{\ifsolution}\iffalse
+        \let\problem\problem@tourn@problem}%
+    {\end{problems}}%
+\newenvironment{tourn-problems/solutions}%
+    {\begin{problems}
+        \newcommand{\ifproblem}\iffalse
+        \newcommand{\ifsolution}\iftrue
+        \let\problem\problem@tourn@solution}%
+    {\end{problems}}%
+\newenvironment{tourn-problems/complete}%
+    {\begin{problems}
+        \newcommand{\ifproblem}\iftrue
+        \newcommand{\ifsolution}\iftrue
+        \let\problem\problem@tourn@complete}%
+    {\end{problems}}
+\newenvironment{tourn-problems/jury}%
+    {\begin{tourn-problems/complete}}%
+    {\end{tourn-problems/complete}}%
+\newenvironment{tourn-problems/blank}%
+    {\begin{tourn-problems/problems}}%
+    {\end{tourn-problems/problems}}%
+\newcommand\tournproblem[1]{\def\problem@tourn@number{\itemy{#1}}}
+
+% Selection of either problem or solution
+\long\def\problem@tourn@complete#1\solution#2\endproblem{\begingroup
+    \problem@tourn@number#1\par
+    \solution@delimiter#2\par
+\endgroup}
+    \long\def\problem@tourn@problem#1\solution#2\endproblem{\begingroup
+    \problem@tourn@number#1\par
+\endgroup}
+    \long\def\problem@tourn@solution#1\solution#2\endproblem{\begingroup
+    \problem@tourn@number#2\par
+\endgroup}
+
+\def\solution@delimiter{%
+    \ifx\mdlgwhtsquare\undefined%
+        % amsmath way
+        \global\def\solution@delimiter{$\square$\quad}%
+    \else%
+        % unicode-math way
+        \global\def\solution@delimiter{$\mdlgwhtsquare$\quad}%
+    \fi\solution@delimiter
+}
+

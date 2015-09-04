@@ -7,6 +7,10 @@ style-groups:
   source/_style/jeolm-groups.sty: jeolm-groups.sty
   source/_style/jeolm-groups.yaml: jeolm-groups.yaml
 
+style-tourn:
+  source/_style/jeolm-tourn.sty: jeolm-tourn.sty
+  source/_style/jeolm-tourn.yaml: jeolm-tourn.yaml
+
 figure-style:
   source/_style/jeolm.asy: jeolm.asy
 

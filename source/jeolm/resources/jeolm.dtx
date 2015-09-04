@@ -8,25 +8,6 @@
 %
 % \fi
 %
-% \CheckSum{0}
-%
-% \CharacterTable
-%  {Upper-case    \A\B\C\D\E\F\G\H\I\J\K\L\M\N\O\P\Q\R\S\T\U\V\W\X\Y\Z
-%   Lower-case    \a\b\c\d\e\f\g\h\i\j\k\l\m\n\o\p\q\r\s\t\u\v\w\x\y\z
-%   Digits        \0\1\2\3\4\5\6\7\8\9
-%   Exclamation   \!     Double quote  \"     Hash (number) \#
-%   Dollar        \$     Percent       \%     Ampersand     \&
-%   Acute accent  \'     Left paren    \(     Right paren   \)
-%   Asterisk      \*     Plus          \+     Comma         \,
-%   Minus         \-     Point         \.     Solidus       \/
-%   Colon         \:     Semicolon     \;     Less than     \<
-%   Equals        \=     Greater than  \>     Question mark \?
-%   Commercial at \@     Left bracket  \[     Backslash     \\
-%   Right bracket \]     Circumflex    \^     Underscore    \_
-%   Grave accent  \`     Left brace    \{     Vertical bar  \|
-%   Right brace   \}     Tilde         \~}
-%
-%
 % \GetFileInfo{jeolm.sty}
 %
 % \title{The \textsf{jeolm} package}
@@ -35,8 +16,8 @@
 %
 % \maketitle
 %
-% \DoNotIndex{\def,\edef}
-% \DoNotIndex{\fi,\par,\z@}
+% \DoNotIndex{\let,\def,\edef}
+% \DoNotIndex{\fi,\par}
 % \DoNotIndex{\DeclareOption,\ProcessOptions,\RequirePackage}
 %
 % \section{Introduction}
@@ -49,14 +30,9 @@
 %
 % \subsection{Swap Greek variants}
 %
-% Command |\swapvargreek| allos one to exchange variant and normal greek
-% letters.
-% For example, |\swapvargreek{kappa}| will exchange |\kappa| and |\varkappa|.
-%
-% Package options
-% |swap-beta|, |swap-epsilon|, |swap-kappa|, |swap-phi|,
-% |swap-pi|, |swap-rho|, |swap-theta|, |swap-Theta|
-% will switch respective letters.
+% Command |\swapvar| allos one to exchange variant and normal greek letters.
+% For example, |\swapvar{kappa}| will exchange |\kappa| and |\varkappa|,
+% and |\swapvar[up]{phi}| will exchange |\upphi| and |\upvarphi|.
 %
 % \subsection{Figures}
 %
@@ -103,8 +79,8 @@
 % For |\problemy{2.3}|, mentioning next problem:
 % \ref{a problem} for |\ref{a problem}|.
 % \qquad
-% \problemyx{2a}{**}\label{a problem}%
-% For |\problemyx{2a}{**}\label{a problem}%|.
+% \problemyx{2a}{**}\label{a problem}\relax
+% For |\problemyx{2a}{**}\label{a problem}|.
 % \\
 % Macro |\problemyx|\marg{problem number}\marg{mark} combines features of
 % |\problemy| and |\problemx|.
@@ -121,8 +97,8 @@
 % \subproblemx{*}
 % for |\subproblemx{*}|.
 % \\
-% \subproblemy{m}\label{a subproblem}%
-% for |\subproblemy{m}\label{a subproblem}%|
+% \subproblemy{m}\label{a subproblem}\relax
+% for |\subproblemy{m}\label{a subproblem}|
 % \\
 % \subproblemyx{n}{*}
 % for |\subproblemyx{n}{*}|.
@@ -143,8 +119,8 @@
 % \begin{problems}
 % \item
 % For |\item|.
-% \item\label{some problem}%
-% For |\item\label{some problem}%|.
+% \item\label{some problem}\relax
+% For |\item\label{some problem}|.
 % \item
 % Mentioning previous problem: \ref{some problem} for |\ref{some problem}|.
 % \itemx{*}
@@ -157,8 +133,8 @@
 % \itemy{2.1}
 % For |\itemy{2.1}|, mentioning next problem:
 % \ref{another problem} for |\ref{another problem}|.
-% \itemyx{2.2}{*}\label{another problem}%
-% For |\itemyx{2.2}{*}\label{another problem}%|.
+% \itemyx{2.2}{*}\label{another problem}\relax
+% For |\itemyx{2.2}{*}\label{another problem}|.
 % \end{problems}
 %
 % \subsection{Statements}
@@ -181,7 +157,7 @@
 % These commands should be used outside of |problems| environment.
 % This way they will outstand from the problem list.
 %
-% \StopEventually{\newpage\PrintIndex}
+% \StopEventually{}
 %
 % \section{Implementation}
 %
@@ -213,19 +189,13 @@
 }
 %    \end{macrocode}
 %
-% Just convenient definitions.
-%    \begin{macrocode}
-\let\ov\overline
-\newcommand\divides{\mathrel{\vert}}
-%    \end{macrocode}
-%
 % Allow exchanging greek letters with their variants.
 %    \begin{macrocode}
-\newcommand\swapvargreek[1]{\begingroup
-\expandafter\let\expandafter\swap\csname #1\endcsname
-\expandafter\let\expandafter\varswap\csname var#1\endcsname
-\global\expandafter\let\csname #1\endcsname\varswap
-\global\expandafter\let\csname var#1\endcsname\swap
+\newcommand\swapvar[2][]{\begingroup
+\expandafter\let\expandafter\swap\csname #2#1\endcsname
+\expandafter\let\expandafter\varswap\csname #2var#1\endcsname
+\global\expandafter\let\csname #2#1\endcsname\varswap
+\global\expandafter\let\csname #2var#1\endcsname\swap
 \endgroup}
 %    \end{macrocode}
 %
@@ -274,15 +244,8 @@
 %
 % \subsection{Package options}
 %
+% No options present.
 %    \begin{macrocode}
-\DeclareOption{swap-beta}{\swapvargreek{beta}}
-\DeclareOption{swap-epsilon}{\swapvargreek{epsilon}}
-\DeclareOption{swap-kappa}{\swapvargreek{kappa}}
-\DeclareOption{swap-phi}{\swapvargreek{phi}}
-\DeclareOption{swap-pi}{\swapvargreek{pi}}
-\DeclareOption{swap-rho}{\swapvargreek{rho}}
-\DeclareOption{swap-theta}{\swapvargreek{theta}}
-\DeclareOption{swap-Theta}{\swapvargreek{Theta}}
 \ProcessOptions
 %    \end{macrocode}
 %
@@ -322,25 +285,29 @@
 %
 % \subsection{Headers}
 %
-% \begin{macro}{\jeolmheadertemplate}
 % \begin{macro}{\jeolmheader}
 % Macro |\jeolmheader| is used by jeolm driver.
-% It is advised to define it as
-% |\jeolmheadertemplate|\marg{institution}\marg{daterange}\marg{group}.
+% If redefined, it must stay a macro without arguments.
 %    \begin{macrocode}
-\newcommand\jeolmheadertemplate[4]{\begingroup#4%
-    {\Large\vspace{4ex}}\par%
-    \begingroup\small\sffamily%
-        \strut\hfill{\bfseries#1}\hfill\strut\nopagebreak\\%
-        \strut\hfill{\itshape#2}\qquad{#3}%
-        \ifx\jeolmdate\relax\else\qquad{\itshape\jeolmdate}\fi%
-        \hfill\strut\nopagebreak\\%
-        \rule[1ex]{\textwidth}{0.5pt} %
+\newcommand\jeolmheader{%
+    \par\begingroup\small\sffamily%
+        \leavevmode\null\hfill%
+            {\bfseries\jeolminstitution}%
+        \hfill\null\\\null\hfill%
+            {\itshape\jeolmdaterange}%
+        \qquad
+            {\jeolmgroup}%
+        \ifx\jeolmdate\relax\else\qquad%
+            {\itshape\jeolmdate}%
+        \fi%
+        \hfill\null\\\rule[1ex]{\textwidth}{0.5pt}\linebreak[0]%
     \endgroup%
-    {\vspace{-1ex}\Large\vspace{-4ex}\vspace{-\parskip}}
-\endgroup}
+    \@nobreaktrue
+}
+\def\jeolminstitution{Wherever}
+\def\jeolmgroup{Whatever}
+\def\jeolmdaterange{Whenever}
 \let\jeolmdate\relax
-\newcommand\jeolmheader[1]{}
 %    \end{macrocode}
 % \end{macro}
 % \end{macro}
@@ -453,6 +420,7 @@
 % \subsubsection{Formatting}
 %
 % \begin{macro}{\problem@format}
+% \begin{macro}{\problem@space}
 %    \begin{macrocode}
 \newlength\problem@space@length
 \problem@space@length=1em
@@ -462,8 +430,10 @@
 \endgroup}
 %    \end{macrocode}
 % \end{macro}
+% \end{macro}
 %
 % \begin{macro}{\subproblem@format}
+% \begin{macro}{\subproblem@space}
 %    \begin{macrocode}
 \newlength\subproblem@space@length
 \newlength\@subproblem@letter@width
@@ -480,6 +450,7 @@
 )%
 \endgroup}}
 %    \end{macrocode}
+% \end{macro}
 % \end{macro}
 %
 % \begin{environment}{problems}

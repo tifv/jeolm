@@ -858,7 +858,7 @@ class RegularDriver(MetaRecords):
                 self.resetproblem_template.substitute() )
 
     # pylint: disable=no-self-use,unused-argument
-    @ensure_type_items((MetabodyItem, Target))
+    @ensure_type_items(MetabodyItem)
     def _generate_header_def_metabody(self, target, metarecord, *, date):
         if not target.flags.intersection({'multidate', 'no-date'}):
             if date is not None:
@@ -1473,9 +1473,9 @@ class RegularDriver(MetaRecords):
     resetproblem_template = Template(
         r'\resetproblem' )
     jeolmheader_begin_template = Template(
-        r'\jeolmheader{' )
+        r'\begingroup % \jeolmheader' )
     jeolmheader_end_template = Template(
-        r'}' )
+        r'\jeolmheader \endgroup' )
     datestamp_template = Template(
         r'\begin{flushright}\small' '\n'
         r'    $date' '\n'

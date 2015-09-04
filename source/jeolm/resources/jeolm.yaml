@@ -2,24 +2,26 @@ jeolm:
   $target$able: on
 
   $build$style:
-  - compiler: pdflatex
-  - document class: ltxdoc
-  - package: inputenc
-    options: [utf8]
-  - package: fontenc
-    options: [T2A]
-  - package: babel
-    options: [russian, english]
-  - package: colordoc
-    options: [braces]
-  - delegate: .
-  - verbatim: |-
-      \makeatletter
-      \c@IndexColumns = 2
-      \makeatother
-  - verbatim: \EnableCrossrefs
-  - verbatim: \CodelineIndex
+    # generic setup
+    - compiler: pdflatex
+    - document class: ltxdoc
+    - package: inputenc
+      options: [utf8]
+    - package: fontenc
+      options: [T2A]
+    - package: babel
+      options: [russian, english]
+    # documentation setup
+    - package: colordoc
+      options: [braces]
+    - verbatim: \DisableCrossrefs
+    - verbatim: \OnlyDescription
+      condition: -complete
+    - verbatim: \CodelineNumbered
+      condition: complete
+    # jeolm
+    - delegate: .
 
   $build$matter:
-  - delegate: .[no-header]
+    - delegate: .[no-header]
 

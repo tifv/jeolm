@@ -90,6 +90,26 @@ class TournDriver(RegularDriver, IncludingRecords):
     ##########
     # Record-level functions
 
+    @ensure_type_items(RegularDriver.MetabodyItem)
+    def _generate_header_def_metabody(self, target, metarecord, *, date):
+        yield from super()._generate_header_def_metabody(
+            target, metarecord, date=date )
+        if '$tourn$key' not in metarecord:
+            return
+        tourn_key = metarecord['$tourn$key']
+
+        if 'league-contained' in target.flags:
+            if tourn_key not in TOURN_SUBLEAGUE_KEYS:
+                raise RuntimeError(target)
+            league = self._find_league(target.path, metarecord)
+            yield self.VerbatimBodyItem(
+                self.league_def_template.substitute(
+                    league=self._find_name(league, metarecord['$language'])
+                ) )
+        else:
+            if tourn_key in TOURN_SUBLEAGUE_KEYS:
+                raise RuntimeError(target)
+
     # Extension
     @ensure_type_items((RegularDriver.MetabodyItem, Target))
     @processing_target
@@ -99,36 +119,21 @@ class TournDriver(RegularDriver, IncludingRecords):
             return
 
         tourn_key = metarecord['$tourn$key']
-        no_league = tourn_key not in TOURN_SUBLEAGUE_KEYS
+        is_subleague = tourn_key in TOURN_SUBLEAGUE_KEYS
         is_regatta = tourn_key in TOURN_REGATTA_KEYS
         is_contest = tourn_key in TOURN_CONTEST_KEYS
         assert is_regatta or is_contest
-        single_problem = tourn_key in {'$contest$problem', '$regatta$problem'}
-        is_regatta_blank = is_regatta and (
-            not single_problem and 'contest' in target.flags or
-            single_problem and 'blank' in target.flags )
-        if 'no-header' not in target.flags and not is_regatta_blank:
-            if no_league:
-                yield self.VerbatimBodyItem(
-                    self._constitute_league_def(None) )
+        is_single_problem = (
+            tourn_key in {'$contest$problem', '$regatta$problem'} )
+        is_regatta_contest = ( is_regatta and
+            not is_single_problem and 'contest' in target.flags )
+        if 'no-header' not in target.flags and not is_regatta_contest:
+            if is_subleague:
+                yield target.flags_union({'header', 'league-contained'})
             else:
-                league = self._find_league(target.path, metarecord)
-                yield self.VerbatimBodyItem(
-                    self._constitute_league_def(
-                        self._find_name(league, metarecord['$language']) )
-                )
-                if not single_problem:
-                    target = target.flags_union({'league-contained'})
-            if single_problem:
-                yield self.VerbatimBodyItem(
-                    self.jeolmtournheader_nospace_template.substitute() )
-            else:
-                # Create a negative offset in anticipation of \section
-                yield self.VerbatimBodyItem(
-                    self.jeolmtournheader_template.substitute() )
-                target = target.flags_union({'no-header'})
-
-        yield from self._generate_tourn_metabody(target, metarecord)
+                yield target.flags_union({'header'})
+        else:
+            yield from self._generate_tourn_metabody(target, metarecord)
 
     @ensure_type_items((RegularDriver.MetabodyItem, Target))
     @processing_target
@@ -202,9 +207,9 @@ class TournDriver(RegularDriver, IncludingRecords):
             target = target.flags_delta(
                 difference={'contest'},
                 union={'problems', 'without-problem-sources'} )
-            has_postword = True
+            has_briefing = True
         else:
-            has_postword = False
+            has_briefing = False
         language = metarecord['$language']
         if 'league-contained' in target.flags:
             league_name = None
@@ -228,9 +233,9 @@ class TournDriver(RegularDriver, IncludingRecords):
             yield target.path_derive(str(problem))
         yield self.VerbatimBodyItem(
             self.end_tourn_problems_template.substitute() )
-        if has_postword:
+        if has_briefing:
             yield self.VerbatimBodyItem(
-                self.postword_template.substitute() )
+                self.briefing_template.substitute() )
 
     @ensure_tourn_flags
     @ensure_type_items((RegularDriver.MetabodyItem, Target))
@@ -358,17 +363,10 @@ class TournDriver(RegularDriver, IncludingRecords):
         regatta_round = self._find_regatta_round(target.path, metarecord)
         if 'blank' in target.flags:
             assert 'itemized' not in target.flags
-            assert 'league-contained' not in target.flags
-            language = metarecord['$language']
-            yield self.VerbatimBodyItem(
-                self._constitute_league_def(
-                    self._find_name(league, language) )
-            )
-            yield self.VerbatimBodyItem(
-                self.jeolmtournheader_nospace_template.substitute() )
+            assert 'league-contained' in target.flags
             yield self.VerbatimBodyItem(
                 self.regatta_blank_caption_template.substitute(
-                    caption=self._find_name(regatta, language),
+                    caption=self._find_name(regatta, metarecord['$language']),
                     mark=regatta_round['mark'] )
             )
         if 'blank' in target.flags:
@@ -385,8 +383,7 @@ class TournDriver(RegularDriver, IncludingRecords):
         if 'blank' in target.flags:
             yield self.VerbatimBodyItem(
                 self.hrule_template.substitute() )
-            yield self.VerbatimBodyItem(
-                self.ClearPageBodyItem() )
+            yield self.ClearPageBodyItem()
 
     class ProblemBodyItem(RegularDriver.SourceBodyItem):
         __slots__ = ['number']
@@ -618,14 +615,6 @@ class TournDriver(RegularDriver, IncludingRecords):
         assert select in {'problems', 'solutions', 'complete'}
         return cls.begin_tourn_problems_template.substitute(select=select)
 
-    @classmethod
-    def _constitute_league_def(cls, league_name):
-        if league_name is None:
-            return cls.league_undef_template.substitute()
-        return cls.league_def_template.substitute(league=league_name)
-
-    league_undef_template = Template(
-        r'\let\jeolmleague\relax' )
     league_def_template = Template(
         r'\def\jeolmleague{$league}' )
 
@@ -633,13 +622,9 @@ class TournDriver(RegularDriver, IncludingRecords):
         r'\begin{tourn-problems}{$select}' )
     end_tourn_problems_template = Template(
         r'\end{tourn-problems}' )
-    postword_template = Template(
-        r'\postword' )
+    briefing_template = Template(
+        r'\briefing' )
 
-    jeolmtournheader_template = Template(
-        r'\jeolmtournheader' )
-    jeolmtournheader_nospace_template = Template(
-        r'\jeolmtournheader*' )
     regatta_blank_caption_template = Template(
         r'\regattablankcaption{$caption}{$mark}' )
     hrule_template = Template(

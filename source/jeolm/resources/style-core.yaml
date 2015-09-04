@@ -360,7 +360,9 @@ text-config:
       - package: amsmath
       - package: amssymb
       - package: mathabx
+      - package: upgreek
       - delegate: swap-vargreek/computer-modern
+      - delegate: swap-vargreek/upgreek
       - delegate: swap-vargreek/unicode
       - delegate: ineq-slanted
         condition: russian
@@ -385,10 +387,16 @@ text-config:
     swap-vargreek: # {{{
       computer-modern:
         $style:
-        - verbatim: \AtBeginDocument{\swapvargreek{phi}\swapvargreek{epsilon}}
+        - verbatim: |-
+            \AtBeginDocument{\swapvar{phi}\swapvar{epsilon}}
+      upgreek:
+        $style:
+        - verbatim: |-
+            \AtBeginDocument{\swapvar[up]{phi}\swapvar[up]{epsilon}}
       unicode:
         $style:
-        - verbatim: \AtBeginDocument{\swapvargreek{kappa}}
+        - verbatim: |-
+            \AtBeginDocument{\swapvar{kappa}\swapvar[up]{kappa}}
     # }}}
 
     ineq-slanted:
