@@ -1079,6 +1079,8 @@ class RegularDriver(MetaRecords):
     @ensure_type_items((MetapreambleItem, Target))
     @processing_target
     def _generate_auto_metapreamble(self, target, metarecord):
+        if target.path.is_root():
+            raise DriverError("Missing toplevel $style")
         if '$package$able' in metarecord:
             for package_type in self._package_types:
                 package_type_key = self._get_package_type_key(package_type)

@@ -1,6 +1,6 @@
 import re
 
-from .record_path import ( RecordPath,
+from .record_path import ( RecordPath, RecordPathError,
     PATH_PATTERN, RELATIVE_PATH_PATTERN )
 from .flags import ( FlagContainer, FlagError, UnutilizedFlagError,
     FLAGS_PATTERN_LOOSE as FLAGS_PATTERN,
@@ -79,13 +79,15 @@ class Target:
         return self._derive_from_match(match, origin=origin)
 
     def _derive_from_match(self, match, *, origin=None):
-        subpath = RecordPath(self.path, match.group('path'))
+        try:
+            subpath = RecordPath(self.path, match.group('path'))
+        except RecordPathError as error:
+            raise TargetError(self, match.group(0)) from error
         flags_group = match.group('flags')
         try:
             flags = FlagContainer.split_flags_group(flags_group)
         except FlagError as error:
-            raise TargetError( "Error while parsing subtarget '{}' flags."
-                .format(match.group(0)) ) from error
+            raise TargetError(self, match.group(0)) from error
         positive = set()
         negative = set()
         for flag in flags:

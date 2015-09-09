@@ -22,6 +22,8 @@ def _path_pattern(name_pattern):
 PATH_PATTERN = _path_pattern(NAME_PATTERN)
 RELATIVE_PATH_PATTERN = _path_pattern(RELATIVE_NAME_PATTERN)
 
+class RecordPathError(ValueError):
+    pass
 
 class RecordPath:
     __slots__ = ['_parts', '_parent']
@@ -43,7 +45,10 @@ class RecordPath:
                     if not piece or piece == '.':
                         continue
                     elif piece == '..':
-                        digested.pop()
+                        try:
+                            digested.pop()
+                        except IndexError:
+                            raise RecordPathError(parts)
                     else:
                         digested.append(piece)
             elif isinstance(part, RecordPath):
