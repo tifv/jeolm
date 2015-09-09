@@ -1440,7 +1440,7 @@ class RegularDriver(MetaRecords):
             for figure_ref, figure_alias in figure_map.items() )
 
     jeolmfiguremap_template = Template(
-        r'\jeolmfiguremap{$ref}{$alias}' )
+        r'\jeolmfiguremap{$ref}{$alias}%' )
 
     @classmethod
     def _constitute_date_def(cls, date):
@@ -1450,7 +1450,7 @@ class RegularDriver(MetaRecords):
             date=cls._constitute_date(date) )
 
     date_def_template = Template(
-        r'\def\jeolmdate{$date}' )
+        r'\def\jeolmdate{$date}%' )
 
     @classmethod
     def _constitute_date(cls, date):
@@ -1481,7 +1481,7 @@ class RegularDriver(MetaRecords):
     datestamp_template = Template(
         r'\begin{flushright}\small' '\n'
         r'    $date' '\n'
-        r'\end{flushright}'
+        r'\end{flushright}%'
     )
 
     ##########

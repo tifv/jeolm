@@ -712,6 +712,9 @@ hyperref: # {{{
   $style:
   - package: hyperref
   - no package: pgfpages
+  - verbatim: \hypersetup{colorlinks}
+    provide: hypersetup:colorlinks
+    condition: [colour-links]
 
 # }}}
 
