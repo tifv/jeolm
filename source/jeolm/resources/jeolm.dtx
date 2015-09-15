@@ -192,10 +192,10 @@
 % Allow exchanging greek letters with their variants.
 %    \begin{macrocode}
 \newcommand\swapvar[2][]{\begingroup
-\expandafter\let\expandafter\swap\csname #2#1\endcsname
-\expandafter\let\expandafter\varswap\csname #2var#1\endcsname
-\global\expandafter\let\csname #2#1\endcsname\varswap
-\global\expandafter\let\csname #2var#1\endcsname\swap
+\expandafter\let\expandafter\swap\csname #1#2\endcsname
+\expandafter\let\expandafter\varswap\csname #1var#2\endcsname
+\global\expandafter\let\csname #1#2\endcsname\varswap
+\global\expandafter\let\csname #1var#2\endcsname\swap
 \endgroup}
 %    \end{macrocode}
 %
