@@ -94,18 +94,20 @@ class LaTeXCommand(SubprocessCommand):
             self._latex_log_overfull_regex.finditer(latex_log_text) )
         if not matches:
             return
-        header = "Overfulls and underfulls detected by LaTeX:<RESET>"
-        self.logger.info('\n'.join(chain(
-            (header,),
-            ( self._format_overfull(match, page_numberer, file_namer)
-                for match in matches )
-        )))
+        report = ["Overfulls and underfulls detected by LaTeX:<RESET>"]
+        for match in matches:
+            is_large = float(match.group('points') or 0) > 15 # delibirate
+            report.append(
+                self._format_overfull( match,
+                    page_numberer, file_namer, is_large=is_large)
+            )
+        self.logger.info('\n'.join(report))
 
     _latex_log_overfull_regex = re.compile(
         r'(?m)^'
         r'(?P<overfull_type>Overfull|Underfull) '
         r'(?P<box_type>\\hbox|\\vbox) '
-        r'(?P<badness>\((?:\d+(?:\.\d+)?pt too wide|badness \d+)\) |)'
+        r'(?P<badness>\((?:(?P<points>\d+(?:\.\d+)?)pt too wide|badness \d+)\) |)'
         r'(?P<rest>.*)$'
     )
     _latex_overfull_log_template = (
@@ -115,11 +117,15 @@ class LaTeXCommand(SubprocessCommand):
         r'\g<rest>' )
 
     @classmethod
-    def _format_overfull(cls, match, page_numberer, file_namer):
+    def _format_overfull( cls, match,
+        page_numberer, file_namer, is_large=False
+    ):
         position = match.start()
         page_number = page_numberer.send(position)
         file_name = file_namer.send(position)
         message = match.expand(cls._latex_overfull_log_template)
+        if is_large:
+            message = "<BOLD>" + message + "<REGULAR>"
         return (
             "<CYAN>[{page_number}]<NOCOLOUR>"
             ' '
