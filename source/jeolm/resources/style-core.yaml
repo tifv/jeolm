@@ -554,9 +554,9 @@ page-config:
     - delegate: .[default-paper]
     $style[default-paper]:
     - delegate: .[a5paper,-default-paper]
-    $style[print,default-paper]:
+    $style[default-paper,print]:
     - delegate: .[a5paper,-default-paper]
-    $style[print,tiled4,default-paper]:
+    $style[default-paper,print,tiled4]:
     - delegate: .[a6paper,-default-paper]
 
     $style[no-geometry]:
@@ -570,6 +570,8 @@ page-config:
     - delegate: ..
     $style[a6paper]:
     - delegate: ..
+    $style[screen]:
+    - delegate: ..
 
   # }}}
 
@@ -579,9 +581,9 @@ page-config:
     - delegate: .[default-orientation]
     $style[default-orientation]:
     - delegate: .[portrait,-default-orientation]
-    $style[print,default-orientation]:
-    - delegate: .[portrait,-default-orientation]
-    $style[print,tiled4,default-orientation]:
+    $style[default-orientation,a6paper]:
+    - delegate: .[landscape,-default-orientation]
+    $style[default-orientation,screen]:
     - delegate: .[landscape,-default-orientation]
 
     $style[no-geometry]:
@@ -591,6 +593,9 @@ page-config:
     - delegate: ..
     $style[landscape]:
     - delegate: ..
+
+    $style[screen,portrait]:
+    - error: screen is incompatible with portrait
 
   # }}}
 
@@ -630,36 +635,68 @@ page-config:
     $style:
     - package: geometry
     - delegate: set-paper-size
-    - delegate: set-orientation
-    - verbatim: '\geometry{vmargin={2em,2em},hmargin={2em,2em}}'
-      provide: geometry:margin
+    - delegate: set-margin
+      condition: {not: no-geometry-margin}
 
     set-paper-size: # {{{
       $style:
-      - error: core misconfiguration
-      $style[a3paper]:
-      - verbatim: '\geometry{a3paper}'
+      - set-standard-paper-size
+      - set-orientation
+
+      set-standard-paper-size: # {{{
+        $style:
+        - error: core misconfiguration
+        $style[a3paper]:
+        - verbatim: '\geometry{a3paper}'
+          provide: geometry:paper
+        $style[a4paper]:
+        - verbatim: '\geometry{a4paper}'
+          provide: geometry:paper
+        $style[a5paper]:
+        - verbatim: '\geometry{a5paper}'
+          provide: geometry:paper
+        $style[a6paper]:
+        - verbatim: '\geometry{a6paper}'
+          provide: geometry:paper
+      # }}}
+
+      set-orientation: # {{{
+        $style:
+        - error: core misconfiguration
+        $style[portrait]:
+        - verbatim: '\geometry{portrait}'
+          provide: geometry:orientation
+        $style[landscape]:
+        - verbatim: '\geometry{landscape}'
+          provide: geometry:orientation
+      # }}}
+
+      $style[screen,landscape]:
+      - verbatim: '\geometry{screen}'
         provide: geometry:paper
-      $style[a4paper]:
-      - verbatim: '\geometry{a4paper}'
-        provide: geometry:paper
-      $style[a5paper]:
-      - verbatim: '\geometry{a5paper}'
-        provide: geometry:paper
-      $style[a6paper]:
-      - verbatim: '\geometry{a6paper}'
-        provide: geometry:paper
+
     # }}}
 
-    set-orientation: # {{{
+    set-margin: # {{{
       $style:
       - error: core misconfiguration
-      $style[portrait]:
-      - verbatim: '\geometry{portrait}'
-        provide: geometry:orientation
-      $style[landscape]:
-      - verbatim: '\geometry{landscape}'
-        provide: geometry:orientation
+      $style[a6paper]:
+      - verbatim: '\geometry{vmargin={1.5em,1.5em},hmargin={1.5em,1.5em}}'
+        provide: geometry:margin
+      $style[a6paper,landscape]:
+      - .[a5paper,portrait,-a6paper,-landscape]
+      $style[a5paper]:
+      - verbatim: '\geometry{vmargin={2em,2em},hmargin={2em,2em}}'
+        provide: geometry:margin
+      $style[a4paper]:
+      - verbatim: '\geometry{vmargin={3em,3em},hmargin={3em,3em}}'
+        provide: geometry:margin
+      $style[a3paper]:
+      - verbatim: '\geometry{vmargin={4em,4em},hmargin={4em,4em}}'
+        provide: geometry:margin
+      $style[screen]:
+      - verbatim: '\geometry{vmargin={0.5em,0.5em},hmargin={0.5em,0.5em}}'
+        provide: geometry:margin
     # }}}
 
   # }}}
