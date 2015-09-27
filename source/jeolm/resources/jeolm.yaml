@@ -1,6 +1,8 @@
 jeolm:
   $target$able: on
 
+  $build$outname: jeolm
+
   $build$style:
     # generic setup
     - compiler: pdflatex

@@ -58,6 +58,10 @@ Keys recognized in metarecords:
   $build$options[*]
     Contents is included in protorecord
 
+  $build$outname[*]
+    Provides stem for outname. Key flags will be subtracted from the
+    target keys when outname is computed.
+
   $build$matter[*]
     Values are same as of $matter
   $build$style[*]
@@ -756,17 +760,28 @@ class RegularDriver(MetaRecords):
                 raise DriverError("Bad options {}".format(options) )
             return options
 
-    # pylint: disable=no-self-use,unused-argument
     def _select_outname(self, target, metarecord, date=None):
-        outname_pieces = []
+        outname_stem, subtracted_flags = \
+            self._get_outname_stem(target, metarecord)
+        outname = outname_stem
         if isinstance(date, datetime.date):
-            outname_pieces.append(date.isoformat())
-        outname_pieces.extend(target.path.parts)
-        outname = ( '-'.join(outname_pieces) +
-            '{:optional}'.format(target.flags) )
+            outname = date.isoformat() + '-' + outname
+        outname += '{:optional}'.format(target.flags.__class__(
+            target.flags.as_frozenset - subtracted_flags
+        ))
         assert '/' not in outname, repr(outname)
         return outname
-    # pylint: enable=no-self-use,unused-argument
+
+    def _get_outname_stem(self, target, metarecord):
+        """Return (stem, subtracted_flags) pair."""
+        outname_key, outname = self.select_flagged_item(
+            metarecord, '$build$outname', target.flags )
+        if outname_key is None:
+            return '-'.join(target.path.parts), frozenset()
+        if not isinstance(outname, str):
+            raise DriverError("Outname must be a string.")
+        return outname, target.flags.split_flags_group(
+            self.attribute_key_regex.fullmatch(outname_key).group('flags') )
 
     @ensure_type_items(MetabodyItem)
     @processing_target
