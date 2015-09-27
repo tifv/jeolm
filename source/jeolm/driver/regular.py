@@ -55,9 +55,6 @@ Keys recognized in metarecords:
     - delegate: <delegator (string)>
     Non-string values may be extended with conditions.
 
-  $build$options[*]
-    Contents is included in protorecord
-
   $build$outname[*]
     Provides stem for outname. Key flags will be subtracted from the
     target keys when outname is computed.
@@ -203,7 +200,7 @@ class RegularDriver(MetaRecords):
         'compiler'
             one of 'latex', 'pdflatex', 'xelatex', 'lualatex'
 
-        outrecord must also contain fields:
+        'regular' outrecord must also contain fields:
         'sources'
             {alias_name : inpath for each inpath}
             where alias_name is a filename with '.tex' extension, and inpath
@@ -380,6 +377,7 @@ class RegularDriver(MetaRecords):
         '$rigid$opt'      : '$build$style',
         '$manner$opt'     : '$build$style',
         '$build$special'  : '$build$style',
+        '$build$options'  : '$build$outname',
         '$required$packages' : '$matter: preamble package',
         '$latex$packages'    : '$matter: preamble package',
         '$tex$packages'      : '$matter: preamble package',
@@ -703,7 +701,6 @@ class RegularDriver(MetaRecords):
         date_set = set()
 
         outrecord = {'type' : 'regular'}
-        outrecord.update(self._find_build_options(target, metarecord))
 
         # We must exhaust _generate_metabody() to fill date_set
         metabody = list(self._generate_metabody(
@@ -729,9 +726,9 @@ class RegularDriver(MetaRecords):
         target.check_unutilized_flags()
         target.abandon_children()
 
-        if 'outname' not in outrecord:
-            outrecord['outname'] = self._select_outname(
-                target, metarecord, date=outrecord['date'] )
+        assert 'outname' not in outrecord
+        outrecord['outname'] = self._select_outname(
+            target, metarecord, date=outrecord['date'] )
         if not compilers:
             raise DriverError("Compiler is not specified")
         if len(compilers) > 1:
@@ -743,22 +740,6 @@ class RegularDriver(MetaRecords):
                 outrecord,
                 metapreamble=metapreamble, metabody=metabody, )
         return outrecord
-
-    def _find_build_options(self, target, metarecord):
-        options_key, options = self.select_flagged_item(
-            metarecord, '$build$options', target.flags )
-        if options_key is None:
-            return ()
-        with process_target_key(target, options_key):
-            if not isinstance(options, dict):
-                raise DriverError(
-                    "Build options must be a dictionary, not {}"
-                    .format(type(options).__name__) )
-            if options.keys() & {
-                    'type', 'document', 'sources',
-                    'figures', 'package_paths', 'compiler' }:
-                raise DriverError("Bad options {}".format(options) )
-            return options
 
     def _select_outname(self, target, metarecord, date=None):
         outname_stem, subtracted_flags = \
