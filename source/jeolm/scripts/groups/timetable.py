@@ -1,10 +1,9 @@
-import re
 from collections import OrderedDict
-from datetime import date as date_type
 
 from jeolm.record_path import RecordPath
 from jeolm.flags import FlagContainer
 from jeolm.fancify import fancify
+
 
 class TimetableItem:
     pass
@@ -107,8 +106,6 @@ def print_timetable(listed_groups, *, driver,
             fancify("<MAGENTA>=== <BOLD>{}<REGULAR> ===<RESET>")
             .format(group) )
         for date, date_value in timetable[group].items():
-            if not any(date_value.values()) and date > date_type.today():
-                continue
             if from_date is not None and date < from_date:
                 continue
             if to_date is not None and date > to_date:
@@ -127,7 +124,10 @@ def print_timetable(listed_groups, *, driver,
 
 ##########
 
+import re
+from datetime import date as date_type
 import argparse
+
 import jeolm.commands
 
 def _date_arg( arg_s, *,
@@ -142,7 +142,7 @@ def _date_arg( arg_s, *,
         month=int(match.group('month')),
         day=int(match.group('day')), )
 
-def _main():
+def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('groups', nargs='*')
     parser.add_argument('--from-date', type=_date_arg)
@@ -158,4 +158,5 @@ def _main():
         driver=jeolm.commands.simple_load_driver() )
 
 if __name__ == '__main__':
-    _main()
+    main()
+

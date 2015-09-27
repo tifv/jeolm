@@ -19,6 +19,7 @@ class RecordNotFoundError(RecordError, LookupError):
     pass
 
 class Records:
+
     Dict = OrderedDict
     Path = RecordPath
     name_regex = re.compile(r'(?!\$).+')
@@ -271,6 +272,7 @@ ATTRIBUTE_KEY_PATTERN = (
 )
 
 class MetaRecords(Records):
+
     name_regex = re.compile(NAME_PATTERN)
 
     attribute_key_regex = re.compile(ATTRIBUTE_KEY_PATTERN)
