@@ -684,7 +684,7 @@ page-config:
       - verbatim: '\geometry{vmargin={1.5em,1.5em},hmargin={1.5em,1.5em}}'
         provide: geometry:margin
       $style[a6paper,landscape]:
-      - .[a5paper,portrait,-a6paper,-landscape]
+      - .[a5paper,-a6paper]
       $style[a5paper]:
       - verbatim: '\geometry{vmargin={2em,2em},hmargin={2em,2em}}'
         provide: geometry:margin
