@@ -62,7 +62,7 @@ def construct_timetable(*, driver):
     return timetable
 
 def _extend_timetable_extra(timetable, *, driver):
-    root_record = driver[RecordPath()]
+    root_record = driver.get(RecordPath())
     for group, group_timetable in timetable.items():
         _key, group_timetable_extra = driver.select_flagged_item(
             root_record, '$timetable$extra', FlagContainer({group}))
