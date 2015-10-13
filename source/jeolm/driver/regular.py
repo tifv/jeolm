@@ -901,6 +901,7 @@ class RegularDriver(MetaRecords):
         if not matter_item:
             yield self.EmptyPageBodyItem()
         else:
+            yield self.ClearPageBodyItem()
             for item in matter_item:
                 yield from self._generate_matter_item_metabody(
                     target, metarecord,
