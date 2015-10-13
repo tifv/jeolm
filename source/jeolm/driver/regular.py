@@ -742,27 +742,27 @@ class RegularDriver(MetaRecords):
         return outrecord
 
     def _select_outname(self, target, metarecord, date=None):
-        outname_stem, subtracted_flags = \
-            self._get_outname_stem(target, metarecord)
-        outname = outname_stem
+        """Return outname."""
+        outname = self._select_outname_stem(target, metarecord)
         if isinstance(date, datetime.date):
             outname = date.isoformat() + '-' + outname
-        outname += '{:optional}'.format(target.flags.__class__(
-            target.flags.as_frozenset - subtracted_flags
-        ))
         assert '/' not in outname, repr(outname)
         return outname
 
-    def _get_outname_stem(self, target, metarecord):
-        """Return (stem, subtracted_flags) pair."""
+    def _select_outname_stem(self, target, metarecord):
+        """Return outname, except for date part."""
         outname_key, outname = self.select_flagged_item(
             metarecord, '$build$outname', target.flags )
         if outname_key is None:
-            return '-'.join(target.path.parts), frozenset()
+            return '-'.join(target.path.parts)
         if not isinstance(outname, str):
             raise DriverError("Outname must be a string.")
-        return outname, target.flags.split_flags_group(
+        omitted_flags = target.flags.split_flags_group(
             self.attribute_key_regex.fullmatch(outname_key).group('flags') )
+        outname += '{:optional}'.format(target.flags.__class__(
+            target.flags.as_frozenset - omitted_flags
+        ))
+        return outname
 
     @ensure_type_items(MetabodyItem)
     @processing_target
