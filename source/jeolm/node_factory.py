@@ -191,7 +191,7 @@ class DocumentNodeFactory:
 
     # pylint: disable=no-self-use
     def _metapath_build_dir_key(self, metapath):
-        return metapath, 'dir'
+        return metapath, 'metapath-dir'
     # pylint: enable=no-self-use
 
     @_cache_node(_metapath_build_dir_key)
@@ -201,7 +201,28 @@ class DocumentNodeFactory:
         buildname = '-'.join(metapath.parts)
         assert '.' not in buildname
         return jeolm.node.directory.DirectoryNode(
-            name='document:{}:dir'.format(metapath),
+            name='document:{}:metapath-dir'.format(metapath),
+            path=parent_dir_node.path/buildname,
+            needs=(parent_dir_node,) )
+
+    # pylint: disable=no-self-use
+    def _target_build_dir_key(self, target):
+        return target, 'target-dir'
+    # pylint: enable=no-self-use
+
+    @_cache_node(_target_build_dir_key)
+    def _get_target_build_dir(self, target):
+        assert isinstance(target, Target)
+        parent_dir_node = self._get_metapath_build_dir(target.path)
+        buildname = ','.join(sorted(target.flags.as_frozenset))
+        assert buildname != '0,'
+        if buildname == '0':
+            buildname = '0,'
+        else:
+            buildname = '0'
+        assert '.' not in buildname
+        return jeolm.node.directory.DirectoryNode(
+            name='document:{}:target-dir'.format(target),
             path=parent_dir_node.path/buildname,
             needs=(parent_dir_node,) )
 
@@ -213,11 +234,8 @@ class DocumentNodeFactory:
     @_cache_node(_build_dir_key)
     def _get_build_dir(self, target, recipe):
         assert isinstance(target, Target)
-        parent_dir_node = self._get_metapath_build_dir(target.path)
-        buildname = '{flags}~{compiler}'.format(
-            flags=','.join(sorted(target.flags.as_frozenset)),
-            compiler=recipe['compiler']
-        )
+        parent_dir_node = self._get_target_build_dir(target)
+        buildname = recipe['compiler']
         assert '.' not in buildname
         return jeolm.node.directory.BuildDirectoryNode(
             name='document:{}:dir'.format(target),
