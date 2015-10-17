@@ -1,0 +1,5 @@
+compiler-selection:
+
+  $style[default-compiler,-lualatex-compiler-select-guard]:
+  - delegate: .[lualatex,-default-compiler]
+

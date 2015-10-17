@@ -3,6 +3,11 @@ style:
   source/_style/jeolm.dtx: jeolm.dtx
   source/_style/jeolm.yaml: jeolm.yaml
 
+style-lualatex:
+  source/_style/lualatex.yaml: style-lualatex.yaml
+style-serbian:
+  source/_style/serbian.yaml: style-serbian.yaml
+
 style-groups:
   source/_style/jeolm-groups.sty: jeolm-groups.sty
   source/_style/jeolm-groups.yaml: jeolm-groups.yaml

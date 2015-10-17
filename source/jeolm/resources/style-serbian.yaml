@@ -1,0 +1,31 @@
+text-config:
+
+  language-selection:
+
+    $style[serbian-cyrillic]:
+    - delegate: ..
+    $style[serbian-latin]:
+    - delegate: ..
+
+  language-config:
+
+    babel:
+
+      $style[serbian-cyrillic]:
+      - package: babel
+        options: [serbianc]
+      $style[serbian-latin]:
+      - package: babel
+        options: [serbian]
+
+    polyglossia:
+
+      setlanguage:
+
+        $style[serbian-cyrillic]:
+        - verbatim: \setdefaultlanguage[script=Cyrillic]{serbian}
+          provide: setdefaultlanguage
+        $style[serbian-latin]:
+        - verbatim: \setdefaultlanguage[script=Latin]{serbian}
+          provide: setdefaultlanguage
+
