@@ -218,7 +218,7 @@ class DocumentNodeFactory:
         assert buildname != '0,'
         if buildname == '0':
             buildname = '0,'
-        else:
+        elif not buildname:
             buildname = '0'
         assert '.' not in buildname
         return jeolm.node.directory.DirectoryNode(
