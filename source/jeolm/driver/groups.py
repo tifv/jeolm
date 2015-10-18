@@ -84,7 +84,7 @@ class GroupsDriver(RegularDriver):
             if not isinstance(group_flag, str):
                 raise DriverError(type(group_flag))
             if group_flag not in self.groups:
-                raise DriverError(group_flag)
+                raise DriverError("Unknown group: {}".format(group_flag))
             if not isinstance(group_timetable, dict):
                 raise DriverError(type(group_timetable))
             for date, date_timetable in group_timetable.items():
