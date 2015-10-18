@@ -173,7 +173,7 @@ class Node:
         self.modified = False
 
     def __hash__(self):
-        return hash(id(self))
+        return hash((type(self).__name__, id(self)))
 
     # Should be only called by NodeUpdater
     def update_self(self):
