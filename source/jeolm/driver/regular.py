@@ -754,15 +754,18 @@ class RegularDriver(MetaRecords):
         outname_key, outname = self.select_flagged_item(
             metarecord, '$build$outname', target.flags )
         if outname_key is None:
-            return '-'.join(target.path.parts)
-        if not isinstance(outname, str):
-            raise DriverError("Outname must be a string.")
-        omitted_flags = target.flags.split_flags_group(
-            self.attribute_key_regex.fullmatch(outname_key).group('flags') )
-        outname += '{:optional}'.format(target.flags.__class__(
-            target.flags.as_frozenset - omitted_flags
-        ))
-        return outname
+            outname = '-'.join(target.path.parts)
+            outname_flag_set = target.flags.as_frozenset
+        else:
+            if not isinstance(outname, str):
+                raise DriverError("Outname must be a string.")
+            omitted_flag_set = target.flags.split_flags_group(
+                self.attribute_key_regex.fullmatch(outname_key).group('flags')
+            )
+            outname_flag_set = target.flags.as_frozenset - omitted_flag_set
+        outname_flags = '{:optional}'.format(target.flags.__class__(
+            outname_flag_set ))
+        return outname + outname_flags
 
     @ensure_type_items(MetabodyItem)
     @processing_target
