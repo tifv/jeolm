@@ -987,7 +987,9 @@ class RegularDriver(MetaRecords):
         if date is None:
             return
         yield self.VerbatimBodyItem(
-            self.datestamp_template.substitute(date=date) )
+            self.datestamp_template.substitute(
+                date=self._constitute_date(date) )
+        )
 
     @ensure_type_items(MetapreambleItem)
     @processing_target
