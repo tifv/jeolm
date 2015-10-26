@@ -236,6 +236,7 @@ class LaTeXSlicer:
                         method(match, stack)
                     except self.LaTeXStack.Error as error:
                         error.args += ("<char={}>".format(match.group(0)),)
+                        raise
                 yield TextPiece(matched_piece)
             # pylint: enable=undefined-loop-variable
             pos = clean_pos = match.end()
