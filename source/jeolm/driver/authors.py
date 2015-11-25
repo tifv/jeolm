@@ -35,10 +35,10 @@ class AuthorsDriver(RegularDriver):
     @classmethod
     def _constitute_authors(cls, author_list, *, thin_space=r'\,'):
         assert isinstance(author_list, list), type(author_list)
-        if len(author_list) > 2:
-            abbreviate = partial(cls._abbreviate_author, thin_space=thin_space)
-        else:
-            abbreviate = lambda author: author
+        if len(author_list) == 1:
+            author, = author_list
+            return author
+        abbreviate = partial(cls._abbreviate_author, thin_space=thin_space)
         return ', '.join(abbreviate(author) for author in author_list)
 
     @staticmethod
