@@ -15,11 +15,17 @@ class ExtraTimetableItem(TimetableItem):
         self.excessive = False
         super().__init__()
 
+    def is_missing_source(self):
+        return 'MISSING SOURCE' in self.text
+
     def is_missing(self):
         return 'MISSING' in self.text
 
     def fancy_repr(self):
-        if self.is_missing():
+        if self.is_missing_source():
+            return ( fancify('<YELLOW><BOLD>{}<REGULAR><NOCOLOUR>')
+                .format(self.text) )
+        elif self.is_missing():
             return ( fancify('<RED><BOLD>{}<REGULAR><NOCOLOUR>')
                 .format(self.text) )
         elif self.excessive:
