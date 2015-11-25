@@ -130,8 +130,8 @@ class LaTeXSpeller:
                 else:
                     yield IncorrectWord(text_piece.string)
 
-    spell_regex = re.compile('(?m)'
-        r'% spell (?P<words>.*)$')
+    spell_regex = re.compile( '(?m)'
+        r'^% spell (?P<words>.*)$')
 
     @classmethod
     def prepare_text(cls, text, *, lang):
