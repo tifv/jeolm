@@ -8,12 +8,12 @@ complementary LaTeX package.
 
 * Python 3.4.2 or greater; the following non-standard packages are required:
   * [PyYAML](http://pyyaml.org/);
-* LaTeX, pdfLaTeX, XeLaTeX or LuaLaTeX.
+* LaTeX.
 
 #### Optional dependencies
 
 * Python non-standard packages:
   * [pyinotify](http://github.com/seb-m/pyinotify) is required for `jeolm buildline` subcommand;
-  * [pyenchant](http://pythonhosted.org/pyenchant/) is required for `jeolm spell` subcommand';
+  * [pyenchant](http://pythonhosted.org/pyenchant/) is required for `jeolm spell` subcommand;
 * [Asymptote](http://asymptote.sourceforge.net/) is required to compile `.asy` figures;
 * [Inkscape](http://inkscape.org/) is required to convert `.svg` figures.
