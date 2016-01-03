@@ -6,6 +6,13 @@ then
     JEOLM_PYTHON=python
 fi
 
+if [[ -z $JEOLM_PATH ]];
+then
+    local JEOLM_PATH
+    JEOLM_PATH=$( $JEOLM_PYTHON \
+        -c 'import jeolm; path, = jeolm.__path__; print(path)' )
+fi
+
 local current
 current="${COMP_WORDS[COMP_CWORD]}"
 
@@ -66,7 +73,8 @@ case $inspected in
         return 0 ;;
     init)
         COMPREPLY=( $(compgen \
-            -W "$($JEOLM_PYTHON -m jeolm.scripts.print_resource_list)" \
+            -W "$( cat $JEOLM_PATH/resources/RESOURCES.yaml | grep '^.' | \
+                grep -v '^ ' | grep -v '^#' | sed 's/:$//' )" \
             -- "$current" ) )
         return 0 ;;
     review)

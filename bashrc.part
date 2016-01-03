@@ -1,8 +1,14 @@
-alias jeolm='python3.3 -m jeolm'
+JEOLM_PYTHON=python3.4
+alias jeolm=$JEOLM_PYTHON" -O -m jeolm"
+alias jeolm-debug=$JEOLM_PYTHON" -m jeolm"
 _jeolm_completion_bootstrap() {
-    source ~/.local/share/jeolm-completion.sh
+    JEOLM_PATH=$( $JEOLM_PYTHON \
+        -c 'import jeolm; path, = jeolm.__path__; print(path)' )
+    source $JEOLM_PATH/resources/jeolm-completion.sh
     complete -o nospace -F _jeolm_completion jeolm
+    complete -o nospace -F _jeolm_completion jeolm-debug
     _jeolm_completion
     return 0
 }
 complete -o nospace -F _jeolm_completion_bootstrap jeolm
+complete -o nospace -F _jeolm_completion_bootstrap jeolm-debug
