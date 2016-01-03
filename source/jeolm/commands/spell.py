@@ -198,7 +198,8 @@ class Speller:
             elif match.group('exclude_type') == 'regex':
                 yield match.group('exclude')
             else:
-                raise ValueError(match.group(0))
+                raise ValueError( "Invalid spell exception: '{}'"
+                    .format(match.group(0)) )
 
     def __iter__(self):
         for text_piece in Slicer(self.text, self.exclusions):
