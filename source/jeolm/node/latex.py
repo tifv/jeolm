@@ -3,21 +3,19 @@ from itertools import chain
 import re
 
 from . import ProductFileNode, SubprocessCommand
+from .cyclic import CyclicNeed, CyclicNode
 from .directory import BuildDirectoryNode
 
 import logging
 logger = logging.getLogger(__name__)
 
 
-class LaTeXCommand(SubprocessCommand):
+class LaTeXCommand(SubprocessCommand): # {{{1
 
     latex_command = 'latex'
     target_suffix = '.dvi'
 
     _latex_mode_args = ('-interaction=nonstopmode', '-halt-on-error')
-
-    # No more than 5 LaTeX runs in a row.
-    _max_latex_reruns = 4
 
     def __init__(self, node, *, source_name, output_dir, jobname, cwd):
         assert isinstance(node, LaTeXNode), type(node)
@@ -30,34 +28,164 @@ class LaTeXCommand(SubprocessCommand):
             (source_name,),
         ))
         super().__init__(node, callargs, cwd=cwd)
-        self._latex_log_path = (output_dir/jobname).with_suffix('.log')
+        self.latex_log_path = (output_dir/jobname).with_suffix('.log')
+        self.latex_log = None
 
     # Override
-    def _subprocess(self, *, reruns=0):
+    def call(self):
+        self._subprocess()
+
+    def clear(self):
+        super().clear()
+        self.latex_log = None
+
+    # Override
+    def _subprocess(self):
         latex_output = self._subprocess_output()
+        self.latex_log = LaTeXLog(
+            latex_output, self.latex_log_path, node=self.node )
 
-        if self._latex_output_requests_rerun(latex_output):
-            if reruns < self._max_latex_reruns:
+class PdfLaTeXCommand(LaTeXCommand):
+    latex_command = 'pdflatex'
+    target_suffix = '.pdf'
+
+class XeLaTeXCommand(LaTeXCommand):
+    latex_command = 'xelatex'
+    target_suffix = '.pdf'
+
+class LuaLaTeXCommand(LaTeXCommand):
+    latex_command = 'lualatex'
+    target_suffix = '.pdf'
+
+
+class LaTeXNode(ProductFileNode, CyclicNode): # {{{1
+    """
+    Represents a target of some latex command.
+
+    Aims at reasonable handling of latex output to stdin/log.
+    Completely suppresses latex output unless finds something
+    interesting in it.
+    """
+
+    _Command = LaTeXCommand
+    _max_cycles = 7
+
+    def __init__( self, source, jobname,
+        build_dir_node, output_dir_node,
+        *, name=None, figure_nodes=(), needs=(), **kwargs
+    ):
+        build_dir = build_dir_node.path
+        if source.path.parent != build_dir:
+            raise RuntimeError
+        output_dir = output_dir_node.path
+        if not (build_dir == output_dir or build_dir in output_dir.parents):
+            raise RuntimeError
+        if '.' in jobname:
+            raise RuntimeError
+        path = (output_dir / jobname).with_suffix(
+            self._Command.target_suffix )
+        if name is None:
+            name = self._default_name()
+
+        self.aux_node = CyclicNeed(
+            path=(output_dir/jobname).with_suffix('.aux'),
+            name='{}:aux'.format(name),
+            needs=(output_dir_node,) )
+
+        super().__init__( source=source, path=path,
+            name=name, needs=chain(needs, figure_nodes, (output_dir_node,)),
+            cyclic_needs=(self.aux_node,),
+            **kwargs )
+        if isinstance(build_dir_node, BuildDirectoryNode):
+            self.append_needs(build_dir_node.pre_cleanup_node)
+
+        command = self._Command( self,
+            source_name=source.path.name,
+            output_dir=output_dir, jobname=jobname,
+            cwd=build_dir )
+        if self.path.suffix != command.target_suffix:
+            raise RuntimeError
+        self.set_command(command)
+
+    def _run_command(self):
+        super()._run_command()
+        latex_log = self.command.latex_log
+        if latex_log.latex_output_requests_rerun() or self.aux_node.modified:
+            if self.cycle < self._max_cycles:
+                self.cycle += 1
                 self.logger.info(
-                    "LaTeX requests rerun" + '…' * (reruns+1) )
-                return self._subprocess(reruns=reruns+1)
+                    "LaTeX requires rerunning" + '…' * self.cycle )
             else:
-                self._log_output(logging.WARNING, latex_output)
+                latex_log.print_latex_log(everything=True)
                 self.logger.warning(
-                    "LaTeX requests rerun too many times in a row." )
+                    "LaTeX requests rerunning too many times in a row." )
         else:
-            self._print_latex_log( latex_output,
-                latex_log_path=self._latex_log_path )
+            self.updated = True
+            latex_log.print_latex_log()
+            self.command.clear()
 
-    @classmethod
-    def _latex_output_requests_rerun(cls, latex_output):
-        match = cls._latex_output_rerun_regex.search(latex_output)
+class PdfLaTeXNode(LaTeXNode):
+    _Command = PdfLaTeXCommand
+
+class XeLaTeXNode(LaTeXNode):
+    _Command = XeLaTeXCommand
+
+class LuaLaTeXNode(LaTeXNode):
+    _Command = LuaLaTeXCommand
+
+
+class LaTeXPDFNode(ProductFileNode): # {{{1
+
+    _LaTeXNode = LaTeXNode
+
+    def __init__( self, source, jobname,
+        build_dir_node, output_dir_node,
+        *, name=None, figure_nodes=(), needs=(), **kwargs
+    ):
+        build_dir = build_dir_node.path
+        if source.path.parent != build_dir:
+            raise RuntimeError
+        if name is None:
+            name = self._default_name()
+        dvi_node = self._LaTeXNode( source, jobname,
+            build_dir_node, output_dir_node,
+            name='{}:dvi'.format(name),
+            figure_nodes=figure_nodes, needs=needs, **kwargs )
+        del source # is not self.source
+        if output_dir_node.path != dvi_node.path.parent:
+            raise RuntimeError
+        if dvi_node.path.suffix != '.dvi':
+            raise RuntimeError
+        super().__init__( source=dvi_node,
+            path=dvi_node.path.with_suffix('.pdf'),
+            name=name,
+            needs=chain(figure_nodes, (output_dir_node,)),
+            **kwargs )
+        self.set_subprocess_command(
+            ( 'dvipdf',
+                str(self.source.path.relative_to(build_dir)),
+                str(self.path.relative_to(build_dir)) ),
+            cwd=build_dir )
+
+class LaTeXLog: # {{{1
+
+    def __init__(self, latex_output, latex_log_path=None, *, node):
+        self.latex_output = latex_output
+        self.latex_log_path = latex_log_path
+        self.node = node
+
+    @property
+    def logger(self):
+        return self.node.logger
+
+    def latex_output_requests_rerun(self):
+        match = self._latex_output_rerun_regex.search(self.latex_output)
         return match is not None
 
     _latex_output_rerun_regex = re.compile(
         r'[Rr]erun to (?#get something right)' )
 
-    def _print_latex_log(self, latex_output, latex_log_path=None):
+    def print_latex_log(self, *, everything=False):
         """
         Print some of LaTeX output from its stdout and log.
 
@@ -65,16 +193,16 @@ class LaTeXCommand(SubprocessCommand):
         Otherwise, print overfulls from latex log
         (if latex_log_path is not None).
         """
-        if self._latex_output_is_alarming(latex_output):
-            self._log_output(logging.WARNING, latex_output)
-        elif latex_log_path is not None:
-            with latex_log_path.open(errors='replace') as latex_log_file:
+        if everything or self._latex_output_is_alarming():
+            self.logger.log_prog_output( logging.WARNING,
+                self.node.command.latex_command, self.latex_output )
+        elif self.latex_log_path is not None:
+            with self.latex_log_path.open(errors='replace') as latex_log_file:
                 latex_log_text = latex_log_file.read()
             self._print_overfulls_from_latex_log(latex_log_text)
 
-    @classmethod
-    def _latex_output_is_alarming(cls, latex_output):
-        match = cls._latex_output_alarming_regex.search(latex_output)
+    def _latex_output_is_alarming(self):
+        match = self._latex_output_alarming_regex.search(self.latex_output)
         return match is not None
 
     _latex_output_alarming_regex = re.compile(
@@ -107,7 +235,9 @@ class LaTeXCommand(SubprocessCommand):
         r'(?m)^'
         r'(?P<overfull_type>Overfull|Underfull) '
         r'(?P<box_type>\\hbox|\\vbox) '
-        r'(?P<badness>\((?:(?P<points>\d+(?:\.\d+)?)pt too wide|badness \d+)\) |)'
+        r'(?P<badness>'
+            r'\((?:(?P<points>\d+(?:\.\d+)?)pt too wide|badness \d+)\)'
+        r'|)'
         r'(?P<rest>.*)$'
     )
     _latex_overfull_log_template = (
@@ -199,97 +329,5 @@ class LaTeXCommand(SubprocessCommand):
         r'(?=[\s)])' # ")" or "\n" or " "
     )
 
-class PdfLaTeXCommand(LaTeXCommand):
-    latex_command = 'pdflatex'
-    target_suffix = '.pdf'
-
-class XeLaTeXCommand(LaTeXCommand):
-    latex_command = 'xelatex'
-    target_suffix = '.pdf'
-
-class LuaLaTeXCommand(LaTeXCommand):
-    latex_command = 'lualatex'
-    target_suffix = '.pdf'
-
-
-class LaTeXNode(ProductFileNode):
-    """
-    Represents a target of some latex command.
-
-    Aims at reasonable handling of latex output to stdin/log.
-    Completely suppresses latex output unless finds something
-    interesting in it.
-    """
-
-    _Command = LaTeXCommand
-
-    def __init__( self, source, jobname,
-        build_dir_node, output_dir_node,
-        *, name=None, figure_nodes=(), needs=(), **kwargs
-    ):
-        build_dir = build_dir_node.path
-        if source.path.parent != build_dir:
-            raise RuntimeError
-        output_dir = output_dir_node.path
-        if not (build_dir == output_dir or build_dir in output_dir.parents):
-            raise RuntimeError
-        if '.' in jobname:
-            raise RuntimeError
-        path = (output_dir / jobname).with_suffix(
-            self._Command.target_suffix )
-
-        super().__init__( source=source, path=path,
-            name=name, needs=chain(needs, figure_nodes, (output_dir_node,)),
-            **kwargs )
-        if isinstance(build_dir_node, BuildDirectoryNode):
-            self.append_needs(build_dir_node.pre_cleanup_node)
-
-        command = self._Command( self,
-            source_name=source.path.name,
-            output_dir=output_dir, jobname=jobname,
-            cwd=build_dir )
-        if self.path.suffix != command.target_suffix:
-            raise RuntimeError
-        self.set_command(command)
-
-class PdfLaTeXNode(LaTeXNode):
-    _Command = PdfLaTeXCommand
-
-class XeLaTeXNode(LaTeXNode):
-    _Command = XeLaTeXCommand
-
-class LuaLaTeXNode(LaTeXNode):
-    _Command = LuaLaTeXCommand
-
-
-class LaTeXPDFNode(ProductFileNode):
-
-    _LaTeXNode = LaTeXNode
-
-    def __init__( self, source, jobname,
-        build_dir_node, output_dir_node,
-        *, name=None, figure_nodes=(), needs=(), **kwargs
-    ):
-        build_dir = build_dir_node.path
-        if source.path.parent != build_dir:
-            raise RuntimeError
-        dvi_node = self._LaTeXNode( source, jobname,
-            build_dir_node, output_dir_node,
-            name='{}:dvi'.format(name),
-            figure_nodes=figure_nodes, needs=needs, **kwargs )
-        del source # is not self.source
-        if output_dir_node.path != dvi_node.path.parent:
-            raise RuntimeError
-        if dvi_node.path.suffix != '.dvi':
-            raise RuntimeError
-        super().__init__( source=dvi_node,
-            path=dvi_node.path.with_suffix('.pdf'),
-            name=name,
-            needs=chain(figure_nodes, (output_dir_node,)),
-            **kwargs )
-        self.set_subprocess_command(
-            ( 'dvipdf',
-                str(self.source.path.relative_to(build_dir)),
-                str(self.path.relative_to(build_dir)) ),
-            cwd=build_dir )
-
+# }}}1
+# vim: set foldmethod=marker :

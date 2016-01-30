@@ -16,16 +16,13 @@ class ConcurrentNodeUpdater(NodeUpdater):
         self.jobs = jobs
 
     def _update_added_nodes(self):
-        ready_for_update = { node
-            for node, needs in self.needs_map.items()
-            if not needs }
         updates_threads = dict()
         updates_finished = queue.Queue()
         error_occured = False
-        while (not error_occured and ready_for_update) or updates_threads:
+        while (not error_occured and self.ready_nodes) or updates_threads:
 
             have_to_wait = ( len(updates_threads) >= self.jobs or
-                (error_occured or not ready_for_update) )
+                (error_occured or not self.ready_nodes) )
             if have_to_wait:
                 node, exception = updates_finished.get()
                 updates_threads.pop(node).join()
@@ -36,12 +33,10 @@ class ConcurrentNodeUpdater(NodeUpdater):
                         pass
                     error_occured = True
                 else:
-                    ready_for_update.update(self._reverse_needs_pop(node))
+                    self._update_node_finish(node)
                 continue
 
-            node = ready_for_update.pop()
-            if self.needs_map.pop(node):
-                raise RuntimeError
+            node = self._pop_ready_node()
             if ( not isinstance(node, BuildableNode) or
                 not node.wants_concurrency
             ):
@@ -50,12 +45,14 @@ class ConcurrentNodeUpdater(NodeUpdater):
                 except NodeErrorReported:
                     error_occured = True
                 else:
-                    ready_for_update.update(self._reverse_needs_pop(node))
+                    self._update_node_finish(node)
                 continue
+
             thread = updates_threads[node] = threading.Thread(target=partial(
                 self._update_node_self_put, node, updates_finished
             ))
             thread.start()
+
         if error_occured:
             raise NodeErrorReported
         self._check_finished_update()

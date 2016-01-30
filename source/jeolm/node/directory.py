@@ -25,7 +25,7 @@ class MakeDirCommand(Command):
         super().__init__(node)
         self.parents = parents
 
-    def __call__(self):
+    def call(self):
         path = self.node.path
         if os.path.lexists(str(path)):
             path.unlink()
@@ -38,7 +38,7 @@ class MakeDirCommand(Command):
         # rwxr-xr-x
         path.mkdir(mode=0b111101101, parents=self.parents)
         self.node.modified = True
-        super().__call__()
+        super().call()
 
 
 class DirectoryNode(BuildablePathNode):
@@ -124,7 +124,7 @@ class _CleanupCommand(Command):
         assert isinstance(node, _PreCleanupNode), type(node)
         super().__init__(node)
 
-    def __call__(self):
+    def call(self):
         for rogue_name in self.node.rogue_names:
             rogue_path = self.node.path / rogue_name
             if rogue_path.is_dir():
@@ -137,7 +137,7 @@ class _CleanupCommand(Command):
                 dict(path=rogue_path) )
             rogue_path.unlink()
         self.node.modified = True
-        super.__call__()
+        super().call()
 
 class _PreCleanupNode(_CheckDirectoryNode, BuildableNode):
 

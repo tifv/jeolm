@@ -19,25 +19,27 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-class MissingTargetError(FileNotFoundError):
+class MissingTargetError(FileNotFoundError): # {{{1
     """Missing target file after execution of build commands."""
     pass
 
-class NodeErrorReported(ValueError):
+class NodeErrorReported(ValueError): # {{{1
     pass
 
 
-class NodeUpdater:
+class NodeUpdater: # {{{1
 
     def __init__(self):
         self.needs_map = dict()
-        self.reverse_needs_map = dict()
+        self.revneeds_map = dict()
+        self.ready_nodes = set()
         super().__init__()
 
     def clear(self):
         """Must be called before reusing the updater."""
         self.needs_map.clear()
-        self.reverse_needs_map.clear()
+        self.revneeds_map.clear()
+        self.ready_nodes.clear()
 
     def update(self, node):
         if node.updated:
@@ -47,38 +49,58 @@ class NodeUpdater:
 
     def _add_node(self, node, *, _rev_need=None):
         assert not node.updated
-
         try:
-            rev_needs = self.reverse_needs_map[node]
+            rev_needs = self.revneeds_map[node]
         except KeyError:
             already_added = False
-            rev_needs = self.reverse_needs_map[node] = set()
+            rev_needs = self.revneeds_map[node] = set()
         else:
             already_added = True
         if _rev_need is not None:
             rev_needs.add(_rev_need)
         if already_added:
             return
+        else:
+            self._readd_node(node)
 
+    def _readd_node(self, node):
         assert node not in self.needs_map
+        assert node not in self.ready_nodes
         needs = self.needs_map[node] = set()
         for need in node.needs:
             if need.updated:
                 continue
             self._add_node(need, _rev_need=node)
             needs.add(need)
+        if not needs:
+            self.ready_nodes.add(node)
 
     def _update_added_nodes(self):
-        ready_for_update = { node
-            for node, needs in self.needs_map.items()
-            if not needs }
-        while ready_for_update:
-            node = ready_for_update.pop()
-            if self.needs_map.pop(node):
-                raise RuntimeError
+        while self.ready_nodes:
+            node = self._pop_ready_node()
             self._update_node_self(node)
-            ready_for_update.update(self._reverse_needs_pop(node))
+            self._update_node_finish(node)
         self._check_finished_update()
+
+    def _pop_ready_node(self):
+        node = self.ready_nodes.pop()
+        if self.needs_map.pop(node):
+            raise RuntimeError
+        return node
+
+    def _update_node_finish(self, node):
+        if node.updated:
+            self._revneeds_pop(node)
+        else:
+            self._readd_node(node)
+
+    def _revneeds_pop(self, node):
+        for revneed in self.revneeds_map.pop(node):
+            revneed_needs = self.needs_map[revneed]
+            assert node in revneed_needs
+            revneed_needs.discard(node)
+            if not revneed_needs:
+                self.ready_nodes.add(revneed)
 
     @staticmethod
     def _update_node_self(node):
@@ -86,21 +108,11 @@ class NodeUpdater:
             assert not node.updated
             assert all(need.updated for need in node.needs)
             node.update_self()
-            assert node.updated
         except NodeErrorReported:
             raise
         except Exception as exception:
             node.logger.exception("Exception occured:")
             raise NodeErrorReported from exception
-
-    def _reverse_needs_pop(self, node):
-        """Yield nodes that has no unupdated dependencies left."""
-        for rev_need in self.reverse_needs_map.pop(node):
-            rev_need_needs = self.needs_map[rev_need]
-            assert node in rev_need_needs
-            rev_need_needs.discard(node)
-            if not rev_need_needs:
-                yield rev_need
 
     def _check_finished_update(self):
         if self.needs_map:
@@ -108,7 +120,7 @@ class NodeUpdater:
                 .format('\n'.join(
                     repr(node) for node in self._find_needs_cycle()
                 )) )
-        if self.reverse_needs_map:
+        if self.revneeds_map:
             raise RuntimeError
 
     def _find_needs_cycle(self):
@@ -125,7 +137,7 @@ class NodeUpdater:
             node = next(iter(self.needs_map[node]))
 
 
-def _mtime_less(mtime, other):
+def _mtime_less(mtime, other): # {{{1
     if other is None:
         return False
     if mtime is None:
@@ -133,9 +145,9 @@ def _mtime_less(mtime, other):
     return mtime < other
 
 
-class Node:
+class Node: # {{{1
     """
-    Represents target, or source, or whatever.
+    Represents a target, or a source, or something.
 
     Attributes:
         name (str):
@@ -145,12 +157,12 @@ class Node:
             prerequisites of this node.
             Should not be populated directly.
         updated (bool):
-            if the node was updated. If equal to True, node will never be
-            rebuilt.
+            if the node was updated. If True, node will never be rebuilt.
+            When True, must never revert to False.
         modified (bool):
-            if the node was modified. If equal to True, will cause most
-            dependent nodes to be rebuilt. (Although some Node subclasses
-            may ignore it.)
+            if the node was modified. If True, will cause most dependent
+            nodes to be rebuilt. (Although some Node subclasses may
+            ignore it.)
     """
 
     def __init__(self, *, name=None, needs=()):
@@ -166,11 +178,14 @@ class Node:
         if name is not None:
             self.name = str(name)
         else:
-            self.name = str(id(self))
+            self.name = self._default_name()
         self.needs = list(needs)
 
         self.updated = False
         self.modified = False
+
+    def _default_name(self):
+        return str(id(self))
 
     def __hash__(self):
         return hash((type(self).__name__, id(self)))
@@ -237,7 +252,7 @@ class Node:
     def logger(self):
         return self._LoggerAdapter(logger, node=self)
 
-    class _LoggerAdapter(logging.LoggerAdapter):
+    class _LoggerAdapter(logging.LoggerAdapter): # {{{2
 
         # pylint: disable=redefined-outer-name
 
@@ -251,13 +266,21 @@ class Node:
             extra.update(self.extra)
             return msg, kwargs
 
+        def log_prog_output(self, level, prog, output):
+            self.log( level,
+                "Command %(prog)s output:",
+                dict(prog=prog),
+                extra=dict(prog_output=output)
+            )
+    # }}}2
+
     def __repr__(self):
         return (
             "{node.__class__.__name__}(name='{node.name}')"
             .format(node=self) )
 
 
-class BuildableNode(Node):
+class BuildableNode(Node): # {{{1
     """
     Represents a target that can be built by a command.
 
@@ -279,10 +302,13 @@ class BuildableNode(Node):
         super().__init__(name=name, needs=needs, **kwargs)
         self.command = None
 
+    # Partial override
     def update_self(self):
-        super().update_self()
         if self._needs_build():
             self._run_command()
+        else:
+            super().update_self()
+            self.command.clear()
 
     @property
     def wants_concurrency(self):
@@ -307,9 +333,7 @@ class BuildableNode(Node):
         return False
 
     def force(self):
-        """
-        Make the node unconditionally need to be rebuilt.
-        """
+        """Make the node unconditionally need to be rebuilt."""
         force_node = Node(name='{}:force'.format(self.name))
         self.needs.insert(0, force_node)
         force_node.updated = True
@@ -319,17 +343,13 @@ class BuildableNode(Node):
         """
         Set the argement as node.command attribute.
 
-        May be used as decorator.
-
         Args:
-            command (callable):
+            command (Command):
                 a command to be assigned to the node.command attribute.
-
-        Returns:
-            command (the same object).
         """
+        if not isinstance(command, Command):
+            raise RuntimeError
         self.command = command
-        return command
 
     def set_subprocess_command(self, callargs, *, cwd, **kwargs):
         return self.set_command(SubprocessCommand( self,
@@ -341,11 +361,11 @@ class BuildableNode(Node):
             raise ValueError(
                 "Node {node} cannot be rebuilt due to the lack of command"
                 .format(node=self) )
-        self.command()
+        self.command.call()
 
 
-class Command:
-    """Convenience class for commands used with nodes."""
+class Command: # {{{1
+    """A base class for commands used with nodes."""
 
     def __init__(self, node):
         if not isinstance(node, Node):
@@ -354,7 +374,11 @@ class Command:
 
     wants_concurrency = False
 
-    def __call__(self):
+    def call(self):
+        self.node.updated = True
+        self.clear()
+
+    def clear(self):
         del self.node # break reference cycle
 
     @property
@@ -362,7 +386,8 @@ class Command:
         return self.node.logger
 
 
-class SubprocessCommand(Command):
+class SubprocessCommand(Command): # {{{1
+    """A command that will execute some external process."""
 
     def __init__(self, node, callargs, *, cwd, **kwargs):
         super().__init__(node)
@@ -379,9 +404,9 @@ class SubprocessCommand(Command):
 
     wants_concurrency = True
 
-    def __call__(self):
+    def call(self):
         self._subprocess()
-        super().__call__()
+        super().call()
 
     def _subprocess(self):
         """
@@ -457,18 +482,13 @@ class SubprocessCommand(Command):
             return encoded_output.decode(errors='replace')
 
     def _log_output(self, level, output):
-        self.logger.log( level,
-            "Command %(prog)s output:",
-            dict(
-                prog=self.callargs[0], ),
-            extra=dict(
-                prog_output=output, )
-        )
+        self.logger.log_prog_output( level,
+            self.callargs[0], output )
 
 
-class DatedNode(Node):
+class DatedNode(Node): # {{{1
     """
-    Introduces a notion of modification time.
+    Represents something that has a modification time.
 
     Attributes (additional to superclasses):
         mtime (int): modification time *in nanoseconds* since epoch.
@@ -503,7 +523,10 @@ class DatedNode(Node):
         self.mtime = int(time.time() * (10**9))
 
 
-class BuildableDatedNode(DatedNode, BuildableNode):
+# BuildableNode overrides update_self(), while DatedNode extends it.
+# So, the order of superclasses is important.
+class BuildableDatedNode(DatedNode, BuildableNode): # {{{1
+    """Represents a target that has a modification time."""
 
     def _needs_build(self):
         """
@@ -533,9 +556,9 @@ class BuildableDatedNode(DatedNode, BuildableNode):
         return False
 
 
-class PathNode(DatedNode):
+class PathNode(DatedNode): # {{{1
     """
-    Represents filesystem path.
+    Represents a filesystem object.
 
     Attributes (additional to superclasses):
         path (pathlib.Path):
@@ -604,9 +627,8 @@ class PathNode(DatedNode):
         return os.stat(str(self.path), follow_symlinks=follow_symlinks)
 
     def __repr__(self):
-        return (
-            "{node.__class__.__name__}("
-            "name='{node.name}', path='{node.relative_path}')"
+        return ( "{node.__class__.__name__}(name='{node.name}', "
+            "path='{node.relative_path}')"
             .format(node=self) )
 
     @property
@@ -620,7 +642,8 @@ class PathNode(DatedNode):
         return path.relative_to(cls.root)
 
 
-class BuildablePathNode(PathNode, BuildableDatedNode):
+class BuildablePathNode(PathNode, BuildableDatedNode): # {{{1
+    """Represents a filesystem object that can be (re)built."""
 
     def _run_command(self):
         prerun_mtime = self.mtime
@@ -628,14 +651,14 @@ class BuildablePathNode(PathNode, BuildableDatedNode):
         self._load_mtime()
         if self.mtime is None:
             # Succeeded command did not result in a file
-            raise MissingTargetError(repr(self))
+            raise MissingTargetError(self)
         if _mtime_less(prerun_mtime, self.mtime):
             self.modified = True
 
 
-class ProductNode(BuildablePathNode):
+class ProductNode(BuildablePathNode): # {{{1
     """
-    Represents a node with a source.
+    Represents a filesystem target that has a source.
 
     ProductNode is a subclass of PathNode that introduces a notion of
     source, which is also a PathNode.
@@ -666,14 +689,13 @@ class ProductNode(BuildablePathNode):
         super().__init__(path=path, name=name, needs=needs, **kwargs)
 
     def __repr__(self):
-        return (
-            "{node.__class__.__name__}(name='{node.name}', "
-                "source={node.source!r}, path='{node.relative_path}')"
+        return ( "{node.__class__.__name__}(name='{node.name}', "
+            "path='{node.relative_path}', source={node.source!r})"
             .format(node=self) )
 
 
-class FollowingPathNode(PathNode):
-    """Represent a path that can be or not be a symbolic link."""
+class FollowingPathNode(PathNode): # {{{1
+    """Represents a path that can be or not be a symbolic link."""
 
     # Override
     def stat(self, follow_symlinks=True):
@@ -685,7 +707,7 @@ class FollowingPathNode(PathNode):
         return super().stat(follow_symlinks=follow_symlinks)
 
 
-class FilelikeNode(PathNode):
+class FilelikeNode(PathNode): # {{{1
     """Represents path which can be opened as file."""
 
     def open(self, mode='r', *args, **kwargs):
@@ -693,7 +715,7 @@ class FilelikeNode(PathNode):
         return open(str(self.path), *args, mode=mode, **kwargs)
 
 
-class SourceFileNode(FollowingPathNode, FilelikeNode):
+class SourceFileNode(FollowingPathNode, FilelikeNode): # {{{1
     """Represents a source file."""
 
     def update_self(self):
@@ -704,14 +726,12 @@ class SourceFileNode(FollowingPathNode, FilelikeNode):
             raise NodeErrorReported from MissingTargetError(self.path)
 
 
-class FileNode(BuildablePathNode, FilelikeNode):
-    """
-    Represents a file that can be recreated by a build command.
-    """
+class FileNode(BuildablePathNode, FilelikeNode): # {{{1
+    """Represents a file target."""
 
     def _run_command(self):
         # Avoid writing to remnant symlink.
-        if self.path.exists() and self.path.is_symlink():
+        if self.path.is_symlink():
             self.path.unlink()
             self._load_mtime()
         prerun_mtime = self.mtime
@@ -730,6 +750,9 @@ class FileNode(BuildablePathNode, FilelikeNode):
             raise
 
 
-class ProductFileNode(ProductNode, FileNode):
+class ProductFileNode(ProductNode, FileNode): # {{{1
+    """Represents a file target that has a source."""
     pass
 
+# }}}1
+# vim: set foldmethod=marker :

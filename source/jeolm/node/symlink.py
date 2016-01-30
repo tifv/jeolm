@@ -41,7 +41,7 @@ class SymLinkCommand(Command):
         assert isinstance(target, str), type(target)
         self.target = target
 
-    def __call__(self):
+    def call(self):
         if os.path.lexists(str(self.node.path)):
             self._clear_path()
         self.logger.debug(
@@ -53,9 +53,9 @@ class SymLinkCommand(Command):
                 link_target=self.target,
                 path=self.node.relative_path, )
         )
-        os.symlink(self.target, str(self.node.path))
+        self.node.path.symlink_to(self.target)
         self.node.modified = True
-        super().__call__()
+        super().call()
 
     def _clear_path(self):
         self.node.path.unlink()
