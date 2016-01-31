@@ -43,11 +43,14 @@ def unique(*iterables):
 
 def natural_keyfunc(string, regex=re.compile(r'(\d+)|\.')):
     assert isinstance(string, str), type(string)
-    return [
-        int(item) if item.isdigit() else item
-        for item in regex.split(string)
-        if item is not None
-    ]
+    key = list()
+    for item in regex.split(string):
+        if item is None:
+            key.append(-1)
+        elif item.isdigit():
+            key.append(int(item))
+        key.append(item)
+    return key
 
 def mapping_is_ordered(mapping):
     return isinstance(mapping, OrderedDict) or len(mapping) <= 1
