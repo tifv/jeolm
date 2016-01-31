@@ -92,11 +92,15 @@ def _extend_timetable_records(timetable, *, driver):
             for item in period_timetable:
                 if isinstance(item, ExtraTimetableItem):
                     item.excessive = True
+        try:
+            authors = metarecord['$authors']
+        except KeyError as exception:
+            raise ValueError(metapath) from exception
+        authors = driver._constitute_authors(authors, thin_space=' ')
         period_timetable.append(
             RecordTimetableItem(
                 caption=driver._find_caption(metarecord),
-                authors=driver._constitute_authors(
-                    metarecord['$authors'], thin_space=' ' ),
+                authors=authors,
                 metapath=metapath, )
         )
 
