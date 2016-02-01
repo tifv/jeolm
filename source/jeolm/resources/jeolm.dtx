@@ -244,7 +244,12 @@
 %
 % \subsection{Package options}
 %
-% No options present.
+%    \begin{macrocode}
+\newif\ifjeolmfigure@lazy
+    \jeolmfigure@lazyfalse
+\DeclareOption{lazy-figures}{\jeolmfigure@lazytrue}
+%    \end{macrocode}
+%
 %    \begin{macrocode}
 \ProcessOptions
 %    \end{macrocode}
@@ -252,16 +257,37 @@
 % \subsection{Figures}
 %
 % \begin{macro}{\jeolmfiguremap}
-% \begin{macro}{\jeolmfigure}
 % Use the |\csname| to create a macro.
 % The set of such macros will define a mapping.
 %    \begin{macrocode}
 \newcommand\jeolmfiguremap[2]{%
 \expandafter\def\csname jeolmfiguremap@#1\endcsname{#2}}
-\newcommand\jeolmfigure[2][]{%
-\includegraphics[#1]{\csname jeolmfiguremap@#2\endcsname}}
 %    \end{macrocode}
 % \end{macro}
+%
+% \begin{macro}{\jeolmfigure}
+% The first variant of macro is not to be used in automatic environment.
+% Rather, it allows latexmk to catch up with all figures on second run.
+% (This implies that latexmk will be able to rebuild missing figures, like
+% from Asymptote source. Also, in this variant figures must be specified by
+% full name, with extension.)
+%    \begin{macrocode}
+\ifjeolmfigure@lazy
+    \newcommand\jeolmfigure[2][]{%
+    \edef\jeolmfigure@name{\csname jeolmfiguremap@#2\endcsname}%
+    \IfFileExists{\jeolmfigure@name}%
+        {\includegraphics[#1]{\jeolmfigure@name}}%
+        {\PackageWarning{jeolm}{file `\jeolmfigure@name' not found}}%
+}
+%    \end{macrocode}
+% In automatic environment, where all figures are predictable and are
+% built in advance, second variant should be used instead.
+%    \begin{macrocode}
+\else
+    \newcommand\jeolmfigure[2][]{%
+    \includegraphics[#1]{\csname jeolmfiguremap@#2\endcsname}}
+\fi
+%    \end{macrocode}
 % \end{macro}
 %
 % \subsection{Labels}
