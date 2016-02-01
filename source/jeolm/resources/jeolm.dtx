@@ -105,6 +105,10 @@
 % \\
 % Mentioning previous subproblem: \ref{a subproblem} for |\ref{a subproblem}|.
 % \\
+% Mentioning previous subproblem without mentioning the problem number:
+% \subref{a subproblem} for |\subref{a subproblem}|.
+% This is useful for references within the problem.
+% \\
 % Macros |\sp| and |\spx| are corresponding |\let| aliases for |\subproblem|
 % and |\subproblemx|.
 %
@@ -436,9 +440,18 @@
 % Label of subproblem will include the number of problem.
 %    \begin{macrocode}
 \newcommand\thesubproblem{}
+\let\problem@label@part\@empty
 \newcommand\subproblem@label[1]{%
-    \global\edef\thesubproblem{{\theproblem}#1}%
+    \global\edef\thesubproblem{\string\problem@label@part{\theproblem}#1}%
     \edef\@currentlabel{\thesubproblem}}
+%    \end{macrocode}
+% \end{macro}
+%
+% \begin{macro}{\subref}
+% As the number of problem is enclosed in special command, by redefining that
+% command we can omit it.
+%    \begin{macrocode}
+\newcommand\subref[1]{\begingroup\let\problem@label@part\@gobble\ref{#1}\endgroup}
 %    \end{macrocode}
 % \end{macro}
 %
