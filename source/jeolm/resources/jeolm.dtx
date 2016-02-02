@@ -440,9 +440,13 @@
 % Label of subproblem will include the number of problem.
 %    \begin{macrocode}
 \newcommand\thesubproblem{}
-\let\problem@label@part\@empty
+\let\subproblem@label@problem\@empty
+\let\subproblem@label@paren\@gobble
 \newcommand\subproblem@label[1]{%
-    \global\edef\thesubproblem{\string\problem@label@part{\theproblem}#1}%
+    \global\edef\thesubproblem{%
+        \string\subproblem@label@paren(%
+        \string\subproblem@label@problem{\theproblem}#1%
+        \string\subproblem@label@paren)}%
     \edef\@currentlabel{\thesubproblem}}
 %    \end{macrocode}
 % \end{macro}
@@ -451,7 +455,11 @@
 % As the number of problem is enclosed in special command, by redefining that
 % command we can omit it.
 %    \begin{macrocode}
-\newcommand\subref[1]{\begingroup\let\problem@label@part\@gobble\ref{#1}\endgroup}
+\newcommand\subref[1]{\begingroup
+    \let\subproblem@label@paren\@empty
+    \let\subproblem@label@problem\@gobble
+    \ref{#1}%
+\endgroup}
 %    \end{macrocode}
 % \end{macro}
 %
