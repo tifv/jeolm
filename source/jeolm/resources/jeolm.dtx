@@ -444,8 +444,9 @@
 \let\subproblem@label@paren\@gobble
 \newcommand\subproblem@label[1]{%
     \global\edef\thesubproblem{%
+        \string\subproblem@label@problem{\theproblem}%
         \string\subproblem@label@paren(%
-        \string\subproblem@label@problem{\theproblem}#1%
+        #1%
         \string\subproblem@label@paren)}%
     \edef\@currentlabel{\thesubproblem}}
 %    \end{macrocode}
