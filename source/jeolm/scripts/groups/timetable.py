@@ -4,6 +4,7 @@ from jeolm.record_path import RecordPath
 from jeolm.flags import FlagContainer
 from jeolm.fancify import fancify
 
+from jeolm.driver import DriverError
 
 class TimetableItem:
     pass
@@ -75,11 +76,22 @@ def _extend_timetable_extra(timetable, *, driver):
         if group_timetable_extra is None:
             continue
         for date, date_value in group_timetable_extra.items():
-            date_timetable = group_timetable[date]
+            try:
+                date_timetable = group_timetable[date]
+            except LookupError as error:
+                raise DriverError(
+                    "No date {date} for group {group}"
+                    .format(group=group, date=date) ) from error
             if date_value is None:
                 continue
             for period, extra in date_value.items():
-                period_timetable = date_timetable[period]
+                try:
+                    period_timetable = date_timetable[period]
+                except LookupError as error:
+                    raise DriverError(
+                        "No period {period} for date {date}, group {group}"
+                        .format(group=group, date=date, period=period)
+                    ) from error
                 if extra is None:
                     continue
                 assert isinstance(extra, str), type(extra)
