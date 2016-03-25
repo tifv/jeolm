@@ -1,6 +1,5 @@
 \ProvidesPackage{jeolm-groups}
-\let\jeolmheadertemplate\undefined
-\renewcommand\jeolmheader[1]{\begingroup#1
+\renewcommand\jeolmheader{
     {\Large\vspace{4ex}}\par%
     \begingroup\small\sffamily%
     \strut\ifx\jeolmauthors\relax%
@@ -18,7 +17,7 @@
     \rule[1ex]{\textwidth}{0.5pt} %
     \endgroup% \small\sffamily
     {\vspace{-1ex}\Large\vspace{-4ex}\vspace{-\parskip}}%
-\endgroup}
+}
 \newcommand{\jeolmgroupnames}{\ifx\jeolmgroupname\relax\else
 \smash{%
     \begingroup\edef\x{\endgroup\noexpand\in@{,}{\jeolmgroupname}}\x%
