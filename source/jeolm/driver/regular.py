@@ -1448,8 +1448,12 @@ class RegularDriver(MetaRecords):
     def _constitute_date_def(cls, date):
         if date is None:
             raise RuntimeError
-        return cls.date_def_template.substitute(
-            date=cls._constitute_date(date) )
+        date = cls._constitute_date(date)
+        if '%' in date:
+            raise DriverError(
+                "'%' symbol is found in the date: {}"
+                .format(date) )
+        return cls.date_def_template.substitute(date=date)
 
     date_def_template = Template(
         r'\def\jeolmdate{$date}%' )

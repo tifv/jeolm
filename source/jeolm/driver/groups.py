@@ -218,9 +218,12 @@ class GroupsDriver(RegularDriver):
                 self.groups[group_flag]['name']
                 for group_flag in sorted(group_flags, key=natural_keyfunc)
             )
+            if '%' in group_name:
+                raise DriverError(
+                    "'%' symbol is found in the group name {}"
+                    .format(group_name) )
             yield self.VerbatimBodyItem(
-                self.groupname_def_template.substitute(
-                    group_name=group_name )
+                self.groupname_def_template.substitute(group_name=group_name)
             )
 
         yield from super()._generate_header_def_metabody(
@@ -251,6 +254,6 @@ class GroupsDriver(RegularDriver):
                 return first_date
         return super()._find_date(target, metarecord)
 
-    groupname_def_template = Template(r'\def\jeolmgroupname{$group_name}')
+    groupname_def_template = Template(r'\def\jeolmgroupname{$group_name}%')
     period_template = Template(r'$date, пара $period')
 

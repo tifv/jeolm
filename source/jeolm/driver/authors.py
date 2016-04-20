@@ -26,11 +26,14 @@ class AuthorsDriver(RegularDriver):
 
     @classmethod
     def _constitute_authors_def(cls, author_list):
-        if isinstance(author_list, list):
-            return cls.authors_def_template.substitute(
-                authors=cls._constitute_authors(author_list))
-        else:
+        if not isinstance(author_list, list):
             raise DriverError("Authors must be a list")
+        authors = cls._constitute_authors(author_list)
+        if '%' in authors:
+            raise DriverError(
+                "'%' symbol is found in the list of authors: {}"
+                .format(authors) )
+        return cls.authors_def_template.substitute(authors=authors)
 
     @classmethod
     def _constitute_authors(cls, author_list, *, thin_space=r'\,'):
@@ -47,5 +50,5 @@ class AuthorsDriver(RegularDriver):
         return thin_space.join([name[0] + '.' for name in names] + [last])
 
     authors_def_template = Template(
-        r'\def\jeolmauthors{$authors}' )
+        r'\def\jeolmauthors{$authors}%' )
 
