@@ -33,7 +33,7 @@ def _get_base_arg_parser( prog='jeolm',
         help="disable colour output",
         action='store_false', dest='colour' )
     parser.add_argument( '--nice',
-        help="increment niceness level  by this amount (default 20)",
+        help="increment niceness level by this amount (default 10)",
         type=int, default=10 )
     parser.set_defaults(log_level=logging.INFO)
     return parser
