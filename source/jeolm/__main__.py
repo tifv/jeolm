@@ -1,6 +1,7 @@
 import argparse
-
 from contextlib import suppress
+
+import os
 
 from pathlib import Path
 
@@ -31,6 +32,9 @@ def _get_base_arg_parser( prog='jeolm',
     parser.add_argument( '-C', '--no-colour',
         help="disable colour output",
         action='store_false', dest='colour' )
+    parser.add_argument( '--nice',
+        help="increment niceness level  by this amount (default 20)",
+        type=int, default=10 )
     parser.set_defaults(log_level=logging.INFO)
     return parser
 
@@ -45,6 +49,8 @@ def _jobs_arg(arg):
 
 def main(args):
     jeolm.logging.setup_logging(level=args.log_level, colour=args.colour)
+    nice_level = os.nice(args.nice)
+    logger.debug("Nice level: %s", nice_level)
     if args.command is None:
         logger.error("No command selected.")
         raise SystemExit(1)
