@@ -108,13 +108,14 @@ import datetime
 import re
 
 from pathlib import PurePosixPath
+from unidecode import unidecode
 
 from jeolm.record_path import RecordPath
 from jeolm.target import Target
 from jeolm.records import MetaRecords
 
 from jeolm.records import RecordNotFoundError
-from jeolm.metadata import FIGURE_REF_PATTERN
+from jeolm.metadata import NAME_PATTERN, FIGURE_REF_PATTERN
 
 from jeolm.utils import check_and_set, ClashingValueError
 
@@ -1147,7 +1148,8 @@ class RegularDriver(MetaRecords):
         if not metarecord.get('$source$able', False):
             raise RuntimeError( "Path {path} is not sourceable"
                 .format(path=item.metapath) )
-        item.alias = self._select_alias(item.inpath, suffix=item.file_suffix)
+        item.alias = self._select_alias( item.inpath, suffix=item.file_suffix,
+            ascii_only=True )
         self._check_and_set(sources, item.alias, item.inpath)
         item.figure_map = OrderedDict()
         figure_refs = metarecord.get('$source$figures', ())
@@ -1158,7 +1160,8 @@ class RegularDriver(MetaRecords):
             figure = match.group('figure')
             figure_type = match.group('figure_type')
             figure_path = RecordPath(item.metapath, figure)
-            figure_alias_stem = self._select_alias(figure_path.as_inpath())
+            figure_alias_stem = self._select_alias( figure_path.as_inpath(),
+                ascii_only=True )
             with process_target_aspect(item.metapath, 'figure_map'):
                 self._check_and_set( item.figure_map,
                     figure_ref, figure_alias_stem )
@@ -1493,14 +1496,25 @@ class RegularDriver(MetaRecords):
     ##########
     # Supplementary finctions
 
-    @staticmethod
-    def _select_alias(*parts, suffix=None):
+    @classmethod
+    def _select_alias(cls, *parts, suffix=None, ascii_only=False):
         path = PurePosixPath(*parts)
         assert len(path.suffixes) <= 1, path
         if suffix is not None:
             path = path.with_suffix(suffix)
         assert not path.is_absolute(), path
-        return '-'.join(path.parts)
+        alias = '-'.join(path.parts)
+        if ascii_only and not cls._ascii_file_name_pattern.fullmatch(alias):
+            alias = unidecode(alias)
+            assert cls._ascii_file_name_pattern.fullmatch(alias), alias
+        else:
+            assert cls._file_name_pattern.fullmatch(alias), alias
+        return alias
+
+    _ascii_file_name_pattern = re.compile(
+        '(?:' + NAME_PATTERN + ')' + r'(?:\.\w+)?', re.ASCII)
+    _file_name_pattern = re.compile(
+        '(?:' + NAME_PATTERN + ')' + r'(?:\.\w+)?' )
 
     @staticmethod
     def _min_date(date_set):

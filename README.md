@@ -8,6 +8,7 @@ complementary LaTeX package.
 
 * Python 3.4.2 or greater; the following non-standard packages are required:
   * [PyYAML](http://pyyaml.org/);
+  * unidecode
 * LaTeX.
 
 #### Optional dependencies
