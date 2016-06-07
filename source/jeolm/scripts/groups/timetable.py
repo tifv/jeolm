@@ -125,8 +125,8 @@ def print_timetable(listed_groups, *, driver,
         listed_groups = list(timetable)
     for group in listed_groups:
         print(
-            fancify("<MAGENTA>=== <BOLD>{}<REGULAR> ===<RESET>")
-            .format(group) )
+            fancify("<MAGENTA>=== <BOLD>{} ({})<REGULAR> ===<RESET>")
+            .format(group, driver.groups[group]['name']) )
         for date, date_value in timetable[group].items():
             if from_date is not None and date < from_date:
                 continue
