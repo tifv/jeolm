@@ -42,10 +42,6 @@ Keys recognized in metarecords:
     - in absence of \\ProvidesPackage, borrowed by metadata grabber
       from the filename
 
-  $build$compiler$default
-    - string, name of default 'compiler' value in outrecords
-      (e. g. 'latex')
-
   $include
     list of subpaths for direct metadata inclusion.
 
