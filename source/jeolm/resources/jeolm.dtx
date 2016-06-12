@@ -97,8 +97,14 @@
 % \subproblemx{*}
 % for |\subproblemx{*}|.
 % \\
+% \subproblem
+% for |\subproblem|.
+% \\
 % \subproblemy{m}\label{a subproblem}\relax
 % for |\subproblemy{m}\label{a subproblem}|
+% \\
+% \subproblemy{f}
+% for |\subproblemy{f}|
 % \\
 % \subproblemyx{n}{*}
 % for |\subproblemyx{n}{*}|.
@@ -212,6 +218,8 @@
 % \subsubsection{Centering-overlap}
 %
 % Provide |\clap| complement to the |\rlap| and |\llap| commands.
+% Implementation based on
+% \texttt{https://www.math.lsu.edu/~aperlis/publications/mathclap/}.
 %
 % For comparison, the existing overlap macros:
 %    \begin{verbatim}
@@ -232,19 +240,35 @@
 % Define |\clap|, |\rlap| and |\llap| equivalents for math mode (not
 % that they didn't work before).
 %    \begin{macrocode}
-\def\mathllap{\mathpalette\mathllapinternal}
-\def\mathrlap{\mathpalette\mathrlapinternal}
-\def\mathclap{\mathpalette\mathclapinternal}
-\def\mathllapinternal#1#2{%
+\def\mathllap{\mathpalette\@mathllap}
+\def\mathrlap{\mathpalette\@mathrlap}
+\def\mathclap{\mathpalette\@mathclap}
+\def\@mathllap#1#2{%
     \llap{$\mathsurround=0pt#1{#2}$}}
-\def\mathrlapinternal#1#2{%
+\def\@mathrlap#1#2{%
     \rlap{$\mathsurround=0pt#1{#2}$}}
-\def\mathclapinternal#1#2{%
+\def\@mathclap#1#2{%
     \clap{$\mathsurround=0pt#1{#2}$}}
 %    \end{macrocode}
 % \end{macro}
 % \end{macro}
 % \end{macro}
+%
+%    \begin{macrocode}
+\newlength\@resizeto@width
+\newcommand\resizeto[2]{%
+\settowidth{\@resizeto@width}{#2}%
+\strut\hspace{0.5\@resizeto@width}%
+\clap{#1}%
+\hspace{0.5\@resizeto@width}\strut}
+\newcommand\mathresizeto[2]{\mathpalette{\@mathresizeto@unpack}{{#1}{#2}}}
+\def\@mathresizeto@unpack#1#2{\@mathresizeto@do{#1}#2}
+\def\@mathresizeto@do#1#2#3{%
+\settowidth{\@resizeto@width}{\mbox{$\mathsurround=0pt#1{#3}$}}%
+\mathstrut\hspace{0.5\@resizeto@width}%
+\mathclap{#2}%
+\hspace{0.5\@resizeto@width}\mathstrut}
+%    \end{macrocode}
 %
 % \subsection{Package options}
 %
@@ -482,6 +506,27 @@
 % \end{macro}
 % \end{macro}
 %
+%    \begin{macrocode}
+\newlength\@kernagainst@width
+\newlength\@kernagainst@width@a
+\newlength\@kernagainst@width@b
+\newlength\@kernagainst@width@c
+\newcommand\kernagainst[3]{%
+    \settowidth\@kernagainst@width@a{#2}%
+    \settowidth\@kernagainst@width@b{#1}%
+    \settowidth\@kernagainst@width@c{#3}%
+    \settowidth\@kernagainst@width{#2#1}%
+    \addtolength\@kernagainst@width{-\@kernagainst@width@a}%
+    \addtolength\@kernagainst@width{-\@kernagainst@width@b}%
+    \hspace{\@kernagainst@width}%
+    #1%
+    \settowidth\@kernagainst@width{#1#3}%
+    \addtolength\@kernagainst@width{-\@kernagainst@width@c}%
+    \addtolength\@kernagainst@width{-\@kernagainst@width@b}%
+    \hspace{\@kernagainst@width}%
+}
+%    \end{macrocode}
+%
 % \begin{macro}{\subproblem@format}
 % \begin{macro}{\subproblem@space}
 %    \begin{macrocode}
@@ -491,13 +536,7 @@
 \newcommand\subproblem@space{\hspace{\subproblem@space@length}\ignorespaces}
 \newcommand\subproblem@space@math{\mspace{20mu}}
 \newcommand\subproblem@format[2]{\text{\begingroup\bfseries
-\settowidth{\@subproblem@letter@width}{m}%
-(%
-    \hspace{0.5\@subproblem@letter@width}%
-    \clap{#1\rlap{#2}}%
-    \hspace{0.5\@subproblem@letter@width}%
-    \phantom{#2}%
-)%
+(\resizeto{\kernagainst{#1#2}{(}{)}}{\kernagainst{m#2}{(}{)}})%
 \endgroup}}
 %    \end{macrocode}
 % \end{macro}
