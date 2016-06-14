@@ -1467,7 +1467,7 @@ class RegularDriver(MetaRecords):
             day=date.day )
 
     date_template = Template(
-        r'$day~$month~$year' )
+        r'$day~$month~$year\,г.' )
     ru_monthes = [
         'января', 'февраля', 'марта', 'апреля',
         'мая', 'июня', 'июля', 'августа',
