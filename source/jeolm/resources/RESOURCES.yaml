@@ -5,6 +5,8 @@ style:
 
 style-lualatex:
   source/_style/lualatex.yaml: style-lualatex.yaml
+style-cambria:
+  source/_style/cambria.yaml: style-cambria.yaml
 style-serbian:
   source/_style/serbian.yaml: style-serbian.yaml
 

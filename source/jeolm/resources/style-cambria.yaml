@@ -1,0 +1,52 @@
+text-config:
+
+  font-selection:
+
+    $style[default-font,-cambria-font-select-gurad]:
+    - delegate: .[cambria,-default-font]
+
+    $style[cambria]:
+    - delegate: ..
+
+  font-config:
+
+    fontspec:
+
+      setfont:
+
+        $style[cambria]:
+        - delegate: ms-opentype/cambria
+        - delegate: ms-opentype/calibri
+        - delegate: ms-opentype/consolas
+
+        ms-opentype:
+          cambria:
+            $style:
+            - verbatim: \setmainfont{Cambria}
+              provide: setmainfont
+
+          calibri:
+            $style:
+            - verbatim: \setsansfont{Calibri}
+              provide: setsansfont
+
+          consolas:
+            $style:
+            - verbatim: \setmonofont{Consolas}
+              provide: setmonofont
+
+  math-font-config:
+
+    unicode-math:
+
+      setfont:
+
+        $style[cambria]:
+        - delegate: cambria
+
+        cambria:
+          $style:
+          - verbatim: \setmathfont{Cambria Math}
+            provide: setmathfont
+          - verbatim: \AtBeginDocument{\def\perp{\mathrel{\bot}}}
+
