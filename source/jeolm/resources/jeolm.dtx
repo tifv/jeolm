@@ -612,6 +612,41 @@
 %</package>
 %    \end{macrocode}
 %
+% \subsection{Tinkering with equations}
+%
+% \begin{environment}{problemeq}
+% \begin{environment}{problemeq*}
+% \begin{environment}{subproblemeq}
+% \begin{environment}{subproblemeq*}
+%    \begin{macrocode}
+\newsavebox\problemequation
+\newlength\problemeq@skip
+\problemeq@skip=0.5ex
+\newlength\problemeq@height
+\newlength\problemeq@depth
+\newcommand\problemeq@usebox[1]{%
+    \settoheight{\problemeq@height}{\usebox#1}%
+    \addtolength{\problemeq@height}{0.35ex}%
+    \settodepth{\problemeq@depth}{\usebox#1}%
+    \addtolength{\problemeq@depth}{0.35ex}%
+    \raisebox{0pt}[\problemeq@height][\problemeq@depth]{\usebox#1}%
+}
+\newenvironment{problemeq}
+    {\parskip=0pt\par%
+        \begin{lrbox}{\problemequation}\(\displaystyle}
+    {\)\end{lrbox}\problemeq@usebox\problemequation\thinspace}
+\newenvironment{problemeq*}{\thinspace\(}{\)\thinspace}
+\newenvironment{subproblemeq}
+    {\parskip=0pt\par\subproblem%
+        \begin{lrbox}{\problemequation}\(\displaystyle}
+    {\)\end{lrbox}\problemeq@usebox\problemequation\thinspace}
+\newenvironment{subproblemeq*}{\subproblem\(}{\)\thinspace}
+%    \end{macrocode}
+% \end{environment}
+% \end{environment}
+% \end{environment}
+% \end{environment}
+%
 % \Finale
 %
 \endinput
