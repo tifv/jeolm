@@ -63,11 +63,7 @@ class RecordPath:
     def from_parts(cls, parts):
         if any('/' in part for part in parts):
             raise ValueError(parts)
-        if any(part in {'.', '..'} for part in parts):
-            raise ValueError(parts)
-        self = cls()
-        self._parts = parts # pylint: disable=protected-access
-        return self
+        return cls(*parts)
 
     @classmethod
     def from_inpath(cls, inpath):
@@ -150,7 +146,6 @@ class RecordPath:
 
     def as_inpath(self, *, suffix=None):
         inpath = PurePosixPath(*self.parts)
-        assert inpath.suffix == '', inpath
         if suffix is not None:
             inpath = inpath.with_suffix(suffix)
         return inpath

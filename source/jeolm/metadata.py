@@ -131,8 +131,9 @@ class Metadata(Records):
 
         if not isinstance(inpath, PurePosixPath):
             raise RuntimeError(type(inpath))
-        path = self.local.source_dir/inpath
         metainpath = MetadataPath.from_inpath(inpath)
+        inpath = metainpath.as_inpath()
+        path = self.local.source_dir/inpath
 
         exists = path.exists()
         recorded = metainpath in self
