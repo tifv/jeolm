@@ -1,7 +1,8 @@
 import argparse
-from contextlib import suppress
-
 import os
+
+from contextlib import suppress
+from functools import partial
 
 from pathlib import Path
 
@@ -288,12 +289,13 @@ def main_makefile(args, *, local):
     for node in unrepresentable_nodes:
         node.logger.warning(
             "Node has no possible representation in Makefile" )
-    with open(args.output_makefile, 'w') as makefile:
+    _open = partial(open, encoding='utf-8')
+    with _open(args.output_makefile, 'w') as makefile:
         makefile.write(makefile_string)
     if args.output_unbuildable is None:
         _print_unbuildable_list(unbuildable_nodes, local=local)
     else:
-        with open(args.output_unbuildable, 'w') as unbuildable_list_file:
+        with _open(args.output_unbuildable, 'w') as unbuildable_list_file:
             _print_unbuildable_list( unbuildable_nodes, local=local,
                 file=unbuildable_list_file )
 
@@ -346,7 +348,7 @@ def main_excerpt(args, *, local):
         output_file = open(args.output, 'wb')
     else:
         from sys import stdout
-        output_file = stdout.buffer
+        output_file = open(stdout.buffer.fileno(), 'wb', closefd=False)
     try:
         excerpt_document( document_node, stream=output_file,
             include_pdf=args.include_pdf, archive_format=args.format,
@@ -355,8 +357,7 @@ def main_excerpt(args, *, local):
     except NodeErrorReported:
         pass
     finally:
-        if args.output is not None:
-            output_file.close()
+        output_file.close()
 
 
 ####################

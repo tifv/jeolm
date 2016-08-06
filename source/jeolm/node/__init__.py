@@ -479,7 +479,7 @@ class SubprocessCommand(Command): # {{{1
             )
             raise NodeErrorReported from exception
         else:
-            return encoded_output.decode(errors='replace')
+            return encoded_output.decode(encoding='utf-8', errors='replace')
 
     def _log_output(self, level, output):
         self.logger.log_prog_output( level,
@@ -710,9 +710,10 @@ class FollowingPathNode(PathNode): # {{{1
 class FilelikeNode(PathNode): # {{{1
     """Represents path which can be opened as file."""
 
-    def open(self, mode='r', *args, **kwargs):
+    def open(self, mode='r', *, encoding='utf-8', **kwargs):
         """Open a file-like node.path (try, at least)."""
-        return open(str(self.path), *args, mode=mode, **kwargs)
+        return open( str(self.path),
+            mode=mode, encoding=encoding, **kwargs )
 
 
 class SourceFileNode(FollowingPathNode, FilelikeNode): # {{{1

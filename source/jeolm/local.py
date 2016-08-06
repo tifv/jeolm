@@ -263,6 +263,7 @@ class InitLocalManager(LocalManager):
     @classmethod
     def load_resource_tables(cls):
         import yaml
-        with cls._resource_manifest_path.open() as manifest_file:
+        with cls._resource_manifest_path.open(encoding='utf-8') \
+                as manifest_file:
             return yaml.load(manifest_file)
 

@@ -197,9 +197,12 @@ class LaTeXLog: # {{{1
             self.logger.log_prog_output( logging.WARNING,
                 self.node.command.latex_command, self.latex_output )
         elif self.latex_log_path is not None:
-            with self.latex_log_path.open(errors='replace') as latex_log_file:
+            with self._open_latex_log() as latex_log_file:
                 latex_log_text = latex_log_file.read()
             self._print_overfulls_from_latex_log(latex_log_text)
+
+    def _open_latex_log(self):
+        return self.latex_log_path.open(errors='replace', encoding='utf-8')
 
     def _latex_output_is_alarming(self):
         match = self._latex_output_alarming_regex.search(self.latex_output)

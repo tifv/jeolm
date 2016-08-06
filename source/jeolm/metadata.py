@@ -231,8 +231,11 @@ class Metadata(Records):
             raise RuntimeError
         return query_method(inpath)
 
+    def _open_inpath(self, inpath, mode='r'):
+        return (self.local.source_dir/inpath).open(mode=mode, encoding='utf-8')
+
     def _query_yaml_file(self, inpath):
-        with (self.local.source_dir/inpath).open('r') as yaml_file:
+        with self._open_inpath(inpath) as yaml_file:
             metadata = jeolm.yaml.load(yaml_file)
         if not isinstance(metadata, dict):
             raise TypeError(
@@ -241,7 +244,7 @@ class Metadata(Records):
         return metadata
 
     def _query_tex_file(self, inpath):
-        with (self.local.source_dir/inpath).open('r') as tex_file:
+        with self._open_inpath(inpath) as tex_file:
             tex_content = tex_file.read()
         metadata = OrderedDict((
             ('$source$able', True),
@@ -359,7 +362,7 @@ class Metadata(Records):
     )
 
     def _query_dtx_file(self, inpath):
-        with (self.local.source_dir/inpath).open('r') as dtx_file:
+        with self._open_inpath(inpath) as dtx_file:
             dtx_content = dtx_file.read()
         metadata = {
             '$package$able' : True,
@@ -371,7 +374,7 @@ class Metadata(Records):
         return metadata
 
     def _query_sty_file(self, inpath):
-        with (self.local.source_dir/inpath).open('r') as sty_file:
+        with self._open_inpath(inpath) as sty_file:
             sty_content = sty_file.read()
         metadata = {
             '$package$able' : True,
@@ -395,7 +398,7 @@ class Metadata(Records):
     )
 
     def _query_asy_file(self, inpath):
-        with (self.local.source_dir/inpath).open('r') as asy_file:
+        with self._open_inpath(inpath) as asy_file:
             asy_content = asy_file.read()
         metadata = {
             '$figure$able' : True,

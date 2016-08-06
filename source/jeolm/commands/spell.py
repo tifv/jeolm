@@ -23,7 +23,7 @@ def check_spelling(targets, *, local, driver, colour=True):
     for path in path_generator:
         indicator.show(str(path.relative_to(local.source_dir)))
         formatter.reset()
-        with path.open('r') as checked_file:
+        with path.open('r', encoding='utf-8') as checked_file:
             text = checked_file.read()
         try:
             for piece in Speller(text, lang='ru_RU'):
