@@ -2,6 +2,7 @@ from itertools import chain
 
 import re
 import hashlib
+import base64
 
 from . import FileNode, Command
 from .directory import BuildDirectoryNode
@@ -30,18 +31,21 @@ class WriteTextCommand(Command):
         super().call()
 
 def text_hash(text):
-    return hashlib.sha256(text.encode()).hexdigest()
+    return base64.b64encode( hashlib.sha256(text.encode()).digest(),
+        b'+-' ).decode()[:-1]
+TEXT_HASH_PATTERN = r"[0-9a-zA-Z\+\-]{43}"
 
 class CleanupSymLinkCommand(SymLinkCommand):
 
-    _var_name_regex = re.compile(r'(?P<name>.+)\.(?P<hash>[0-9a-f]{64})')
+    _var_name_regex = re.compile(
+        r'(?P<name>.+)\.(?P<hash>' + TEXT_HASH_PATTERN + ')' )
 
-    # SymlinkNode class sets self.old_target attribute.
+    # SymlinkNode class sets self.current_target attribute.
     def _clear_path(self):
         super()._clear_path()
-        if self.node.old_target is None:
+        if self.node.current_target is None:
             return
-        match = self._var_name_regex.fullmatch(self.node.old_target)
+        match = self._var_name_regex.fullmatch(self.node.current_target)
         if match is not None and match.group('name') == self.node.path.name:
             old_var_path = self.node.path.with_name(match.group(0))
             if old_var_path.exists():

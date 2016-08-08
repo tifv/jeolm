@@ -348,7 +348,7 @@ class BuildableNode(Node): # {{{1
                 a command to be assigned to the node.command attribute.
         """
         if not isinstance(command, Command):
-            raise RuntimeError
+            raise TypeError(type(command))
         self.command = command
 
     def set_subprocess_command(self, callargs, *, cwd, **kwargs):
@@ -549,8 +549,6 @@ class BuildableDatedNode(DatedNode, BuildableNode): # {{{1
         for need in self.needs:
             if not isinstance(need, DatedNode):
                 continue
-            if need.mtime is None:
-                raise RuntimeError
             if _mtime_less(mtime, need.mtime):
                 return True
         return False
@@ -649,11 +647,12 @@ class BuildablePathNode(PathNode, BuildableDatedNode): # {{{1
         prerun_mtime = self.mtime
         super()._run_command()
         self._load_mtime()
-        if self.mtime is None:
-            # Succeeded command did not result in a file
-            raise MissingTargetError(self)
         if _mtime_less(prerun_mtime, self.mtime):
             self.modified = True
+        else:
+            self.logger.error( "File %(path)s was not updated",
+                dict(path=self.relative_path) )
+            raise MissingTargetError(self)
 
 
 class ProductNode(BuildablePathNode): # {{{1

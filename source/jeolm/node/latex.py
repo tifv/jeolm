@@ -2,15 +2,15 @@ from itertools import chain
 
 import re
 
-from . import ProductFileNode, SubprocessCommand
-from .cyclic import CyclicNeed, CyclicNode
+from . import ProductFileNode
+from .cyclic import AutowrittenNeed, CyclicSubprocessCommand, CyclicNode
 from .directory import BuildDirectoryNode
 
 import logging
 logger = logging.getLogger(__name__)
 
 
-class LaTeXCommand(SubprocessCommand): # {{{1
+class LaTeXCommand(CyclicSubprocessCommand): # {{{1
 
     latex_command = 'latex'
     target_suffix = '.dvi'
@@ -30,10 +30,6 @@ class LaTeXCommand(SubprocessCommand): # {{{1
         super().__init__(node, callargs, cwd=cwd)
         self.latex_log_path = (output_dir/jobname).with_suffix('.log')
         self.latex_log = None
-
-    # Override
-    def call(self):
-        self._subprocess()
 
     def clear(self):
         super().clear()
@@ -68,7 +64,6 @@ class LaTeXNode(ProductFileNode, CyclicNode): # {{{1
     """
 
     _Command = LaTeXCommand
-    _max_cycles = 7
 
     def __init__( self, source, jobname,
         build_dir_node, output_dir_node,
@@ -87,14 +82,18 @@ class LaTeXNode(ProductFileNode, CyclicNode): # {{{1
         if name is None:
             name = self._default_name()
 
-        self.aux_node = CyclicNeed(
+        self.aux_node = AutowrittenNeed(
             path=(output_dir/jobname).with_suffix('.aux'),
             name='{}:aux'.format(name),
+            needs=(output_dir_node,) )
+        self.toc_node = AutowrittenNeed(
+            path=(output_dir/jobname).with_suffix('.toc'),
+            name='{}:toc'.format(name),
             needs=(output_dir_node,) )
 
         super().__init__( source=source, path=path,
             name=name, needs=chain(needs, figure_nodes, (output_dir_node,)),
-            cyclic_needs=(self.aux_node,),
+            cyclic_needs=(self.aux_node, self.toc_node),
             **kwargs )
         if isinstance(build_dir_node, BuildDirectoryNode):
             self.append_needs(build_dir_node.pre_cleanup_node)
@@ -110,9 +109,8 @@ class LaTeXNode(ProductFileNode, CyclicNode): # {{{1
     def _run_command(self):
         super()._run_command()
         latex_log = self.command.latex_log
-        if latex_log.latex_output_requests_rerun() or self.aux_node.modified:
-            if self.cycle < self._max_cycles:
-                self.cycle += 1
+        if self._needs_build_cyclic():
+            if self.cycle < self.max_cycles:
                 self.logger.info(
                     "LaTeX requires rerunning" + '…' * self.cycle )
             else:
@@ -120,9 +118,7 @@ class LaTeXNode(ProductFileNode, CyclicNode): # {{{1
                 self.logger.warning(
                     "LaTeX requests rerunning too many times in a row." )
         else:
-            self.updated = True
             latex_log.print_latex_log()
-            self.command.clear()
 
 class PdfLaTeXNode(LaTeXNode):
     _Command = PdfLaTeXCommand
@@ -178,13 +174,6 @@ class LaTeXLog: # {{{1
     def logger(self):
         return self.node.logger
 
-    def latex_output_requests_rerun(self):
-        match = self._latex_output_rerun_regex.search(self.latex_output)
-        return match is not None
-
-    _latex_output_rerun_regex = re.compile(
-        r'[Rr]erun to (?#get something right)' )
-
     def print_latex_log(self, *, everything=False):
         """
         Print some of LaTeX output from its stdout and log.
@@ -213,6 +202,7 @@ class LaTeXLog: # {{{1
             # loading warning.sty package should not trigger alarm
             r'(?!warning/warning.sty)(?!(?<=warning/)warning.sty)'
         r'[Ww]arning|'
+        r'[Rr]erun to|'
         r'No pages of output' )
 
     def _print_overfulls_from_latex_log(self, latex_log_text):

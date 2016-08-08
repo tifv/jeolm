@@ -3,7 +3,8 @@ import os.path
 
 from pathlib import PurePosixPath
 
-from . import ProductNode, FilelikeNode, Command, _mtime_less
+from . import ( ProductNode, FilelikeNode,
+    Command, MissingTargetError, _mtime_less )
 
 import logging
 logger = logging.getLogger(__name__)
@@ -99,7 +100,7 @@ class SymLinkNode(ProductNode):
 
         self.set_command(self._Command(self, target))
 
-        self.old_target = None
+        self.current_target = None
 
     wants_concurrency = False
 
@@ -107,20 +108,34 @@ class SymLinkNode(ProductNode):
         """
         Set node.mtime attribute to appropriate value.
 
+        Partial override.
+        node.mtime is set to None in the following cases:
+          - node.path does not exist as filesystem path;
+          - node.path is not a link;
+          - node.path is a link, but wrong link.
+
         Adopt node.mtime and node.modified: if link source is modified, then
         node is also modified; node.mtime should always be greater than or
         equal to source.mtime, unless the link does not exist.
+
+        Also, set self.current_target to link target.
         """
         super()._load_mtime()
-        mtime = self.mtime
-        if mtime is None:
+        if self.mtime is None:
             return
+        if not self.path.is_symlink():
+            self.mtime = None
+            return
+        self.current_target = os.readlink(str(self.path))
+        if self.current_target != self.command.target:
+            self.mtime = None
+            return
+        # link is pointing at the right file
         source = self.source
-        source_mtime = source.mtime
-        if source_mtime is None:
-            raise RuntimeError
-        if _mtime_less(mtime, source_mtime):
-            self.mtime = source_mtime
+        if source.mtime is None:
+            raise MissingTargetError(source)
+        if _mtime_less(self.mtime, source.mtime):
+            self.mtime = source.mtime
         if source.modified:
             self.modified = True
 
@@ -135,10 +150,8 @@ class SymLinkNode(ProductNode):
           - node.path is a link, but wrong link.
         Superclasses ignored.
         """
-        if self.mtime is not None and os.path.islink(str(self.path)):
-            self.old_target = os.readlink(str(self.path))
-            if self.command.target == self.old_target:
-                return False
+        if self.mtime is not None:
+            return False
         return True
 
 
