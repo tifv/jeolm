@@ -313,7 +313,8 @@
 %    \begin{macrocode}
 \else
     \newcommand\jeolmfigure[2][]{%
-        \includegraphics[#1]{\csname jeolmfiguremap@#2\endcsname}}
+        \edef\jeolmfigure@name{\csname jeolmfiguremap@#2\endcsname}%
+        \includegraphics[#1]{\jeolmfigure@name}}
 \fi
 %    \end{macrocode}
 % \end{macro}
