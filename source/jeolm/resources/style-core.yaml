@@ -90,7 +90,7 @@ text-config:
     $style:
     - delegate: .[default-font]
     $style[default-font]:
-    - delegate: .[computer-modern,computer-modern-math,-default-font]
+    - delegate: .[stix-two,stix-two-math,-default-font]
 
     $style[computer-modern]:
     - delegate: .[computer-modern-math]
@@ -116,6 +116,11 @@ text-config:
     $style[xits]:
     - delegate: .[xits-math]
     $style[xits,xits-math]:
+    - delegate: ..
+
+    $style[stix-two]:
+    - delegate: .[stix-two-math]
+    $style[stix-two,stix-two-math]:
     - delegate: ..
 
     $style[palatino]:
@@ -188,6 +193,11 @@ text-config:
         - delegate: croscorefonts/arimo
         - delegate: liberation/mono
 
+        $style[stix-two]:
+        - delegate: stix-two
+        - delegate: croscorefonts/arimo
+        - delegate: liberation/mono
+
         $style[times]:
         - delegate: corefonts/times
         - delegate: corefonts/arial
@@ -221,6 +231,12 @@ text-config:
           # Problem with combining accents
           $style:
           - verbatim: \setmainfont{XITS}
+            provide: setmainfont
+        # }}}
+
+        stix-two: # {{{
+          $style:
+          - verbatim: \setmainfont{STIX Two Text}
             provide: setmainfont
         # }}}
 
@@ -428,6 +444,9 @@ text-config:
         $style[xits-math]:
         - delegate: xits
 
+        $style[stix-two-math]:
+        - delegate: stix-two
+
         $style[asana-math]:
         - delegate: asana-math
 
@@ -441,6 +460,12 @@ text-config:
           # too small 'divide by' operator
           $style:
           - verbatim: \setmathfont{XITS Math}
+            provide: setmathfont
+        # }}}
+
+        stix-two: # {{{
+          $style:
+          - verbatim: \setmathfont{STIX Two Math}
             provide: setmathfont
         # }}}
 
