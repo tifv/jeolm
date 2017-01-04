@@ -173,7 +173,8 @@ class BuildDirectoryNode(DirectoryNode):
         *, parents=False,
         name=None, needs=(), **kwargs
     ):
-        super().__init__(path=path, parents=parents, name=name, needs=needs)
+        super().__init__( path=path, parents=parents,
+            name=name, needs=needs, **kwargs )
         approved_names = self.approved_names = set()
         self.pre_cleanup_node = _PreCleanupNode(
             path, approved_names,
