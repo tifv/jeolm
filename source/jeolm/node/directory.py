@@ -40,7 +40,6 @@ class MakeDirCommand(Command):
         self.node.modified = True
         super().call()
 
-
 class DirectoryNode(BuildablePathNode):
     """
     Represents a directory.
@@ -110,13 +109,17 @@ class DirectoryNode(BuildablePathNode):
 
 class _CheckDirectoryNode(Node):
 
-    def __init__(self, path, approved_names, *, name, needs=()):
+    def __init__(self, dir_node, approved_names, *, name, needs=()):
         super().__init__(name=name, needs=needs)
-        self.path = path
+        self.dir_node = dir_node
+        self.path = dir_node.path
         self.approved_names = approved_names
 
     def _find_rogue_names(self):
         return set(os.listdir(str(self.path))) - self.approved_names
+
+    def root_relative(self, path):
+        return self.dir_node.root_relative(path)
 
 class _CleanupCommand(Command):
 
@@ -130,19 +133,19 @@ class _CleanupCommand(Command):
             if rogue_path.is_dir():
                 self.logger.error(
                     "Detected rogue directory <RED>%(path)s<NOCOLOUR>",
-                    dict(path=rogue_path) )
+                    dict(path=self.node.root_relative(rogue_path)) )
                 raise NodeErrorReported from IsADirectoryError()
             self.logger.warning(
                 "Detected rogue file <YELLOW>%(path)s<NOCOLOUR>, removing",
-                dict(path=rogue_path) )
+                dict(path=self.node.root_relative(rogue_path)) )
             rogue_path.unlink()
         self.node.modified = True
         super().call()
 
 class _PreCleanupNode(_CheckDirectoryNode, BuildableNode):
 
-    def __init__(self, path, approved_names, *, name, needs=()):
-        super().__init__(path, approved_names, name=name, needs=needs)
+    def __init__(self, dir_node, approved_names, *, name, needs=()):
+        super().__init__(dir_node, approved_names, name=name, needs=needs)
         self.set_command(_CleanupCommand(self))
         self.rogue_names = None
 
@@ -177,10 +180,10 @@ class BuildDirectoryNode(DirectoryNode):
             name=name, needs=needs, **kwargs )
         approved_names = self.approved_names = set()
         self.pre_cleanup_node = _PreCleanupNode(
-            path, approved_names,
+            self, approved_names,
             name='{}:pre-cleanup'.format(name), needs=(self,) )
         self.post_check_node = _PostCheckNode(
-            path, approved_names,
+            self, approved_names,
             name='{}:post-check'.format(name),
             needs=(self, self.pre_cleanup_node),
         )
