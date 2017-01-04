@@ -25,6 +25,12 @@ class AddToCDriver(RegularDriver):
             yield from super()._generate_source_metabody(target, metarecord)
             return
 
+        yield from self._generate_source_tocline(target, metarecord)
+        yield target.flags_difference({'add-toc'})
+
+    @ensure_type_items((RegularDriver.MetabodyItem, Target))
+    @processing_target
+    def _generate_source_tocline(self, target, metarecord):
         caption = self._find_caption(metarecord)
         if caption is None:
             raise DriverError("Failed to retrieve caption for ToC")
@@ -38,8 +44,7 @@ class AddToCDriver(RegularDriver):
             # without hyperref, \phantomsection won't work
             yield self.ProhibitPackageBodyItem(package='hyperref')
         yield self.VerbatimBodyItem(
-            self.addtoc_template.substitute(line=caption) )
-        yield target.flags_difference({'add-toc'})
+            self.addtoc_template.substitute(caption=caption) )
 
     @classmethod
     def _find_caption(cls, metarecord):
@@ -54,7 +59,7 @@ class AddToCDriver(RegularDriver):
     # LaTeX-level functions
 
     addtoc_template = Template(
-        r'\addcontentsline{toc}{section}{$line}' )
+        r'\addcontentsline{toc}{section}{$caption}' )
     phantomsection_template = Template(
         r'\phantomsection' )
 
