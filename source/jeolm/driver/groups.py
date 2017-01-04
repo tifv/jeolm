@@ -184,21 +184,12 @@ class GroupsDriver(RegularDriver):
                 raise DriverError(
                     "Sourceable target {target} does not have timetable"
                     .format(target=target) )
-            for subname in metarecord:
-                if subname.startswith('$'):
-                    continue
-                subrecord = self.get(target.path/subname)
-                matter_groups_able = subrecord.get('$groups$matter$into', True)
-                if not target.flags.check_condition(matter_groups_able):
-                    continue
-                yield self.ClearPageBodyItem()
-                yield target.path_derive(subname)
-                yield self.ClearPageBodyItem()
+            yield from self._generate_auto_metabody_delve(target, metarecord)
             return
+
         timetable = metarecord['$timetable']
         if len(timetable) < 1:
             raise RuntimeError(timetable)
-
         present_group_flags = target.flags.intersection(self.groups)
         if not present_group_flags:
             group_names = set(timetable)
@@ -208,6 +199,20 @@ class GroupsDriver(RegularDriver):
             return
 
         yield from super()._generate_auto_metabody(target, metarecord)
+
+    @ensure_type_items((RegularDriver.MetabodyItem, Target))
+    @processing_target
+    def _generate_auto_metabody_delve(self, target, metarecord):
+        for subname in metarecord:
+            if subname.startswith('$'):
+                continue
+            subrecord = self.get(target.path/subname)
+            matter_groups_able = subrecord.get('$groups$matter$into', True)
+            if not target.flags.check_condition(matter_groups_able):
+                continue
+            yield self.ClearPageBodyItem()
+            yield target.path_derive(subname)
+            yield self.ClearPageBodyItem()
 
     @ensure_type_items((RegularDriver.MetabodyItem))
     def _generate_header_def_metabody(self, target, metarecord, *, date):
