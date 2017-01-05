@@ -1,10 +1,10 @@
 from pathlib import Path
 
 def main():
-    from jeolm.local import LocalManager
+    from jeolm.project import Project
     from jeolm.commands import simple_load_driver
-    local = LocalManager(root=Path.cwd())
-    driver = simple_load_driver(local=local)
+    project = Project(root=Path.cwd())
+    driver = simple_load_driver(project=project)
     metapaths = set(driver.list_metapaths())
     def add_parent(metapath):
         if metapath.is_root():

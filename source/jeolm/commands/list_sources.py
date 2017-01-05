@@ -2,19 +2,19 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-def print_source_list(targets, *, local, driver, viewpoint=None,
+def print_source_list(targets, *, project, driver, viewpoint=None,
     source_type='tex'
 ):
     paths = list(list_sources(targets,
-        local=local, driver=driver, source_type=source_type ))
+        project=project, driver=driver, source_type=source_type ))
     if viewpoint is not None:
         paths = [ path.relative_to(viewpoint)
             for path in paths ]
     for path in paths:
         print(path)
 
-def list_sources(targets, *, local, driver, source_type='tex', unique=True):
-    source_dir = local.source_dir
+def list_sources(targets, *, project, driver, source_type='tex', unique=True):
+    source_dir = project.source_dir
     if unique:
         seen = set()
     for target in driver.list_delegated_targets(*targets, recursively=True):

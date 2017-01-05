@@ -4,9 +4,9 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-def review(paths, *, local, metadata, viewpoint=None):
+def review(paths, *, project, metadata, viewpoint=None):
     inpaths = resolve_inpaths(paths,
-        source_dir=local.source_dir, viewpoint=viewpoint )
+        source_dir=project.source_dir, viewpoint=viewpoint )
     for inpath in inpaths:
         metadata.review(inpath)
 

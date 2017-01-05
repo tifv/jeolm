@@ -87,8 +87,8 @@ class Metadata(Records):
         '.jpg'  : 'JPEG image',
     }
 
-    def __init__(self, *, local):
-        self.local = local
+    def __init__(self, *, project):
+        self.project = project
         super().__init__()
 
     def load_metadata_cache(self):
@@ -103,14 +103,14 @@ class Metadata(Records):
 
     def dump_metadata_cache(self):
         pickled_cache = pickle.dumps(self._records)
-        new_path = self.local.build_dir / '.metadata.cache.pickle.new'
+        new_path = self.project.build_dir / '.metadata.cache.pickle.new'
         with new_path.open('wb') as cache_file:
             cache_file.write(pickled_cache)
         new_path.rename(self._metadata_cache_path)
 
     @property
     def _metadata_cache_path(self):
-        return self.local.build_dir / self._metadata_cache_name
+        return self.project.build_dir / self._metadata_cache_name
 
     _metadata_cache_name = 'metadata.cache.pickle'
 
@@ -133,7 +133,7 @@ class Metadata(Records):
             raise RuntimeError(type(inpath))
         metainpath = MetadataPath.from_inpath(inpath)
         inpath = metainpath.as_inpath()
-        path = self.local.source_dir/inpath
+        path = self.project.source_dir/inpath
 
         exists = path.exists()
         recorded = metainpath in self
@@ -175,11 +175,11 @@ class Metadata(Records):
         self.absorb({'$metadata' : metadata}, metainpath, overwrite=True)
 
     def _review_subpaths(self, inpath):
-        for subname in os.listdir(str(self.local.source_dir/inpath)):
+        for subname in os.listdir(str(self.project.source_dir/inpath)):
             if subname.startswith('.'):
                 continue
             subinpath = inpath/subname
-            subpath = self.local.source_dir/subinpath
+            subpath = self.project.source_dir/subinpath
             subpath_is_dir = subpath.is_dir()
             def warn(message, subname=subname):
                 logger.warning(
@@ -232,7 +232,8 @@ class Metadata(Records):
         return query_method(inpath)
 
     def _open_inpath(self, inpath, mode='r'):
-        return (self.local.source_dir/inpath).open(mode=mode, encoding='utf-8')
+        return (self.project.source_dir/inpath).open(
+            mode=mode, encoding='utf-8' )
 
     def _query_yaml_file(self, inpath):
         with self._open_inpath(inpath) as yaml_file:

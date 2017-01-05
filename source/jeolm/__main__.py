@@ -7,7 +7,7 @@ from functools import partial
 from pathlib import Path
 
 import jeolm
-import jeolm.local
+import jeolm.project
 import jeolm.target
 import jeolm.commands
 import jeolm.logging
@@ -56,14 +56,14 @@ def main(args):
         logger.error("No command selected.")
         raise SystemExit(1)
     if args.command == 'init':
-        # special case: no local expected
+        # special case: no project expected
         return main_init(args)
     try:
-        local = jeolm.local.LocalManager(root=args.root)
-    except jeolm.local.RootNotFoundError:
-        jeolm.local.report_missing_root()
+        project = jeolm.project.Project(root=args.root)
+    except jeolm.project.RootNotFoundError:
+        jeolm.project.report_missing_root()
         raise SystemExit(1)
-    return args.command_func(args, local=local)
+    return args.command_func(args, project=project)
 
 
 # pylint: disable=unused-variable,unused-argument
@@ -92,17 +92,17 @@ def _add_build_arg_subparser(subparsers):
         type=_jobs_arg, default=1 )
     parser.set_defaults(command_func=main_build, force=None)
 
-def main_build(args, *, local):
+def main_build(args, *, project):
     from jeolm.node import PathNode, NodeErrorReported
     from jeolm.node_factory import TargetNodeFactory
 
     if not args.targets:
         logger.warning("No-op: no targets for building")
-    PathNode.root = local.root
+    PathNode.root = project.root
     node_updater = _build_get_node_updater(args.jobs)
-    driver = jeolm.commands.simple_load_driver(local)
+    driver = jeolm.commands.simple_load_driver(project)
 
-    target_node_factory = TargetNodeFactory(local=local, driver=driver)
+    target_node_factory = TargetNodeFactory(project=project, driver=driver)
     target_node = target_node_factory(args.targets, delegate=args.delegate)
     if args.force is None:
         pass
@@ -153,14 +153,14 @@ def _add_buildline_arg_subparser(subparsers):
         type=_jobs_arg, default=1 )
     parser.set_defaults(command_func=main_buildline, force=None)
 
-def main_buildline(args, *, local):
+def main_buildline(args, *, project):
     from jeolm.node import PathNode
     from jeolm.buildline import BuildLine
 
-    PathNode.root = local.root
+    PathNode.root = project.root
     node_updater = _build_get_node_updater(args.jobs)
 
-    buildline = BuildLine(local=local, node_updater=node_updater)
+    buildline = BuildLine(project=project, node_updater=node_updater)
     with buildline.readline_setup():
         return buildline.main()
 
@@ -175,16 +175,16 @@ def _add_review_arg_subparser(subparsers):
         nargs='*', metavar='INPATH' )
     parser.set_defaults(command_func=main_review)
 
-def main_review(args, *, local):
+def main_review(args, *, project):
     from jeolm.commands.review import review
     from jeolm.commands.diffprint import log_metadata_diff
     if not args.inpaths:
         logger.warning("No-op: no inpaths for review")
-    metadata = (local.metadata_class)(local=local)
+    metadata = (project.metadata_class)(project=project)
     metadata.load_metadata_cache()
     with log_metadata_diff(metadata, logger=logger):
         review( args.inpaths,
-            viewpoint=Path.cwd(), local=local, metadata=metadata )
+            viewpoint=Path.cwd(), project=project, metadata=metadata )
     metadata.dump_metadata_cache()
 
 
@@ -203,7 +203,7 @@ def main_init(args):
         root = Path.cwd()
     else:
         root = Path(args.root)
-    jeolm.local.InitLocalManager(
+    jeolm.project.InitProject(
         root=root, resources=args.resources )
 
 
@@ -221,13 +221,13 @@ def _add_list_arg_subparser(subparsers):
         dest='source_type', metavar='SOURCE_TYPE' )
     parser.set_defaults(command_func=main_list)
 
-def main_list(args, *, local):
+def main_list(args, *, project):
     from jeolm.commands.list_sources import print_source_list
     if not args.targets:
         logger.warning("No-op: no targets for source list")
     print_source_list( args.targets,
-        viewpoint=Path.cwd(), local=local,
-        driver=jeolm.commands.simple_load_driver(local),
+        viewpoint=Path.cwd(), project=project,
+        driver=jeolm.commands.simple_load_driver(project),
         source_type=args.source_type )
 
 
@@ -241,13 +241,13 @@ def _add_spell_arg_subparser(subparsers):
         nargs='*', metavar='TARGET', type=jeolm.target.Target.from_string )
     parser.set_defaults(command_func=main_spell)
 
-def main_spell(args, *, local):
+def main_spell(args, *, project):
     from jeolm.commands.spell import check_spelling
     if not args.targets:
         logger.warning("No-op: no targets for spell check")
     check_spelling( args.targets,
-        local=local,
-        driver=jeolm.commands.simple_load_driver(local),
+        project=project,
+        driver=jeolm.commands.simple_load_driver(project),
         colour=args.colour )
 
 
@@ -267,22 +267,22 @@ def _add_makefile_arg_subparser(subparsers):
             "(and depends on); default is stdout" )
     parser.set_defaults(command_func=main_makefile)
 
-def main_makefile(args, *, local):
+def main_makefile(args, *, project):
     from jeolm.commands.makefile import MakefileGenerator
     from jeolm.node import PathNode, NodeErrorReported
     from jeolm.node_factory import TargetNodeFactory
 
     if not args.targets:
         logger.warning("No-op: no targets for makefile generation")
-    PathNode.root = local.root
+    PathNode.root = project.root
     node_updater = _build_get_node_updater(jobs=1)
-    driver = jeolm.commands.simple_load_driver(local)
+    driver = jeolm.commands.simple_load_driver(project)
 
-    target_node_factory = TargetNodeFactory(local=local, driver=driver)
+    target_node_factory = TargetNodeFactory(project=project, driver=driver)
     makefile_string, unbuildable_nodes, unrepresentable_nodes = \
         MakefileGenerator.generate(
             target_node_factory(args.targets, name='first'),
-            viewpoint=local.root )
+            viewpoint=project.root )
     with suppress(NodeErrorReported):
         for node in unbuildable_nodes:
             node_updater.update(node)
@@ -293,15 +293,15 @@ def main_makefile(args, *, local):
     with _open(args.output_makefile, 'w') as makefile:
         makefile.write(makefile_string)
     if args.output_unbuildable is None:
-        _print_unbuildable_list(unbuildable_nodes, local=local)
+        _print_unbuildable_list(unbuildable_nodes, project=project)
     else:
         with _open(args.output_unbuildable, 'w') as unbuildable_list_file:
-            _print_unbuildable_list( unbuildable_nodes, local=local,
+            _print_unbuildable_list( unbuildable_nodes, project=project,
                 file=unbuildable_list_file )
 
-def _print_unbuildable_list(unbuildable_nodes, *, local, **kwargs):
+def _print_unbuildable_list(unbuildable_nodes, *, project, **kwargs):
     for node in unbuildable_nodes:
-        print(str(node.path.relative_to(local.root)), **kwargs)
+        print(str(node.path.relative_to(project.root)), **kwargs)
 
 
 ####################
@@ -331,16 +331,16 @@ def _add_excerpt_arg_subparser(subparsers):
         help="output archive in tar.gz format (default)" )
     parser.set_defaults(command_func=main_excerpt, format='tar.gz')
 
-def main_excerpt(args, *, local):
+def main_excerpt(args, *, project):
     from jeolm.node import PathNode, NodeErrorReported
     from jeolm.node_factory import TargetNodeFactory, DocumentNode
     from jeolm.commands.excerpt import excerpt_document
 
-    PathNode.root = local.root
+    PathNode.root = project.root
     node_updater = _build_get_node_updater(args.jobs)
 
-    driver = jeolm.commands.simple_load_driver(local)
-    target_node_factory = TargetNodeFactory(local=local, driver=driver)
+    driver = jeolm.commands.simple_load_driver(project)
+    target_node_factory = TargetNodeFactory(project=project, driver=driver)
     document_node_factory = target_node_factory.document_node_factory
     figure_node_factory = document_node_factory.figure_node_factory
     document_node = document_node_factory(args.target)
@@ -368,10 +368,10 @@ def _add_clean_arg_subparser(subparsers):
         help="clean toplevel links to build/**.pdf" )
     parser.set_defaults(command_func=main_clean)
 
-def main_clean(args, *, local):
+def main_clean(args, *, project):
     from jeolm.commands.clean import clean_build_links, clean_broken_links
-    clean_build_links(local.root)
-    clean_broken_links(local.build_dir, recursive=True)
+    clean_build_links(project.root)
+    clean_broken_links(project.build_dir, recursive=True)
 
 
 # pylint: enable=unused-variable,unused-argument

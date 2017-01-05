@@ -9,7 +9,7 @@ import jeolm
 import jeolm.commands
 import jeolm.commands.review
 import jeolm.commands.clean
-import jeolm.local
+import jeolm.project
 import jeolm.node
 import jeolm.node_factory
 import jeolm.metadata
@@ -29,21 +29,21 @@ logger = logging.getLogger(__name__)
 class BuildLine:
 
     def __init__(self, *,
-        local, node_updater
+        project, node_updater
     ):
-        self.local = local
+        self.project = project
         self.node_updater = node_updater
-        metadata_class = self.local.metadata_class
+        metadata_class = self.project.metadata_class
         if not issubclass(NotifiedMetadata, metadata_class):
             metadata_class = type( '_Metadata',
                 (metadata_class, NotifiedMetadata), {} )
         else:
             metadata_class = NotifiedMetadata
-        self.metadata = metadata_class(local=self.local)
+        self.metadata = metadata_class(project=self.project)
         self.metadata.review(PurePosixPath())
-        self.driver = (self.local.driver_class)()
+        self.driver = (self.project.driver_class)()
         self.metadata.feed_metadata(self.driver)
-        self.history_filename = str(self.local.build_dir/'buildline.history')
+        self.history_filename = str(self.project.build_dir/'buildline.history')
 
     @contextmanager
     def readline_setup(self):
@@ -76,7 +76,7 @@ class BuildLine:
         with log_metadata_diff(self.metadata, logger=logger):
             for review_path in review_list:
                 inpath, = jeolm.commands.review.resolve_inpaths(
-                    [review_path], source_dir=self.local.source_dir )
+                    [review_path], source_dir=self.project.source_dir )
                 try:
                     self.metadata.review(inpath)
                 except Exception: # pylint: disable=broad-except
@@ -106,7 +106,7 @@ class BuildLine:
                 pass # use previous target
             elif targets_string == 'clean':
                 targets = []
-                jeolm.commands.clean.clean_build_links(self.local.root)
+                jeolm.commands.clean.clean_build_links(self.project.root)
             elif targets_string == 'dump':
                 targets = []
                 self.metadata.dump_metadata_cache()
@@ -139,7 +139,7 @@ class BuildLine:
 
     def build(self, targets):
         target_node_factory = jeolm.node_factory.TargetNodeFactory(
-            local=self.local, driver=self.driver, )
+            project=self.project, driver=self.driver, )
         target_node = target_node_factory(targets, delegate=True)
         self.node_updater.clear()
         with suppress(NodeErrorReported):
@@ -156,15 +156,15 @@ class NotifiedMetadata(jeolm.metadata.Metadata):
     mask = creative_mask | destructive_mask | self_destructive_mask
     # pylint: enable=no-member
 
-    def __init__(self, *, local):
+    def __init__(self, *, project):
         self.review_set = set()
         self.watch = pyinotify.WatchManager()
         self.events = self.EventHandler()
         self.notifier = pyinotify.Notifier(self.watch, self.events, timeout=0)
         self.descriptors = self.WatchDescriptorManager()
-        super().__init__(local=local)
+        super().__init__(project=project)
         self.descriptors.add(self.watch.add_watch(
-            str(self.local.source_dir), self.mask, rec=False ))
+            str(self.project.source_dir), self.mask, rec=False ))
         self.source_dir_wd, = self.descriptors.path_by_wd
 
     def generate_review_list(self):
@@ -201,14 +201,14 @@ class NotifiedMetadata(jeolm.metadata.Metadata):
 
     def _create_record(self, path, parent_record):
         if path.suffix == '':
-            source_path = str(self.local.source_dir/path.as_inpath())
+            source_path = str(self.project.source_dir/path.as_inpath())
             self.descriptors.add(self.watch.add_watch(
                 source_path, self.mask, rec=False ))
         return super()._create_record(path, parent_record)
 
     def _delete_record(self, path, *args, **kwargs):
         if path.suffix == '':
-            source_path = str(self.local.source_dir/path.as_inpath())
+            source_path = str(self.project.source_dir/path.as_inpath())
             self.watch.rm_watch(self.descriptors.pop(path=source_path))
         return super()._delete_record(path, *args, **kwargs)
 

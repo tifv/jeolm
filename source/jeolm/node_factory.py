@@ -6,7 +6,7 @@ from contextlib import suppress
 from pathlib import PurePosixPath
 
 import jeolm
-import jeolm.local
+import jeolm.project
 import jeolm.node
 import jeolm.node.directory
 import jeolm.node.symlink
@@ -27,30 +27,30 @@ class TargetNode(jeolm.node.Node):
 
 class TargetNodeFactory:
 
-    def __init__(self, *, local, driver):
-        self.local = local
+    def __init__(self, *, project, driver):
+        self.project = project
         self.driver = driver
 
-        self.source_node_factory = SourceNodeFactory(local=self.local)
+        self.source_node_factory = SourceNodeFactory(project=self.project)
         self.figure_node_factory = FigureNodeFactory(
-            local=self.local, driver=self.driver,
+            project=self.project, driver=self.driver,
             build_dir_node=jeolm.node.directory.DirectoryNode(
                 name='figure:dir',
-                path=self.local.build_dir/'figures', parents=True ),
+                path=self.project.build_dir/'figures', parents=True ),
             source_node_factory=self.source_node_factory,
         )
         self.package_node_factory = PackageNodeFactory(
-            local=self.local, driver=self.driver,
+            project=self.project, driver=self.driver,
             build_dir_node=jeolm.node.directory.DirectoryNode(
                 name='package:dir',
-                path=self.local.build_dir/'packages', parents=True ),
+                path=self.project.build_dir/'packages', parents=True ),
             source_node_factory=self.source_node_factory,
         )
         self.document_node_factory = DocumentNodeFactory(
-            local=self.local, driver=self.driver,
+            project=self.project, driver=self.driver,
             build_dir_node=jeolm.node.directory.DirectoryNode(
                 name='document:dir',
-                path=self.local.build_dir/'documents', parents=True ),
+                path=self.project.build_dir/'documents', parents=True ),
             source_node_factory=self.source_node_factory,
             package_node_factory=self.package_node_factory,
             figure_node_factory=self.figure_node_factory,
@@ -73,7 +73,7 @@ class TargetNodeFactory:
             exposed_node = jeolm.node.symlink.SymLinkedFileNode(
                 name='document:{}:exposed'.format(target),
                 source=document_node,
-                path=(self.local.root/outname).with_suffix(
+                path=(self.project.root/outname).with_suffix(
                     document_node.path.suffix )
             )
             target_node.append_needs(exposed_node)
@@ -127,11 +127,11 @@ class DocumentNodeFactory:
     class _ProxyDocumentNode(jeolm.node.symlink.ProxyFileNode, DocumentNode):
         pass
 
-    def __init__(self, *, local, driver,
+    def __init__(self, *, project, driver,
         build_dir_node,
         source_node_factory, package_node_factory, figure_node_factory
     ):
-        self.local = local
+        self.project = project
         self.driver = driver
         self.build_dir_node = build_dir_node
         self.source_node_factory = source_node_factory
@@ -320,11 +320,11 @@ class DocumentNodeFactory:
 class PackageNodeFactory:
     package_types = frozenset(('dtx', 'sty',))
 
-    def __init__(self, *, local, driver,
+    def __init__(self, *, project, driver,
         build_dir_node,
         source_node_factory
     ):
-        self.local = local
+        self.project = project
         self.driver = driver
         self.build_dir_node = build_dir_node
         self.source_node_factory = source_node_factory
@@ -508,11 +508,11 @@ class FigureNodeFactory:
         'asy', 'svg', 'pdf', 'eps', 'png', 'jpg', ))
     flexible_figure_types = frozenset(('asy', 'svg',))
 
-    def __init__(self, *, local, driver,
+    def __init__(self, *, project, driver,
         build_dir_node,
         source_node_factory
     ):
-        self.local = local
+        self.project = project
         self.driver = driver
         self.build_dir_node = build_dir_node
         self.source_node_factory = source_node_factory
@@ -837,8 +837,8 @@ class FigureNodeFactory:
 
 class SourceNodeFactory:
 
-    def __init__(self, *, local):
-        self.local = local
+    def __init__(self, *, project):
+        self.project = project
         self.nodes = dict()
 
     def __call__(self, inpath):
@@ -852,7 +852,7 @@ class SourceNodeFactory:
     def _prebuild_source(self, inpath):
         source_node = jeolm.node.SourceFileNode(
             name='source:{}'.format(inpath),
-            path=self.local.source_dir/inpath )
+            path=self.project.source_dir/inpath )
         if not source_node.path.exists():
             logger.warning(
                 "Requested source node <YELLOW>%(inpath)s<NOCOLOUR> "

@@ -9,7 +9,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-def check_spelling(targets, *, local, driver, colour=True):
+def check_spelling(targets, *, project, driver, colour=True):
     if colour:
         from jeolm.fancify import fancifying_print as fprint
     else:
@@ -19,9 +19,9 @@ def check_spelling(targets, *, local, driver, colour=True):
     formatter = Formatter(fprint=fprint)
 
     path_generator = list_sources(targets,
-        local=local, driver=driver, source_type='tex' )
+        project=project, driver=driver, source_type='tex' )
     for path in path_generator:
-        indicator.show(str(path.relative_to(local.source_dir)))
+        indicator.show(str(path.relative_to(project.source_dir)))
         formatter.reset()
         with path.open('r', encoding='utf-8') as checked_file:
             text = checked_file.read()
@@ -31,14 +31,14 @@ def check_spelling(targets, *, local, driver, colour=True):
         except ValueError as error:
             raise ValueError(
                 "Error while spell-checking {}"
-                .format(path.relative_to(local.source_dir))
+                .format(path.relative_to(project.source_dir))
             ) from error
         if not formatter.selected_lines:
             continue
         indicator.clean()
         fprint(
             '<BOLD><YELLOW>{}<NOCOLOUR> possible misspellings<REGULAR>'
-            .format(path.relative_to(local.source_dir)) )
+            .format(path.relative_to(project.source_dir)) )
         formatter.print_selected_lines()
     indicator.clean()
 

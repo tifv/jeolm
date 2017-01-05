@@ -8,13 +8,13 @@ of them. Next, print the set of source paths not covered by _Order.yaml.
 from jeolm.record_path import RecordPath
 
 # Will destroy metadata
-def main(metadata=None, *, local):
+def main(metadata=None, *, project):
     if metadata is None:
-        metadata = (local.metadata_class)(local=local)
+        metadata = (project.metadata_class)(project=project)
         metadata.load_metadata_cache()
     root = RecordPath()
     ordered_paths = set(clear_order(metadata))
-    driver = metadata.feed_metadata((local.driver_class)())
+    driver = metadata.feed_metadata((project.driver_class)())
     record_paths = set( path
         for source_path, record in driver.items()
         if '$source$able' in record
@@ -44,7 +44,7 @@ def clear_order(metadata):
 
 
 if __name__ == '__main__':
-    import jeolm.local
-    local = jeolm.local.LocalManager()
-    main(local=local)
+    import jeolm.project
+    project = jeolm.project.Project()
+    main(project=project)
 

@@ -1,5 +1,7 @@
 """
-This module manages local features of jeolm project.
+This module manages filesystem-related properties of a jeolm project.
+
+The module relies heavily on standard pathlib.Path class.
 """
 
 import shutil
@@ -26,12 +28,13 @@ class RootNotFoundError(FileNotFoundError):
     pass
 
 
-class LocalManager:
+class Project:
     """
-    This class manages local features related to a jeolm project.
+    This class manages filesystem-related properties of a jeolm project.
 
-    Features include build and source directory, local module (if it
-    exists) and Driver class defined (or not defined) in this module.
+    Properties include build and source directory and local module (if it
+    exists). Also, implementations of Driver and Metadata class relevant
+    to the jeolm project are provided.
 
     Attributes:
       root (Path):
@@ -39,7 +42,7 @@ class LocalManager:
       build_dir (Path):
         directory for files created in build process. All files created by
         jeolm in any mode should be restricted to this directory (and
-        nested directories). Exceptions include source files recreated by
+        nested directories). Exceptions are source files recreated by
         'jeolm init' and symbolic links in toplevel.
       source_dir (Path):
         directory for source files of project. 'jeolm' in any mode should
@@ -47,8 +50,11 @@ class LocalManager:
       local_module (module or None):
         local module of jeolm project, loaded from '.jeolm/local.py'.
       driver_class (type):
-        Either Driver class from local module or
+        Either Driver class from local_module or
         jeolm.driver.regular.RegularDriver.
+      metadata_class (type):
+        Either Metadata class from local_module or
+        jeolm.metadata.Metadata.
     """
 
     def __init__(self, root=None):
@@ -170,9 +176,9 @@ class LocalManager:
 
         import importlib.machinery
         if module_name is None:
-            # We exclude the possibility of loading module with normal
+            # Exclude the possibility of loading module with normal
             # import statement by inserting '/' and ':' characters
-            # in module name. This is neither a feature nor a bug.
+            # in module name.
             module_name = 'jeolm.local_module:{}'.format(self.root)
         loader = importlib.machinery.SourceFileLoader(
             module_name, str(module_path) )
@@ -183,15 +189,17 @@ class LocalManager:
 
     @property
     def driver_class(self):
+        local_module = self.local_module
         with suppress(AttributeError):
-            return self.local_module.Driver
+            return local_module.Driver
         from jeolm.driver.regular import RegularDriver
         return RegularDriver
 
     @property
     def metadata_class(self):
+        local_module = self.local_module
         with suppress(AttributeError):
-            return self.local_module.Metadata
+            return local_module.Metadata
         from jeolm.metadata import Metadata
         return Metadata
 
@@ -202,7 +210,7 @@ def report_missing_root():
         "that would indicate a jeolm project." )
 
 
-class InitLocalManager(LocalManager):
+class InitProject(Project):
     def __init__(self, root, resources=()):
         assert isinstance(root, Path)
         super().__init__(root=root)
@@ -257,11 +265,11 @@ class InitLocalManager(LocalManager):
         if self._resource_tables_cache is not None:
             return self._resource_tables_cache
         resource_tables = self._resource_tables_cache = \
-            self.load_resource_tables()
+            self._load_resource_tables()
         return resource_tables
 
     @classmethod
-    def load_resource_tables(cls):
+    def _load_resource_tables(cls):
         import yaml
         with cls._resource_manifest_path.open(encoding='utf-8') \
                 as manifest_file:
