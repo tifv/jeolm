@@ -310,7 +310,7 @@ class Metadata(Records):
         return {'$source$sections' : sections} if sections else {}
 
     _tex_section_regex = re.compile( r'(?m)'
-        r'\\section\*?\s*'
+        r'\\(?:section|worksheet)\*?\s*'
             r'\{\s*'
                 r'(?P<section>(?:[^\{\}%]|\{[^\{\}%]*\})*)'
             r'(?:\s|%.*$)*\}' )

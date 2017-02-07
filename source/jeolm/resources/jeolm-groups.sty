@@ -1,22 +1,25 @@
 \ProvidesPackage{jeolm-groups}
-\renewcommand\jeolmheader{
-    {\Large\vspace{4ex}}\par%
-    \begingroup\small\sffamily%
-    \strut\ifx\jeolmauthors\relax%
-      {\bfseries{[\jeolminstitution]}}\hfill%
-    \else%
-      {\bfseries{[\jeolminstitution]}}%
-        \hfill%
-      {\mdseries\jeolmauthors}%
-    \fi\strut\nopagebreak\\%
-    \strut{\upshape[\itshape\jeolmdaterange\upshape]}\hfill%
-    \jeolmgroupnames
-    \ifx\jeolmdate\relax\else%
-        \qquad{\itshape\jeolmdate}%
-    \fi\strut\nopagebreak\\%
-    \rule[1ex]{\textwidth}{0.5pt} %
-    \endgroup% \small\sffamily
-    {\vspace{-1ex}\Large\vspace{-4ex}\vspace{-\parskip}}%
+\renewcommand\jeolmheader{%
+    \par\begingroup\small\sffamily%
+        \strut
+            \ifx\jeolmauthors\relax%
+                {\bfseries{[\jeolminstitution]}}\hfill%
+            \else%
+                {\bfseries{[\jeolminstitution]}}%
+                \hfill%
+            {\mdseries\jeolmauthors}%
+            \fi
+        \strut\nopagebreak\\%
+        {\large\strut}%
+            {\upshape[\itshape\jeolmdaterange\upshape]}\hfill%
+            \jeolmgroupnames
+            \ifx\jeolmdate\relax\else%
+                \qquad{\itshape\jeolmdate}%
+            \fi
+        {\large\strut}\nopagebreak\\%
+        \rule[1ex]{\textwidth}{0.5pt} %
+    \endgroup%
+    \@nobreaktrue\par
 }
 \newcommand{\jeolmgroupnames}{\ifx\jeolmgroupname\relax\else
 \smash{%

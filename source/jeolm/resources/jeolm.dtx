@@ -365,12 +365,24 @@
         \fi%
         \hfill\null\\\rule[1ex]{\textwidth}{0.5pt}\linebreak[0]%
     \endgroup%
-    \@nobreaktrue
+    \@nobreaktrue\par
 }
 \newcommand\jeolminstitution{Wherever}
 \newcommand\jeolmgroup{Whatever}
 \newcommand\jeolmdaterange{Whenever}
 \let\jeolmdate\relax
+\newskip\worksheet@afterskip
+\worksheet@afterskip 2.3ex \@plus.2ex
+\newcommand\worksheet{
+    \if@nobreak\vskip-\worksheet@afterskip\fi
+    \@startsection%
+        {section}%                          name
+        {1}%                                level
+        {\z@}%                              indent
+        {3.5ex \@plus 1ex \@minus .2ex}%    beforeskip
+        {\worksheet@afterskip}%             afterskip
+        {\normalfont\Large\bfseries}%       style
+}
 %    \end{macrocode}
 % \end{macro}
 %
