@@ -188,7 +188,7 @@ class LaTeXLog: # {{{1
         elif self.latex_log_path is not None:
             with self._open_latex_log() as latex_log_file:
                 latex_log_text = latex_log_file.read()
-            self._print_overfulls_from_latex_log(latex_log_text)
+            self._print_warnings_from_latex_log(latex_log_text)
 
     def _open_latex_log(self):
         return self.latex_log_path.open(errors='replace', encoding='utf-8')
@@ -205,60 +205,67 @@ class LaTeXLog: # {{{1
         r'[Rr]erun to|'
         r'No pages of output' )
 
-    def _print_overfulls_from_latex_log(self, latex_log_text):
+    def _print_warnings_from_latex_log(self, latex_log_text):
         page_numberer = self._find_page_numbers_in_latex_log(latex_log_text)
         next(page_numberer) # initialize coroutine
         file_namer = self._find_file_names_in_latex_log(latex_log_text)
         next(file_namer) # initialize coroutine
 
         matches = list(
-            self._latex_log_overfull_regex.finditer(latex_log_text) )
+            self._latex_log_warning_regex.finditer(latex_log_text) )
         if not matches:
             return
-        report = ["Overfulls and underfulls detected by LaTeX:<RESET>"]
+        report = ["Problems encountered by LaTeX:<RESET>"]
         for match in matches:
-            is_large = float(match.group('points') or 0) > 15 # delibirate
+            position = match.start()
+            page_number = page_numberer.send(position)
+            file_name = file_namer.send(position)
             report.append(
-                self._format_overfull( match,
-                    page_numberer, file_namer, is_large=is_large)
-            )
+                "<CYAN>[{page_number}]<NOCOLOUR>"
+                ' '
+                "<MAGENTA>({file_name})<NOCOLOUR>"
+                .format(page_number=page_number, file_name=file_name) )
+            if match.group('overfull') is not None:
+                # 15pt is delibirate
+                is_large = float(match.group('overfull_points') or 0) > 15
+                message = match.expand(self._latex_log_overfull_template)
+                if is_large:
+                    message = "<BOLD>" + message + "<REGULAR>"
+            elif match.group('misschar') is not None:
+                message = match.expand(self._latex_log_misschar_template)
+                message = "<BOLD>" + message + "<REGULAR>"
+            else:
+                raise RuntimeError
+            report.append(message)
         self.logger.info('\n'.join(report))
 
-    _latex_log_overfull_regex = re.compile(
-        r'(?m)^'
-        r'(?P<overfull_type>Overfull|Underfull) '
-        r'(?P<box_type>\\hbox|\\vbox) '
-        r'(?P<badness>'
-            r'\((?:(?P<points>\d+(?:\.\d+)?)pt too wide|badness \d+)\)'
+    _latex_log_overfull_pattern = ( # r'(?m)'
+        r'^(?P<overfull_type>Overfull|Underfull) '
+        r'(?P<overfull_box_type>\\hbox|\\vbox) '
+        r'(?P<overfull_badness>'
+            r'\((?:(?P<overfull_points>\d+(?:\.\d+)?)pt too wide|badness \d+)\)'
         r'|)'
-        r'(?P<rest>.*)$'
+        r'(?P<overfull_rest>.*)$'
     )
-    _latex_overfull_log_template = (
+    _latex_log_overfull_template = (
         r'\g<overfull_type> '
-        r'\g<box_type> '
-        r'<YELLOW>\g<badness><NOCOLOUR>'
-        r'\g<rest>' )
+        r'\g<overfull_box_type> '
+        r'<YELLOW>\g<overfull_badness><NOCOLOUR>'
+        r'\g<overfull_rest>' )
 
-    @classmethod
-    def _format_overfull( cls, match,
-        page_numberer, file_namer, is_large=False
-    ):
-        position = match.start()
-        page_number = page_numberer.send(position)
-        file_name = file_namer.send(position)
-        message = match.expand(cls._latex_overfull_log_template)
-        if is_large:
-            message = "<BOLD>" + message + "<REGULAR>"
-        return (
-            "<CYAN>[{page_number}]<NOCOLOUR>"
-            ' '
-            "<MAGENTA>({file_name})<NOCOLOUR>"
-            '\n'
-            "{message}"
-        ).format(
-            page_number=page_number, file_name=file_name,
-            message=message
-        )
+    _latex_log_misschar_pattern = ( # r'(?m)'
+        r'^Missing character: (?P<misschar_msg>.*)$'
+    )
+    _latex_log_misschar_template = (
+        r'Missing character: \g<misschar_msg>'
+    )
+
+    _latex_log_warning_regex = re.compile( r'(?m)'
+        r'(?P<overfull>' + _latex_log_overfull_pattern + ')|'
+        r'(?P<misschar>' + _latex_log_misschar_pattern + ')'
+    )
+
+    # Locate page numbers and file names {{{2
 
     @staticmethod
     def _inverse_monotonic(monotonic, min_position, max_position):
@@ -321,6 +328,8 @@ class LaTeXLog: # {{{1
         r'(?P<file_name>.+?)' # "<file name>"
         r'(?=[\s)])' # ")" or "\n" or " "
     )
+
+    # }}}2
 
 # }}}1
 # vim: set foldmethod=marker :
