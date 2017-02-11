@@ -1,5 +1,5 @@
 # Documentation {{{1
-"""
+r"""
 Keys recognized in metarecords:
   $target$able (boolean)
     - if false then raise error on delegate and outrecord stages
@@ -38,9 +38,9 @@ Keys recognized in metarecords:
   $package$name
     - in build process, the package is symlinked with that very name
       (with .sty extension added)
-    - extracted by metadata grabber from \\ProvidesPackage command in
+    - extracted by metadata grabber from \ProvidesPackage command in
       .sty or .dtx file
-    - in absence of \\ProvidesPackage, borrowed by metadata grabber
+    - in absence of \ProvidesPackage, borrowed by metadata grabber
       from the filename
 
   $include
@@ -50,7 +50,7 @@ Keys recognized in metarecords:
     Values:
     - <delegator (string)>
     - delegate: <delegator (string)>
-    Non-string values may be extended with conditions.
+    Dictionary values may be extended with 'condition' key.
 
   $build$outname[*]
     Provides stem for outname. Key flags will be subtracted from the
@@ -87,7 +87,7 @@ Keys recognized in metarecords:
     - resize font: [<size>, <skip>]
         # best used with anyfontsize package
         # only affects font size at the beginning of document
-        # (like, any size command including \\normalsize will undo this)
+        # (like, any size command including \normalsize will undo this)
     Non-string values may be extended with conditions.
 
   $date
@@ -733,7 +733,9 @@ class RegularDriver(MetaRecords): # {{{1
             raise DriverError("Compiler is not specified")
         if len(compilers) > 1:
             raise DriverError("Compiler is specified multiple times")
+        # pylint: disable=unbalanced-tuple-unpacking
         outrecord['compiler'], = compilers
+        # pylint: enable=unbalanced-tuple-unpacking
 
         with process_target_aspect(target, 'document'):
             outrecord['document'] = self._constitute_document(
