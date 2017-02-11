@@ -1117,10 +1117,10 @@ class RegularDriver(MetaRecords):
                 page_cleared = False
                 yield item
             elif isinstance(item, self.SourceBodyItem):
-                self._digest_metabody_source_item( target, item,
-                    sources=sources, figures=figures )
                 page_cleared = False
-                yield item
+                yield from self._digest_metabody_source_item( target, item,
+                    sources=sources, figures=figures,
+                    metapreamble=metapreamble )
             elif isinstance(item, self.RequirePreambleBodyItem):
                 metapreamble.append(self.ProvidePreamblePreambleItem(
                     key=item.key, value=item.value ))
@@ -1137,8 +1137,11 @@ class RegularDriver(MetaRecords):
                 raise RuntimeError(type(item))
 
     def _digest_metabody_source_item(self, target, item,
-        *, sources, figures
+        *, sources, figures, metapreamble
     ):
+        """
+        Yield metabody items. Extend sources, figures.
+        """
         assert isinstance(item, self.SourceBodyItem)
         metarecord = self.get(item.metapath)
         if not metarecord.get('$source$able', False):
@@ -1164,6 +1167,7 @@ class RegularDriver(MetaRecords):
             with process_target_aspect(target, 'figures'):
                 self._check_and_set( figures,
                     figure_alias_stem, (figure_path, figure_type) )
+        yield item
 
     _figure_ref_regex = re.compile(FIGURE_REF_PATTERN)
 
