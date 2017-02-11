@@ -1111,21 +1111,21 @@ class RegularDriver(MetaRecords): # {{{1
             assert isinstance(item, self.MetabodyItem), type(item)
             if isinstance(item, self.ClearPageBodyItem):
                 if not page_cleared:
-                    page_cleared = True
                     yield item
+                    page_cleared = True
             elif isinstance(item, self.EmptyPageBodyItem):
                 if not page_cleared:
                     yield self.ClearPageBodyItem()
                     page_cleared = True
                 yield item
             elif isinstance(item, self.VerbatimBodyItem):
-                page_cleared = False
                 yield item
-            elif isinstance(item, self.SourceBodyItem):
                 page_cleared = False
+            elif isinstance(item, self.SourceBodyItem):
                 yield from self._digest_metabody_source_item( target, item,
                     sources=sources, figures=figures,
                     metapreamble=metapreamble )
+                page_cleared = False
             elif isinstance(item, self.RequirePreambleBodyItem):
                 metapreamble.append(self.ProvidePreamblePreambleItem(
                     key=item.key, value=item.value ))
