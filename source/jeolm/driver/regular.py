@@ -1,3 +1,4 @@
+# Documentation {{{1
 """
 Keys recognized in metarecords:
   $target$able (boolean)
@@ -96,6 +97,8 @@ Keys recognized in metarecords:
 
 """
 
+# Imports and logging {{{1
+
 from functools import partial
 from contextlib import suppress
 from collections import OrderedDict
@@ -124,7 +127,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-class RegularDriver(MetaRecords):
+class RegularDriver(MetaRecords): # {{{1
 
     def __init__(self):
         super().__init__()
@@ -133,7 +136,7 @@ class RegularDriver(MetaRecords):
             delegated_targets=dict() )
 
     ##########
-    # Interface methods and attributes
+    # Interface methods and attributes {{{2
 
     class NoDelegators(Exception):
         pass
@@ -339,7 +342,7 @@ class RegularDriver(MetaRecords):
                     .format(path=figure_path, target=target) )
 
     ##########
-    # Record extension
+    # Record extension {{{2
 
     def _derive_record(self, parent_record, child_record, path):
         super()._derive_record(parent_record, child_record, path)
@@ -384,7 +387,7 @@ class RegularDriver(MetaRecords):
     })
 
     ##########
-    # Record-level functions (delegate)
+    # Record-level functions (delegate) {{{2
 
     @checking_target_recursion()
     @processing_target
@@ -440,7 +443,7 @@ class RegularDriver(MetaRecords):
 
 
     ##########
-    # Metabody and metapreamble items
+    # Metabody and metapreamble items {{{2
 
     class MetabodyItem:
         __slots__ = []
@@ -672,7 +675,7 @@ class RegularDriver(MetaRecords):
             raise DriverError(item)
 
     ##########
-    # Record-level functions (outrecord)
+    # Record-level functions (outrecord) {{{2
 
     @processing_target
     def _generate_outrecord(self, target, metarecord=None):
@@ -1209,7 +1212,7 @@ class RegularDriver(MetaRecords):
 
 
     ##########
-    # Record-level functions (package_record)
+    # Record-level functions (package_record) {{{2
 
     @processing_package_path
     def _generate_package_records(self, package_path):
@@ -1254,7 +1257,7 @@ class RegularDriver(MetaRecords):
 
 
     ##########
-    # Record-level functions (figure_record)
+    # Record-level functions (figure_record) {{{2
 
     @processing_figure_path
     def _generate_figure_records(self, figure_path):
@@ -1325,7 +1328,7 @@ class RegularDriver(MetaRecords):
 
 
     ##########
-    # LaTeX-level functions
+    # LaTeX-level functions {{{2
 
     @classmethod
     def _constitute_document(cls, outrecord, metapreamble, metabody):
@@ -1494,7 +1497,7 @@ class RegularDriver(MetaRecords):
     )
 
     ##########
-    # Supplementary finctions
+    # Supplementary finctions {{{2
 
     @classmethod
     def _select_alias(cls, *parts, suffix=None, ascii_only=False):
@@ -1543,3 +1546,5 @@ class RegularDriver(MetaRecords):
         except ClashingValueError as error:
             raise DriverError from error
 
+# }}}1
+# vim: set foldmethod=marker :

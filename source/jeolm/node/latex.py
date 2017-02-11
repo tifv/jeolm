@@ -1,3 +1,5 @@
+# Imports and logging {{{1
+
 from itertools import chain
 
 import re

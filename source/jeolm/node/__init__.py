@@ -2,6 +2,8 @@
 Nodes, and dependency trees constructed of them.
 """
 
+# Imports and logging {{{1
+
 from itertools import chain
 from contextlib import contextmanager
 
