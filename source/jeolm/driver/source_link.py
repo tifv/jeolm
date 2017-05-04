@@ -20,19 +20,19 @@ class SourceLinkDriver(RegularDriver):
 
     def __init__(self):
         super().__init__()
-        self._cache.update(_source_link_root=list())
+        self._cache.update(source_link_root=list())
 
     @property
     def _source_link_root(self):
-        if self._cache['_source_link_root']:
-            source_link_root = self._cache['_source_link_root']
+        if self._cache['source_link_root']:
+            source_link_root, = self._cache['source_link_root']
         else:
             source_link_root = self.get(RecordPath())['$source-link$root']
             if not isinstance(source_link_root, str):
                 raise DriverError
             if not source_link_root.endswith('/'):
                 raise DriverError
-            self._cache['_source_link_root'] = source_link_root
+            self._cache['source_link_root'].append(source_link_root)
         return source_link_root
 
     class SourceBodyItem(RegularDriver.SourceBodyItem):
