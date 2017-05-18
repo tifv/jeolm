@@ -8,9 +8,11 @@ Keys recognized in metarecords:
   $groups$delegate$into
   $groups$matter
   $groups$matter$into
+  $groups$matter$order
 
 """
 
+from itertools import chain
 from collections import OrderedDict
 from string import Template
 from datetime import date as date_type
@@ -32,6 +34,7 @@ logger = logging.getLogger(__name__)
 
 class GroupsDriver(RegularDriver):
 
+    # extension
     def __init__(self):
         super().__init__()
         self._cache.update(groups=list())
@@ -70,63 +73,24 @@ class GroupsDriver(RegularDriver):
             groups[group_flag] = value
         return groups
 
-    def list_timetable(self, path=RecordPath()):
-        for metapath, metarecord in self.items(path=path):
-            with process_target_aspect(metapath, aspect="timetable"):
-                yield from self._list_metarecord_timetable(
-                    metapath, metarecord )
-
-    def _list_metarecord_timetable(self, metapath, metarecord):
-        timetable = metarecord.get('$timetable')
-        if timetable is None:
-            return
-        for group_flag, group_timetable in timetable.items():
-            if not isinstance(group_flag, str):
-                raise DriverError(type(group_flag))
-            if group_flag not in self.groups:
-                raise DriverError("Unknown group: {}".format(group_flag))
-            if not isinstance(group_timetable, dict):
-                raise DriverError(type(group_timetable))
-            for date, date_timetable in group_timetable.items():
-                if not isinstance(date, date_type):
-                    raise DriverError(type(date))
-                if not isinstance(date_timetable, dict):
-                    raise DriverError(type(date_timetable))
-                for period, period_value in date_timetable.items():
-                    if not isinstance(period, int):
-                        raise DriverError(type(period))
-                    if period_value is not None:
-                        raise DriverError(period_value)
-                    yield metapath, metarecord, group_flag, date, period
-
-    def _extract_first_period(self, target, metarecord, group_flag):
-        try:
-            group_timetable = metarecord['$timetable'][group_flag]
-        except KeyError:
-            return None, None
-        if group_timetable:
-            first_date = min(group_timetable)
-        else:
-            return None, None
-        if group_timetable[first_date]:
-            first_period = min(group_timetable[first_date])
-        else:
-            return first_date, None
-        return first_date, first_period
 
     ##########
     # Record extension
 
+    # extension
     def _derive_record(self, parent_record, child_record, path):
         super()._derive_record(parent_record, child_record, path)
         child_record.setdefault('$groups$delegate',
             parent_record.get('$groups$delegate', True) )
         child_record.setdefault('$groups$matter',
             parent_record.get('$groups$matter', True) )
+        child_record.setdefault('$groups$matter$order',
+            parent_record.get('$groups$matter$order', 'default') )
 
     ##########
     # Record-level functions (delegate)
 
+    # extension
     @processing_target
     def _generate_delegators(self, target, metarecord=None):
         if metarecord is None:
@@ -170,6 +134,7 @@ class GroupsDriver(RegularDriver):
     ##########
     # Record-level functions (outrecord)
 
+    # extension
     @ensure_type_items((RegularDriver.MetabodyItem, Target))
     @processing_target
     def _generate_auto_metabody(self, target, metarecord):
@@ -184,7 +149,17 @@ class GroupsDriver(RegularDriver):
                 raise DriverError(
                     "Sourceable target {target} does not have timetable"
                     .format(target=target) )
-            yield from self._generate_auto_metabody_delve(target, metarecord)
+            order = metarecord['$groups$matter$order']
+            if order == 'default':
+                by_order = self._generate_auto_metabody_by_order
+            elif order == 'date':
+                by_order = self._generate_auto_metabody_by_date
+            else:
+                raise ValueError(
+                    "Unrecognized $group$matter$order '{order}' "
+                    "in target {target}"
+                    .format(target=target, order=order) )
+            yield from by_order(target, metarecord)
             return
 
         timetable = metarecord['$timetable']
@@ -202,7 +177,7 @@ class GroupsDriver(RegularDriver):
 
     @ensure_type_items((RegularDriver.MetabodyItem, Target))
     @processing_target
-    def _generate_auto_metabody_delve(self, target, metarecord):
+    def _generate_auto_metabody_by_order(self, target, metarecord):
         for subname in metarecord:
             if subname.startswith('$'):
                 continue
@@ -214,6 +189,48 @@ class GroupsDriver(RegularDriver):
             yield target.path_derive(subname)
             yield self.ClearPageBodyItem()
 
+    @ensure_type_items((RegularDriver.MetabodyItem, Target))
+    @processing_target
+    def _generate_auto_metabody_by_date(self, target, metarecord):
+        group_flags = target.flags.intersection(self.groups)
+        if len(group_flags) != 1:
+            raise DriverError(
+                "Multiple flags in target {}".format(target)
+            ) from None
+        group_flag, = group_flags
+        subtargetperiods = []
+        subtargets_extra = []
+        for subname in metarecord:
+            if subname.startswith('$'):
+                continue
+            subtarget = target.path_derive(subname)
+            subrecord = self.get(target.path/subname)
+            matter_groups_able = subrecord.get('$groups$matter$into', True)
+            if not target.flags.check_condition(matter_groups_able):
+                continue
+            subperiod = self._find_period_recursive(
+                subtarget, subrecord, group_flag )
+            if subperiod != (None, None):
+                subtargetperiods.append([subtarget, subperiod])
+            else:
+                subtargets_extra.append(subtarget)
+        def key(subtargetperiod):
+            subtarget, (date, period) = subtargetperiod
+            assert date is not None
+            if period is None:
+                period = float('+inf')
+            return (date, period)
+        sorted_subtargetperiods = sorted(subtargetperiods, key=key)
+        subtargets = chain(
+            ( subtargetperiod[0]
+                for subtargetperiod in sorted_subtargetperiods ),
+            subtargets_extra )
+        for subtarget in subtargets:
+            yield self.ClearPageBodyItem()
+            yield subtarget
+            yield self.ClearPageBodyItem()
+
+    # extension
     @ensure_type_items((RegularDriver.MetabodyItem))
     def _generate_header_def_metabody(self, target, metarecord, *, date):
 
@@ -234,6 +251,7 @@ class GroupsDriver(RegularDriver):
         yield from super()._generate_header_def_metabody(
             target, metarecord, date=date )
 
+    # extension
     def _find_date(self, target, metarecord, *, group_flag=None):
         if group_flag is None:
             group_flags = target.flags.intersection(self.groups)
@@ -248,7 +266,7 @@ class GroupsDriver(RegularDriver):
                 else:
                     return date
             group_flag, = group_flags
-        first_date, first_period = self._extract_first_period(
+        first_date, first_period = self._find_period(
             target, metarecord, group_flag )
         if first_date is not None:
             if first_period is not None:
@@ -258,6 +276,47 @@ class GroupsDriver(RegularDriver):
             else:
                 return first_date
         return super()._find_date(target, metarecord)
+
+    def _find_period(self, target, metarecord, group_flag):
+        try:
+            group_timetable = metarecord['$timetable'][group_flag]
+        except KeyError:
+            return None, None
+        if group_timetable:
+            first_date = min(group_timetable)
+        else:
+            return None, None
+        if group_timetable[first_date]:
+            first_period = min(group_timetable[first_date])
+        else:
+            return first_date, None
+        return first_date, first_period
+
+    def _find_period_recursive(self, target, metarecord, group_flag):
+        if '$timetable' in metarecord:
+            return self._find_period(target, metarecord, group_flag)
+        subperiods = []
+        for subname in metarecord:
+            if subname.startswith('$'):
+                continue
+            subtarget = target.path_derive(subname)
+            subrecord = self.get(subtarget.path)
+            matter_groups_able = subrecord.get('$groups$matter$into', True)
+            if not target.flags.check_condition(matter_groups_able):
+                continue
+            subperiod = self._find_period_recursive(
+                subtarget, subrecord, group_flag )
+            if subperiod == (None, None):
+                continue
+            subperiods.append(subperiod)
+        if not subperiods:
+            return (None, None)
+        def key(dateperiod):
+            date, period = dateperiod
+            if period is None:
+                period = float('+inf')
+            return (date, period)
+        return min(subperiods, key=key)
 
     groupname_def_template = Template(r'\def\jeolmgroupname{$group_name}%')
     period_template = Template(r'$date, пара $period')

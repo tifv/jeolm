@@ -15,7 +15,7 @@ from . import DriverError, processing_target, ensure_type_items
 import logging
 logger = logging.getLogger(__name__)
 
-class AddToCDriver(RegularDriver):
+class AddTocDriver(RegularDriver):
 
     @ensure_type_items((RegularDriver.MetabodyItem, Target))
     @processing_target
