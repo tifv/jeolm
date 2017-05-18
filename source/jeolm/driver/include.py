@@ -1,3 +1,9 @@
+"""
+Keys recognized in metarecords:
+  $include
+    list of subpaths for direct metadata inclusion.
+"""
+
 from jeolm.records import RecordPath, Records, RecordError
 
 class IncludingRecords(Records):

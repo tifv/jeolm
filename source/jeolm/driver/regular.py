@@ -43,9 +43,6 @@ Keys recognized in metarecords:
     - in absence of \ProvidesPackage, borrowed by metadata grabber
       from the filename
 
-  $include
-    list of subpaths for direct metadata inclusion.
-
   $delegate[*]
     Values:
     - <delegator (string)>
@@ -391,8 +388,8 @@ class RegularDriver(MetaRecords): # {{{1
 
     @checking_target_recursion()
     @processing_target
-    def _generate_delegated_targets( self, target, metarecord=None, *,
-        _seen_targets=None
+    def _generate_delegated_targets( self, target, metarecord=None,
+        *, _seen_targets=None
     ):
         if metarecord is None:
             metarecord = self.get(target.path)
@@ -797,8 +794,8 @@ class RegularDriver(MetaRecords): # {{{1
         skip_check=_generate_resolved_metabody_skip_check )
     @ensure_type_items(MetabodyItem)
     @processing_target
-    def _generate_resolved_metabody( self, target, metarecord=None, *,
-        matter_key=None, matter=None, date_set,
+    def _generate_resolved_metabody( self, target, metarecord=None,
+        *, matter_key=None, matter=None, date_set,
         _seen_targets=None
     ):
         """
@@ -845,8 +842,8 @@ class RegularDriver(MetaRecords): # {{{1
 
     @ensure_type_items(MetabodyItem)
     @processing_target
-    def _generate_header_metabody( self, target, metarecord, *,
-        date, resetproblem=True
+    def _generate_header_metabody( self, target, metarecord,
+        *, date, resetproblem=True
     ):
         yield self.VerbatimBodyItem(
             self.jeolmheader_begin_template.substitute() )
@@ -1100,8 +1097,8 @@ class RegularDriver(MetaRecords): # {{{1
         else:
             yield target.path_derive('..')
 
-    def _digest_metabody(self, target, metabody, *,
-        sources, figures, metapreamble
+    def _digest_metabody(self, target, metabody,
+        *, sources, figures, metapreamble
     ):
         """
         Yield metabody items. Extend sources, figures, metapreamble.
@@ -1428,8 +1425,8 @@ class RegularDriver(MetaRecords): # {{{1
             raise RuntimeError(type(item))
 
     @classmethod
-    def _constitute_body_input( cls, *,
-        include_command, alias, figure_map, metapath, inpath
+    def _constitute_body_input( cls,
+        *, include_command, alias, figure_map, metapath, inpath
     ):
         body = cls.input_template.substitute(
             command=include_command, filename=alias,
