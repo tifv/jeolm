@@ -1507,7 +1507,7 @@ class RegularDriver(MetaRecords): # {{{1
         assert not path.is_absolute(), path
         alias = '-'.join(path.parts)
         if ascii_only and not cls._ascii_file_name_pattern.fullmatch(alias):
-            alias = unidecode(alias)
+            alias = unidecode(alias).replace("'", "")
             assert cls._ascii_file_name_pattern.fullmatch(alias), alias
         else:
             assert cls._file_name_pattern.fullmatch(alias), alias
