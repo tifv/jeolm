@@ -734,10 +734,6 @@ page-config:
     $style:
     - package: pgfpages
     - no package: hyperref
-    - verbatim: |-
-        \renewcommand\pgfsetupphysicalpagesizes{% fix for xelatex
-          \pdfpagewidth\pgfphysicalwidth\pdfpageheight\pgfphysicalheight}
-      condition: xelatex
     - delegate: uselayout
 
     uselayout: # {{{
