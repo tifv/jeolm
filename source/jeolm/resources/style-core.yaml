@@ -465,7 +465,9 @@ text-config:
 
         stix-two: # {{{
           $style:
-          - verbatim: \setmathfont{STIX Two Math}
+          - verbatim:
+              \setmathfont{STIX Two Math}
+              \setmathfont[range={\frac,\sqrt}]{Tex Gyre Pagella Math}
             provide: setmathfont
         # }}}
 
