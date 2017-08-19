@@ -46,6 +46,10 @@
 % These macros do not make much sense outside of automated build system, which
 % requires ability to <<relocate>> figure files.
 %
+% Alternative usage, enabled by |lazy-figures| package option,
+% supplements |\jeolmfiguremap| with automatic mapping of \meta{name} to
+% |figures/|\meta{name}|.pdf| (or |.eps| if |.pdf| is not allowed).
+%
 % \subsection{Problem numbering}
 %
 % \DescribeMacro{\problem}
@@ -178,6 +182,19 @@
 %    \begin{macrocode}
 \RequirePackage{amsmath}
 \RequirePackage{amssymb}
+\RequirePackage{graphicx}
+%    \end{macrocode}
+%
+% \subsection{Package options}
+%
+%    \begin{macrocode}
+\newif\ifjeolmfigure@lazy
+    \jeolmfigure@lazyfalse
+\DeclareOption{lazy-figures}{\jeolmfigure@lazytrue}
+%    \end{macrocode}
+%
+%    \begin{macrocode}
+\ProcessOptions
 %    \end{macrocode}
 %
 % \subsection{Some definitions}
@@ -270,18 +287,6 @@
 \hspace{0.5\@resizeto@width}\mathstrut}
 %    \end{macrocode}
 %
-% \subsection{Package options}
-%
-%    \begin{macrocode}
-\newif\ifjeolmfigure@lazy
-    \jeolmfigure@lazyfalse
-\DeclareOption{lazy-figures}{\jeolmfigure@lazytrue}
-%    \end{macrocode}
-%
-%    \begin{macrocode}
-\ProcessOptions
-%    \end{macrocode}
-%
 % \subsection{Figures}
 %
 % \begin{macro}{\jeolmfiguremap}
@@ -294,27 +299,43 @@
 % \end{macro}
 %
 % \begin{macro}{\jeolmfigure}
-% The first variant of macro is not to be used in automatic environment.
+% In automatic environment, where all figures are predictable and are
+% built in advance, strict variant of the macro should be used.
+%    \begin{macrocode}
+\newcommand\jeolmfigure@strict[2][]{%
+    \edef\jeolmfigure@name{\csname jeolmfiguremap@#2\endcsname}%
+    \includegraphics[#1]{\jeolmfigure@name}}
+%    \end{macrocode}
+% The lazy variant of the macro, although a functional replacement for strict
+% variant, is not to be used in automatic environment.
 % Rather, it allows latexmk to catch up with all figures on second run.
-% (This implies that latexmk will be able to rebuild missing figures, like
-% from Asymptote source. Also, in this variant figures must be specified by
-% full name, with extension.)
+% This implies that latexmk will be able to rebuild missing figures, like
+% from Asymptote source.
+%    \begin{macrocode}
+\newcommand\jeolmfigure@lazy[2][]{%
+    \ifcsname jeolmfiguremap@#2\endcsname
+      \edef\jeolmfigure@name{\csname jeolmfiguremap@#2\endcsname}%
+    \else
+      \edef\jeolmfigure@name{figures/#2\jeolmfigure@suffix}%
+    \fi
+    \IfFileExists{\jeolmfigure@name}%
+        {\includegraphics[#1]{\jeolmfigure@name}}%
+        {\PackageWarning{jeolm}{file `\jeolmfigure@name' not found}}%
+}
+\def\jeolm@ifpdfgraphics#1\jeolmend{\in@{,.pdf,}{,#1,}\ifin@}
+\expandafter\jeolm@ifpdfgraphics\Gin@extensions\jeolmend
+    \newcommand\jeolmfigure@suffix{.pdf}
+\else
+    \providecommand\jeolmfigure@suffix{.eps}
+\fi
+\PackageWarning{jeolm}{\Gin@extensions}
+%    \end{macrocode}
+% Resolve package option.
 %    \begin{macrocode}
 \ifjeolmfigure@lazy
-    \newcommand\jeolmfigure[2][]{%
-        \edef\jeolmfigure@name{\csname jeolmfiguremap@#2\endcsname}%
-        \IfFileExists{\jeolmfigure@name}%
-            {\includegraphics[#1]{\jeolmfigure@name}}%
-            {\PackageWarning{jeolm}{file `\jeolmfigure@name' not found}}%
-    }
-%    \end{macrocode}
-% In automatic environment, where all figures are predictable and are
-% built in advance, second variant should be used instead.
-%    \begin{macrocode}
+    \let\jeolmfigure\jeolmfigure@lazy
 \else
-    \newcommand\jeolmfigure[2][]{%
-        \edef\jeolmfigure@name{\csname jeolmfiguremap@#2\endcsname}%
-        \includegraphics[#1]{\jeolmfigure@name}}
+    \let\jeolmfigure\jeolmfigure@strict
 \fi
 %    \end{macrocode}
 % \end{macro}
