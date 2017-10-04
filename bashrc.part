@@ -1,4 +1,4 @@
-JEOLM_PYTHON=python3.4
+JEOLM_PYTHON=python3.6
 alias jeolm=$JEOLM_PYTHON" -O -m jeolm"
 alias jeolm-debug=$JEOLM_PYTHON" -m jeolm"
 _jeolm_completion_bootstrap() {
