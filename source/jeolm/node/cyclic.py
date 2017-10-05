@@ -12,8 +12,8 @@ from .text import text_hash, TEXT_HASH_PATTERN
 
 class CyclicNeed(Node, metaclass=abc.ABCMeta): # {{{1
 
-    def update_self(self):
-        super().update_self()
+    async def update_self(self):
+        await super().update_self()
         self.refresh()
 
     @abc.abstractmethod
@@ -105,7 +105,7 @@ class AutowrittenNeed(FilelikeNode, CyclicNeed, DatedNode): # {{{1
 class CyclicCommand(Command): # {{{1
 
     # Override
-    def call(self):
+    async def call(self):
         pass
 
 class CyclicSubprocessCommand(SubprocessCommand, CyclicCommand): # {{{1
@@ -124,10 +124,7 @@ class CyclicNode(BuildableNode): # {{{1
         if self.cycle <= 0:
             return super()._needs_build()
         elif self._needs_build_cyclic():
-            if self.cycle < self.max_cycles:
-                return True
-            else:
-                return False
+            return self.cycle < self.max_cycles
         else:
             return False
 
@@ -135,8 +132,8 @@ class CyclicNode(BuildableNode): # {{{1
         return any( node.modified
             for node in self.cyclic_needs )
 
-    def _run_command(self):
-        super()._run_command()
+    async def _run_command(self):
+        await super()._run_command()
         for need in self.cyclic_needs:
             need.refresh()
         self.cycle += 1

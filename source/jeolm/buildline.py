@@ -141,7 +141,6 @@ class BuildLine:
         target_node_factory = jeolm.node_factory.TargetNodeFactory(
             project=self.project, driver=self.driver, )
         target_node = target_node_factory(targets, delegate=True)
-        self.node_updater.clear()
         with suppress(NodeErrorReported):
             self.node_updater.update(target_node)
 

@@ -38,8 +38,8 @@ class LaTeXCommand(CyclicSubprocessCommand): # {{{1
         self.latex_log = None
 
     # Override
-    def _subprocess(self):
-        latex_output = self._subprocess_output()
+    async def _subprocess(self):
+        latex_output = await self._subprocess_output()
         self.latex_log = LaTeXLog(
             latex_output, self.latex_log_path, node=self.node )
 
@@ -108,8 +108,8 @@ class LaTeXNode(ProductFileNode, CyclicNode): # {{{1
             raise RuntimeError
         self.set_command(command)
 
-    def _run_command(self):
-        super()._run_command()
+    async def _run_command(self):
+        await super()._run_command()
         latex_log = self.command.latex_log
         if self._needs_build_cyclic():
             if self.cycle < self.max_cycles:

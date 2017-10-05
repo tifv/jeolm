@@ -132,14 +132,9 @@ def _build_force_generate(target_node):
 
 def _build_get_node_updater(jobs):
     assert isinstance(jobs, int), type(jobs)
-    if jobs > 1:
-        from jeolm.node.concurrent import ConcurrentNodeUpdater
-        return ConcurrentNodeUpdater(jobs=jobs)
-    elif jobs == 1:
-        from jeolm.node import NodeUpdater
-        return NodeUpdater()
-    else:
-        raise RuntimeError
+    assert jobs >= 1
+    from jeolm.node.updater import NodeUpdater
+    return NodeUpdater(jobs=jobs)
 
 
 ####################

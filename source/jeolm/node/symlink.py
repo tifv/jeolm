@@ -42,7 +42,7 @@ class SymLinkCommand(Command):
         assert isinstance(target, str), type(target)
         self.target = target
 
-    def call(self):
+    async def call(self):
         if os.path.lexists(str(self.node.path)):
             self._clear_path()
         self.logger.debug(
@@ -56,7 +56,7 @@ class SymLinkCommand(Command):
         )
         self.node.path.symlink_to(self.target)
         self.node.modified = True
-        super().call()
+        await super().call()
 
     def _clear_path(self):
         self.node.path.unlink()
@@ -196,7 +196,7 @@ class ProxyNode(ProductNode):
     wants_concurrency = False
 
     # Override
-    def update_self(self):
+    async def update_self(self):
         self._load_mtime()
         self.modified = self.source.modified
         self.updated = True

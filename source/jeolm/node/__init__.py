@@ -6,6 +6,7 @@ Nodes, and dependency trees constructed of them.
 
 from itertools import chain
 from contextlib import contextmanager
+from types import coroutine
 
 import os
 import sys
@@ -27,116 +28,6 @@ class MissingTargetError(FileNotFoundError): # {{{1
 
 class NodeErrorReported(ValueError): # {{{1
     pass
-
-
-class NodeUpdater: # {{{1
-
-    def __init__(self):
-        self.needs_map = dict()
-        self.revneeds_map = dict()
-        self.ready_nodes = set()
-        super().__init__()
-
-    def clear(self):
-        """Must be called before reusing the updater."""
-        self.needs_map.clear()
-        self.revneeds_map.clear()
-        self.ready_nodes.clear()
-
-    def update(self, node):
-        if node.updated:
-            return
-        self._add_node(node)
-        self._update_added_nodes()
-
-    def _add_node(self, node, *, _rev_need=None):
-        assert not node.updated
-        try:
-            rev_needs = self.revneeds_map[node]
-        except KeyError:
-            already_added = False
-            rev_needs = self.revneeds_map[node] = set()
-        else:
-            already_added = True
-        if _rev_need is not None:
-            rev_needs.add(_rev_need)
-        if already_added:
-            return
-        else:
-            self._readd_node(node)
-
-    def _readd_node(self, node):
-        assert node not in self.needs_map
-        assert node not in self.ready_nodes
-        needs = self.needs_map[node] = set()
-        for need in node.needs:
-            if need.updated:
-                continue
-            self._add_node(need, _rev_need=node)
-            needs.add(need)
-        if not needs:
-            self.ready_nodes.add(node)
-
-    def _update_added_nodes(self):
-        while self.ready_nodes:
-            node = self._pop_ready_node()
-            self._update_node_self(node)
-            self._update_node_finish(node)
-        self._check_finished_update()
-
-    def _pop_ready_node(self):
-        node = self.ready_nodes.pop()
-        if self.needs_map.pop(node):
-            raise RuntimeError
-        return node
-
-    def _update_node_finish(self, node):
-        if node.updated:
-            self._revneeds_pop(node)
-        else:
-            self._readd_node(node)
-
-    def _revneeds_pop(self, node):
-        for revneed in self.revneeds_map.pop(node):
-            revneed_needs = self.needs_map[revneed]
-            assert node in revneed_needs
-            revneed_needs.discard(node)
-            if not revneed_needs:
-                self.ready_nodes.add(revneed)
-
-    @staticmethod
-    def _update_node_self(node):
-        try:
-            assert not node.updated
-            assert all(need.updated for need in node.needs)
-            node.update_self()
-        except NodeErrorReported:
-            raise
-        except Exception as exception:
-            node.logger.exception("Exception occured:")
-            raise NodeErrorReported from exception
-
-    def _check_finished_update(self):
-        if self.needs_map:
-            raise RuntimeError( "Node dependencies formed a cycle:\n{}"
-                .format('\n'.join(
-                    repr(node) for node in self._find_needs_cycle()
-                )) )
-        if self.revneeds_map:
-            raise RuntimeError
-
-    def _find_needs_cycle(self):
-        seen_nodes_map = dict()
-        seen_nodes_list = list()
-        assert self.needs_map
-        node = next(iter(self.needs_map)) # arbitrary node
-        while True:
-            if node in seen_nodes_map:
-                return seen_nodes_list[seen_nodes_map[node]:]
-            seen_nodes_map[node] = len(seen_nodes_list)
-            seen_nodes_list.append(node)
-            assert self.needs_map[node]
-            node = next(iter(self.needs_map[node]))
 
 
 def _mtime_less(mtime, other): # {{{1
@@ -193,7 +84,7 @@ class Node: # {{{1
         return hash((type(self).__name__, id(self)))
 
     # Should be only called by NodeUpdater
-    def update_self(self):
+    async def update_self(self):
         self.updated = True
 
     def append_needs(self, node):
@@ -305,19 +196,12 @@ class BuildableNode(Node): # {{{1
         self.command = None
 
     # Partial override
-    def update_self(self):
+    async def update_self(self):
         if self._needs_build():
-            self._run_command()
+            await self._run_command()
         else:
-            super().update_self()
+            await super().update_self()
             self.command.clear()
-
-    @property
-    def wants_concurrency(self):
-        try:
-            return self.command.wants_concurrency
-        except AttributeError:
-            return False
 
     def _needs_build(self):
         """
@@ -357,13 +241,13 @@ class BuildableNode(Node): # {{{1
         return self.set_command(SubprocessCommand( self,
             callargs, cwd=cwd, **kwargs ))
 
-    def _run_command(self):
+    async def _run_command(self):
         # Should be only called by self.update_self()
         if self.command is None:
             raise ValueError(
                 "Node {node} cannot be rebuilt due to the lack of command"
                 .format(node=self) )
-        self.command.call()
+        await self.command.call()
 
 
 class Command: # {{{1
@@ -374,9 +258,7 @@ class Command: # {{{1
             raise RuntimeError(type(node))
         self.node = node
 
-    wants_concurrency = False
-
-    def call(self):
+    async def call(self):
         self.node.updated = True
         self.clear()
 
@@ -401,16 +283,13 @@ class SubprocessCommand(Command): # {{{1
         if not cwd.is_absolute():
             raise ValueError("cwd must be an absolute path")
         self.cwd = cwd
-        kwargs.setdefault('stderr', subprocess.STDOUT)
         self.kwargs = kwargs
 
-    wants_concurrency = True
+    async def call(self):
+        await self._subprocess()
+        await super().call()
 
-    def call(self):
-        self._subprocess()
-        super().call()
-
-    def _subprocess(self):
+    async def _subprocess(self):
         """
         Run external process.
 
@@ -424,11 +303,12 @@ class SubprocessCommand(Command): # {{{1
                 in case of error in the called process.
         """
 
-        output = self._subprocess_output()
+        output = await self._subprocess_output()
         if not output: # child process didn't write anything
             return
         self._log_output(logging.INFO, output)
 
+    @coroutine
     def _subprocess_output(self, log_error_output=True):
         """
         Run external process.
@@ -466,8 +346,7 @@ class SubprocessCommand(Command): # {{{1
         )
 
         try:
-            encoded_output = subprocess.check_output(
-                self.callargs, cwd=str(self.cwd), **self.kwargs )
+            encoded_output = (yield self)
         except subprocess.CalledProcessError as exception:
             if not log_error_output:
                 raise
@@ -508,9 +387,9 @@ class DatedNode(Node): # {{{1
         super().__init__(name=name, needs=needs, **kwargs)
         self.mtime = None
 
-    def update_self(self):
+    async def update_self(self):
         self._load_mtime()
-        super().update_self()
+        await super().update_self()
 
     def _load_mtime(self):
         """
@@ -645,9 +524,9 @@ class PathNode(DatedNode): # {{{1
 class BuildablePathNode(PathNode, BuildableDatedNode): # {{{1
     """Represents a filesystem object that can be (re)built."""
 
-    def _run_command(self):
+    async def _run_command(self):
         prerun_mtime = self.mtime
-        super()._run_command()
+        await super()._run_command()
         self._load_mtime()
         if _mtime_less(prerun_mtime, self.mtime):
             self.modified = True
@@ -720,8 +599,8 @@ class FilelikeNode(PathNode): # {{{1
 class SourceFileNode(FollowingPathNode, FilelikeNode): # {{{1
     """Represents a source file."""
 
-    def update_self(self):
-        super().update_self()
+    async def update_self(self):
+        await super().update_self()
         if self.mtime is None:
             self.logger.error( "Source file %(path)s is missing",
                 dict(path=self.relative_path) )
@@ -731,14 +610,14 @@ class SourceFileNode(FollowingPathNode, FilelikeNode): # {{{1
 class FileNode(BuildablePathNode, FilelikeNode): # {{{1
     """Represents a file target."""
 
-    def _run_command(self):
+    async def _run_command(self):
         # Avoid writing to remnant symlink.
         if self.path.is_symlink():
             self.path.unlink()
             self._load_mtime()
         prerun_mtime = self.mtime
         try:
-            super()._run_command()
+            await super()._run_command()
         except MissingTargetError:
             raise
         except:

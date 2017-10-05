@@ -21,14 +21,14 @@ class WriteTextCommand(Command):
             raise TypeError(type(text))
         self.text = text
 
-    def call(self):
+    async def call(self):
         self.logger.info(
             "write to <ITALIC>%(path)s<UPRIGHT>",
             dict(path=self.node.relative_path)
         )
         with self.node.open('w') as text_file:
             text_file.write(self.text)
-        super().call()
+        await super().call()
 
 def text_hash(text):
     return base64.b64encode( hashlib.sha256(text.encode()).digest(),
