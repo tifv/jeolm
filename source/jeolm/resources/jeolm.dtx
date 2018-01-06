@@ -183,6 +183,7 @@
 \RequirePackage{amsmath}
 \RequirePackage{amssymb}
 \RequirePackage{graphicx}
+\RequirePackage{currfile}
 %    \end{macrocode}
 %
 % \subsection{Package options}
@@ -213,6 +214,7 @@
     {\@kratno@template{\textstyle}{\tf@size}}%
     {\@kratno@template{\scriptstyle}{\sf@size}}%
     {\@kratno@template{\scriptscriptstyle}{\ssf@size}}%
+\newcommand\nkratno{\mathrel{\not{\kratno}}}
 }
 %    \end{macrocode}
 %
@@ -316,17 +318,19 @@
     \ifcsname jeolmfiguremap@#2\endcsname
       \edef\jeolmfigure@name{\csname jeolmfiguremap@#2\endcsname}%
     \else
-      \edef\jeolmfigure@name{figures/#2\jeolmfigure@suffix}%
+      \edef\jeolmfigure@name{\jeolmfiguredir#2\jeolmfiguresuffix}%
     \fi
     \IfFileExists{\jeolmfigure@name}%
         {\includegraphics[#1]{\jeolmfigure@name}}%
-        {\PackageWarning{jeolm}{file `\jeolmfigure@name' not found}}%
+        {\leavevmode
+            \PackageWarning{jeolm}{file `\jeolmfigure@name' not found}}%
 }
+\newcommand\jeolmfiguredir{\currfiledir figures/}
 \def\jeolm@ifpdfgraphics#1\jeolmend{\in@{,.pdf,}{,#1,}\ifin@}
 \expandafter\jeolm@ifpdfgraphics\Gin@extensions\jeolmend
-    \newcommand\jeolmfigure@suffix{.pdf}
+    \newcommand\jeolmfiguresuffix{.pdf}
 \else
-    \providecommand\jeolmfigure@suffix{.eps}
+    \providecommand\jeolmfiguresuffix{.eps}
 \fi
 %    \end{macrocode}
 % Resolve package option.
