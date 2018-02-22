@@ -452,6 +452,7 @@
 \newcommand\setproblem[1]{\setcounter{jeolmproblem}{#1}}
 \newcommand\resetproblem{\setcounter{jeolmproblem}{0}}
 \newcommand\problem@numbering{\arabic}
+\newcommand\problem@counter{jeolmproblem}
 %    \end{macrocode}
 % \end{macro}
 % \end{macro}
@@ -479,7 +480,7 @@
 % managed by |\item| command itself.
 %    \begin{macrocode}
 \newcommand\problem@in@item{\problemx@in@item{}}
-\newcommand\problemx@in@item[1]{\problem@yx{\problem@numbering{jeolmproblem}}{#1}}
+\newcommand\problemx@in@item[1]{\problem@yx{\problem@numbering{\problem@counter}}{#1}}
 %    \end{macrocode}
 % \end{macro}
 %
@@ -537,14 +538,17 @@
 %
 % \begin{macro}{\problem@format}
 % \begin{macro}{\problem@space}
+% \begin{macro}{\problem@format@text}
 %    \begin{macrocode}
 \newlength\problem@space@length
 \problem@space@length=1em
 \newcommand\problem@space{\hspace{\problem@space@length}\ignorespaces}
-\newcommand\problem@format[2]{\begingroup\bfseries
+\newcommand\problem@format@text{\bfseries}
+\newcommand\problem@format[2]{\begingroup\problem@format@text
     #1.\rlap{\!#2}%
 \endgroup}
 %    \end{macrocode}
+% \end{macro}
 % \end{macro}
 % \end{macro}
 %
@@ -571,16 +575,19 @@
 %
 % \begin{macro}{\subproblem@format}
 % \begin{macro}{\subproblem@space}
+% \begin{macro}{\subproblem@format@text}
 %    \begin{macrocode}
 \newlength\subproblem@space@length
 \newlength\@subproblem@letter@width
 \subproblem@space@length=0.5em
 \newcommand\subproblem@space{\hspace{\subproblem@space@length}\ignorespaces}
 \newcommand\subproblem@space@math{\mspace{20mu}}
-\newcommand\subproblem@format[2]{\text{\begingroup\bfseries
-(\resizeto{\kernagainst{#1#2}{(}{)}}{\kernagainst{m#2}{(}{)}})%
-\endgroup}}
+\newcommand\subproblem@format@text{\problem@format@text}
+\newcommand\subproblem@format[2]{\text{\begingroup\subproblem@format@text
+    (\resizeto{\kernagainst{#1#2}{(}{)}}{\kernagainst{m#2}{(}{)}})%
+    \endgroup}}
 %    \end{macrocode}
+% \end{macro}
 % \end{macro}
 % \end{macro}
 %
@@ -593,16 +600,16 @@
 % Macros |\itemx|, |\itemy| and |\itemyx| are defined only inside the
 % environment.
 %    \begin{macrocode}
-\let\itemx\problem@itemx
-\let\itemy\problem@itemy
-\let\itemyx\problem@itemyx
+    \let\itemx\problem@itemx
+    \let\itemy\problem@itemy
+    \let\itemyx\problem@itemyx
 %    \end{macrocode}
 % Macro |\problem@in@item@current| can be redefined on the fly.
 % This is used by |\itemx|.
 %    \begin{macrocode}
-\begin{list}{\problem@in@item@current}{%
-\leftmargin=2.45em\labelsep=\problem@space@length%
-\@nmbrlisttrue\def\@listctr{jeolmproblem}}%
+    \begin{list}{\problem@in@item@current}{%
+        \leftmargin=2.45em\labelsep=\problem@space@length%
+        \@nmbrlisttrue\def\@listctr{\problem@counter}}%
 }{\end{list}}
 %    \end{macrocode}
 % \end{environment}
@@ -610,14 +617,25 @@
 %    \begin{macrocode}
 \let\problem@in@item@current\problem@in@item
 \newcommand\problem@itemx[1]{%
-\def\problem@in@item@current{\problemx@in@item{#1}}%
-\item%
-\let\problem@in@item@current\problem@in@item}
+    \def\problem@in@item@current{\problemx@in@item{#1}}%
+    \item%
+    \let\problem@in@item@current\problem@in@item}
 \newcommand\problem@itemy[1]{%
-\item[\problem@format{#1}{}]\problem@label{#1}\resetsubproblem}
+    \item[\problem@format{#1}{}]\problem@label{#1}\resetsubproblem}
 \newcommand\problem@itemyx[2]{%
-\item[\problem@format{#1}{#2}]\problem@label{#1}\resetsubproblem}
+    \item[\problem@format{#1}{#2}]\problem@label{#1}\resetsubproblem}
 %    \end{macrocode}
+%
+% \begin{environment}{problems*}
+%    \begin{macrocode}
+\newenvironment{exercises}{%
+    \renewcommand\problem@format@text{\mdseries}%
+    \renewcommand\problem@counter{enumi}\setcounter{enumi}{0}%
+    \begin{problems}%
+}{\end{problems}}
+%    \end{macrocode}
+% \end{environment}
+%
 %
 % \subsection{Statements}
 %
@@ -628,65 +646,9 @@
 %    \end{macrocode}
 % \end{macro}
 %
-% \begin{macro}{\theorem}
-% \begin{macro}{\theoremof}
-%    \begin{macrocode}
-\newcommand\theorem{\claim{Теорема}}
-\newcommand\theoremof[1]{\claim{Теорема #1}}
-%    \end{macrocode}
-% \end{macro}
-% \end{macro}
-%
-% \begin{macro}{\definition}
-% \begin{macro}{\lemma}
-% \begin{macro}{\statement}
-%    \begin{macrocode}
-\newcommand\definition{\claim{Определение}}
-\newcommand\lemma{\claim{Лемма}}
-\newcommand\statement{\claim{Утверждение}}
-%    \end{macrocode}
-% \end{macro}
-% \end{macro}
-% \end{macro}
-%
 %    \begin{macrocode}
 %</package>
 %    \end{macrocode}
-%
-% \subsection{Tinkering with equations}
-%
-% \begin{environment}{problemeq}
-% \begin{environment}{problemeq*}
-% \begin{environment}{subproblemeq}
-% \begin{environment}{subproblemeq*}
-%    \begin{macrocode}
-\newsavebox\problemequation
-\newlength\problemeq@skip
-\problemeq@skip=0.5ex
-\newlength\problemeq@height
-\newlength\problemeq@depth
-\newcommand\problemeq@usebox[1]{%
-    \settoheight{\problemeq@height}{\usebox#1}%
-    \addtolength{\problemeq@height}{\problemeq@skip}%
-    \settodepth{\problemeq@depth}{\usebox#1}%
-    \addtolength{\problemeq@depth}{\problemeq@skip}%
-    \raisebox{0pt}[\problemeq@height][\problemeq@depth]{\usebox#1}%
-}
-\newenvironment{problemeq}
-    {\parskip=0pt\par%
-        \begin{lrbox}{\problemequation}\(\displaystyle}
-    {\)\end{lrbox}\problemeq@usebox\problemequation\thinspace}
-\newenvironment{problemeq*}{\thinspace\(}{\)\thinspace}
-\newenvironment{subproblemeq}
-    {\parskip=0pt\par\subproblem%
-        \begin{lrbox}{\problemequation}\(\displaystyle}
-    {\)\end{lrbox}\problemeq@usebox\problemequation\thinspace}
-\newenvironment{subproblemeq*}{\subproblem\(}{\)\thinspace}
-%    \end{macrocode}
-% \end{environment}
-% \end{environment}
-% \end{environment}
-% \end{environment}
 %
 % \Finale
 %
