@@ -377,9 +377,8 @@ text-config:
       - package: amssymb
       - package: mathabx
       - package: upgreek
-      - delegate: swap-vargreek/computer-modern
+      - delegate: swap-vargreek/default
       - delegate: swap-vargreek/upgreek
-      - delegate: swap-vargreek/unicode
       - delegate: ineq-slanted
         condition: russian
     $style[pdflatex]:
@@ -394,14 +393,15 @@ text-config:
       - package: amsmath
       - package: amssymb
       - delegate: unicode-math
-      - delegate: swap-vargreek/unicode
+      - delegate: swap-vargreek/default
+      - delegate: swap-vargreek/mupgreek
       - delegate: ineq-slanted
         condition: russian
     $style[xelatex]:
       *unicode-math-font-config
 
     swap-vargreek: # {{{
-      computer-modern:
+      default:
         $style:
         - verbatim: |-
             \AtBeginDocument{\swapvar{phi}\swapvar{epsilon}}
@@ -409,10 +409,10 @@ text-config:
         $style:
         - verbatim: |-
             \AtBeginDocument{\swapvar[up]{phi}\swapvar[up]{epsilon}}
-      unicode:
+      mupgreek:
         $style:
         - verbatim: |-
-            \AtBeginDocument{\swapvar{kappa}\swapvar[up]{kappa}}
+            \AtBeginDocument{\swapvar[mup]{phi}\swapvar[mup]{epsilon}}
     # }}}
 
     ineq-slanted:
@@ -426,7 +426,6 @@ text-config:
         options:
         - math-style=ISO
         - partial=upright
-        - vargreek-shape=unicode
       - delegate: setfont
       - verbatim: \AtBeginDocument{\let\setminus\smallsetminus}
 
