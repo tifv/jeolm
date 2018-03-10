@@ -770,6 +770,10 @@ hyperref: # {{{
 
   $style:
   - package: hyperref
+    condition: -lualatex
+  - package: hyperref
+    options: [bookmarks=false]
+    condition: lualatex
   - no package: pgfpages
   - verbatim: \hypersetup{colorlinks}
     provide: hypersetup:colorlinks

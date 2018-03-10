@@ -68,6 +68,10 @@ Keys recognized in metarecords:
     - preamble package: <package name>
     - preamble package: <package name>
       options: [<package options>]
+    - preamble package: <package name>
+      options:
+        required: [<package options>]
+        suggested: [<package options>]
     Non-string values may be extended with conditions.
   $style[*]
     Values expected from metadata:
@@ -81,6 +85,10 @@ Keys recognized in metarecords:
     - package: <package name>
     - package: <package name>
       options: [<package options>]
+    - package: <package name>
+      options:
+        required: [<package options>]
+        suggested: [<package options>]
     - resize font: [<size>, <skip>]
         # best used with anyfontsize package
         # only affects font size at the beginning of document
@@ -487,63 +495,10 @@ class RegularDriver(MetaRecords): # {{{1
         def __init__(self):
             super().__init__(value=self._value)
 
-    class RequirePreambleBodyItem(ControlBodyItem):
-        __slots__ = ['key', 'value']
-
-        def __init__(self, key, value):
-            self.key = key
-            if value is None:
-                self.value = None
-            else:
-                self.value = str(value)
-            super().__init__()
-
-    class RequirePackageBodyItem(ControlBodyItem):
-        __slots__ = ['package', 'options']
-
-        def __init__(self, package, options=()):
-            self.package = str(package)
-            if isinstance(options, str):
-                raise DriverError(
-                    "Package options must not be a single string, "
-                    "but a sequence." )
-            self.options = [str(item) for item in options]
-            super().__init__()
-
-    class ProhibitPackageBodyItem(ControlBodyItem):
-        __slots__ = ['package']
-
-        def __init__(self, package):
-            self.package = str(package)
-            super().__init__()
-
     class DocSourceBodyItem(SourceBodyItem):
         __slots__ = []
         include_command = r'\DocInput'
         file_suffix = '.dtx'
-
-    @classmethod
-    def _classify_matter_item(cls, item):
-        if not isinstance(item, dict):
-            raise RuntimeError(item)
-        elif item.keys() == {'verbatim'}:
-            return cls.VerbatimBodyItem(value=item['verbatim'])
-        elif item.keys() == {'preamble verbatim', 'provide'}:
-            return cls.RequirePreambleBodyItem(
-                value=item['preamble verbatim'], key=item['provide'] )
-        elif item.keys() == {'preamble package'}:
-            return cls.RequirePackageBodyItem(
-                package=item['preamble package'] )
-        elif item.keys() == {'preamble package', 'options'}:
-            return cls.RequirePackageBodyItem(
-                package=item['preamble package'], options=item['options'] )
-        elif item.keys() == {'preamble no package'}:
-            return cls.ProhibitPackageBodyItem(
-                package=item['preamble no package'] )
-        elif item.keys() == {'error'}:
-            raise DriverError(item['error'])
-        else:
-            raise DriverError(item)
 
     class MetapreambleItem:
         __slots__ = []
@@ -598,17 +553,36 @@ class RegularDriver(MetaRecords): # {{{1
             self.key = key
             super().__init__(value=value)
 
-    class ProvidePackagePreambleItem(MetapreambleItem):
-        __slots__ = ['package', 'options']
+    class RequirePreambleBodyItem(ProvidePreamblePreambleItem, ControlBodyItem):
+        __slots__ = []
 
-        def __init__(self, package, options=()):
+    class ProvidePackagePreambleItem(MetapreambleItem):
+        __slots__ = ['package', 'options_required', 'options_suggested']
+
+        def __init__(self, package, options=None):
             self.package = str(package)
-            if isinstance(options, str):
-                raise DriverError(
-                    "Package options must not be a single string, "
-                    "but a sequence." )
-            self.options = [str(item) for item in options]
+            if options is None:
+                self.options_required = []
+                self.options_suggested = []
+            elif isinstance(options, dict):
+                options_required = options.get('required', ())
+                self.options_required = [str(item) for item in options_required]
+                options_suggested = options.get('suggested', ())
+                self.options_suggested = [str(item) for item in options_suggested]
+            elif isinstance(options, (list, tuple)):
+                self.options_required = [str(item) for item in options]
+                self.options_suggested = list(self.options_required)
+            elif isinstance(options, str):
+                self.options_required = [options]
+                self.options_suggested = [options]
+            else:
+                raise DriverError(options)
+            if not set(self.options_required).issuperset(self.options_suggested):
+                raise DriverError(options)
             super().__init__()
+
+    class RequirePackageBodyItem(ProvidePackagePreambleItem, ControlBodyItem):
+        __slots__ = []
 
     class ProhibitPackagePreambleItem(MetapreambleItem):
         __slots__ = ['package']
@@ -616,6 +590,32 @@ class RegularDriver(MetaRecords): # {{{1
         def __init__(self, package):
             self.package = str(package)
             super().__init__()
+
+    class ProhibitPackageBodyItem(ProhibitPackagePreambleItem, ControlBodyItem):
+        __slots__ = []
+
+    @classmethod
+    def _classify_matter_item(cls, item):
+        if not isinstance(item, dict):
+            raise RuntimeError(item)
+        elif item.keys() == {'verbatim'}:
+            return cls.VerbatimBodyItem(value=item['verbatim'])
+        elif item.keys() == {'preamble verbatim', 'provide'}:
+            return cls.RequirePreambleBodyItem(
+                value=item['preamble verbatim'], key=item['provide'] )
+        elif item.keys() == {'preamble package'}:
+            return cls.RequirePackageBodyItem(
+                package=item['preamble package'] )
+        elif item.keys() == {'preamble package', 'options'}:
+            return cls.RequirePackageBodyItem(
+                package=item['preamble package'], options=item['options'] )
+        elif item.keys() == {'preamble no package'}:
+            return cls.ProhibitPackageBodyItem(
+                package=item['preamble no package'] )
+        elif item.keys() == {'error'}:
+            raise DriverError(item['error'])
+        else:
+            raise DriverError(item)
 
     @classmethod
     def _classify_style_item(cls, item):
@@ -1128,7 +1128,10 @@ class RegularDriver(MetaRecords): # {{{1
                     key=item.key, value=item.value ))
             elif isinstance(item, self.RequirePackageBodyItem):
                 metapreamble.append(self.ProvidePackagePreambleItem(
-                    package=item.package, options=item.options ))
+                    package=item.package, options={
+                        'required' : item.options_required,
+                        'suggested' : item.options_suggested }
+                ))
             elif isinstance(item, self.ProhibitPackageBodyItem):
                 metapreamble.append(self.ProhibitPackagePreambleItem(
                     package=item.package ))
@@ -1195,15 +1198,6 @@ class RegularDriver(MetaRecords): # {{{1
                         .format(package_path, package_type) ) from error
                 self._check_and_set(package_paths, package_name, package_path)
                 yield item
-            elif isinstance(item, self.ProvidePackagePreambleItem):
-                key = 'usepackage:{}'.format(item.package)
-                value = self.usepackage_template.substitute(
-                    package=item.package,
-                    options=self._constitute_options(item.options) )
-                yield self.ProvidePreamblePreambleItem(key=key, value=value)
-            elif isinstance(item, self.ProhibitPackagePreambleItem):
-                key = 'usepackage:{}'.format(item.package)
-                yield self.ProvidePreamblePreambleItem(key=key, value=None)
             elif isinstance(item, self.CompilerItem):
                 compilers.append(item.compiler)
             else:
@@ -1348,8 +1342,9 @@ class RegularDriver(MetaRecords): # {{{1
     @classmethod
     def _constitute_preamble(cls, outrecord, metapreamble):
         assert isinstance(outrecord, dict)
-        preamble_lines = [None]
+        preamble_lines = [None] # first line is always documentclass
         provided_preamble = {}
+        provided_packages = {}
         for item in metapreamble:
             if isinstance(item, cls.DocumentClassItem):
                 if preamble_lines[0] is not None:
@@ -1362,6 +1357,35 @@ class RegularDriver(MetaRecords): # {{{1
             if isinstance(item, cls.ProvidePreamblePreambleItem):
                 if not cls._check_and_set( provided_preamble,
                         item.key, item.value ):
+                    continue
+            elif isinstance(item, cls.ProvidePackagePreambleItem):
+                if item.package not in provided_packages:
+                    provided_packages[item.package] = item.options_suggested
+                else:
+                    provided_options = provided_packages[item.package]
+                    if provided_options is None:
+                        raise DriverError(
+                            "Package {} was prohibited, cannot provide it"
+                            .format(item.package) )
+                    elif not set(provided_options).issuperset(item.options_required):
+                        raise DriverError(
+                            "Package {} was already provided with options {}, "
+                            "incompatible with options {}"
+                            .format(
+                                item.package,
+                                cls._constitute_options(provided_options),
+                                cls._constitute_options(item.options_required) )
+                        )
+                    continue
+            elif isinstance(item, cls.ProhibitPackagePreambleItem):
+                if item.package not in provided_packages:
+                    provided_packages[item.package] = None
+                else:
+                    provided_options = provided_packages[item.package]
+                    if provided_options is not None:
+                        raise DriverError(
+                            "Package {} was provided, cannot prohibit it"
+                            .format(item.package) )
                     continue
             preamble_line = cls._constitute_preamble_item(item)
             if preamble_line is None:
@@ -1384,6 +1408,12 @@ class RegularDriver(MetaRecords): # {{{1
             return cls.uselocalpackage_template.substitute(
                 package=item.package_name,
                 package_path=item.package_path )
+        elif isinstance(item, cls.ProvidePackagePreambleItem):
+            return cls.usepackage_template.substitute(
+                package=item.package,
+                options=cls._constitute_options(item.options_suggested) )
+        elif isinstance(item, cls.ProhibitPackagePreambleItem):
+            return None
         else:
             raise RuntimeError(type(item))
 
