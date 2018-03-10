@@ -27,7 +27,6 @@ def check_and_set(mapping, key, value):
             "Key {} has clashing values: {} and {}"
             .format(key, value, other) )
 
-
 def unique(*iterables):
     """
     Return list of unique values from iterables.
