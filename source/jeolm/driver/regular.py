@@ -577,7 +577,7 @@ class RegularDriver(MetaRecords): # {{{1
                 self.options_suggested = [options]
             else:
                 raise DriverError(options)
-            if not set(self.options_required).issuperset(self.options_suggested):
+            if not set(self.options_required).issubset(self.options_suggested):
                 raise DriverError(options)
             super().__init__()
 
@@ -1367,7 +1367,7 @@ class RegularDriver(MetaRecords): # {{{1
                         raise DriverError(
                             "Package {} was prohibited, cannot provide it"
                             .format(item.package) )
-                    elif not set(provided_options).issuperset(item.options_required):
+                    elif not set(item.options_required).issubset(provided_options):
                         raise DriverError(
                             "Package {} was already provided with options {}, "
                             "incompatible with options {}"
