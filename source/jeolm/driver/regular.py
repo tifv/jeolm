@@ -1573,7 +1573,7 @@ class RegularDriver(MetaRecords): # {{{1
         try:
             return check_and_set(mapping, key, value)
         except ClashingValueError as error:
-            raise DriverError("unable to set different value") from error
+            raise DriverError(*error.args) from error
 
 # }}}1
 # vim: set foldmethod=marker :
