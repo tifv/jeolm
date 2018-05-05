@@ -88,7 +88,7 @@ class TrainingDriver(
             subtarget = target.path_derive(name)
             subtarget = subtarget.flags_union( {'no-header', 'contained'},
                 origin="training matter {target}, key {key}"
-                    .format(target=target, key=matter_combine_key) )
+                    .format(target=target, key=matter_key) )
             if 'add-toc' in target.flags:
                 subtarget = subtarget.flags_difference( {'add-toc'},
                     origin="training matter {target}, key {key}"
