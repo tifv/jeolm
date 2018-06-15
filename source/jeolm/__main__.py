@@ -87,14 +87,21 @@ def _add_build_arg_subparser(subparsers):
     parser.add_argument( '-D', '--no-delegate',
         help="ignore the possibility of delegating targets",
         action='store_false', dest='delegate' )
+    archive_group = parser.add_mutually_exclusive_group()
+    archive_group.add_argument( '-z', '--sources-zip',
+        help="pack source files in a ZIP archive for each target built",
+        action='store_const', dest='archive', const='zip' )
+    archive_group.add_argument( '-s', '--sources-tar-gz',
+        help="pack source files in a .tar.gz archive for each target built",
+        action='store_const', dest='archive', const='tgz' )
     parser.add_argument( '-j', '--jobs',
         help="number of parallel jobs",
         type=_jobs_arg, default=1 )
-    parser.set_defaults(command_func=main_build, force=None)
+    parser.set_defaults(command_func=main_build, force=None, archive=None)
 
 def main_build(args, *, project):
     from jeolm.node import PathNode, NodeErrorReported
-    from jeolm.node_factory import TargetNodeFactory
+    from jeolm.node_factory.target import TargetNodeFactory
 
     if not args.targets:
         logger.warning("No-op: no targets for building")
@@ -103,7 +110,8 @@ def main_build(args, *, project):
     driver = jeolm.commands.simple_load_driver(project)
 
     target_node_factory = TargetNodeFactory(project=project, driver=driver)
-    target_node = target_node_factory(args.targets, delegate=args.delegate)
+    target_node = target_node_factory( args.targets,
+        delegate=args.delegate, archive=args.archive )
     if args.force is None:
         pass
     elif args.force == 'latex':
@@ -265,7 +273,7 @@ def _add_makefile_arg_subparser(subparsers):
 def main_makefile(args, *, project):
     from jeolm.commands.makefile import MakefileGenerator
     from jeolm.node import PathNode, NodeErrorReported
-    from jeolm.node_factory import TargetNodeFactory
+    from jeolm.node_factory.target import TargetNodeFactory
 
     if not args.targets:
         logger.warning("No-op: no targets for makefile generation")
@@ -300,62 +308,6 @@ def _print_unbuildable_list(unbuildable_nodes, *, project, **kwargs):
 
 
 ####################
-# excerpt
-
-def _add_excerpt_arg_subparser(subparsers):
-    parser = subparsers.add_parser( 'excerpt',
-        help="create a source archive for a given target" )
-    parser.add_argument( 'target',
-        metavar='TARGET', type=jeolm.target.Target.from_string,
-        help = "target to create an archive for; "
-            "no delegation will be performed on it" )
-    parser.add_argument( '-j', '--jobs',
-        help="number of parallel jobs",
-        type=_jobs_arg, default=1 )
-    parser.add_argument( '-o', '--output',
-        help="output file; default is stdout")
-    parser.add_argument( '--include-pdf',
-        action='store_true',
-        help="include compiled PDF document in the archive" )
-    format_group = parser.add_mutually_exclusive_group()
-    format_group.add_argument( '--zip',
-        dest='format', const='zip', action='store_const',
-        help="output archive in zip format" )
-    format_group.add_argument( '--tar-gz',
-        dest='format', const='tar.gz', action='store_const',
-        help="output archive in tar.gz format (default)" )
-    parser.set_defaults(command_func=main_excerpt, format='tar.gz')
-
-def main_excerpt(args, *, project):
-    from jeolm.node import PathNode, NodeErrorReported
-    from jeolm.node_factory import TargetNodeFactory, DocumentNode
-    from jeolm.commands.excerpt import excerpt_document
-
-    PathNode.root = project.root
-    node_updater = _build_get_node_updater(args.jobs)
-
-    driver = jeolm.commands.simple_load_driver(project)
-    target_node_factory = TargetNodeFactory(project=project, driver=driver)
-    document_node_factory = target_node_factory.document_node_factory
-    figure_node_factory = document_node_factory.figure_node_factory
-    document_node = document_node_factory(args.target)
-    if args.output is not None:
-        output_file = open(args.output, 'wb')
-    else:
-        from sys import stdout
-        output_file = open(stdout.buffer.fileno(), 'wb', closefd=False)
-    try:
-        excerpt_document( document_node, stream=output_file,
-            include_pdf=args.include_pdf, archive_format=args.format,
-            figure_node_factory=figure_node_factory,
-            node_updater=node_updater )
-    except NodeErrorReported:
-        pass
-    finally:
-        output_file.close()
-
-
-####################
 # clean
 
 def _add_clean_arg_subparser(subparsers):
@@ -382,7 +334,6 @@ def _get_arg_parser():
     _add_list_arg_subparser(subparsers)
     _add_spell_arg_subparser(subparsers)
     _add_makefile_arg_subparser(subparsers)
-    _add_excerpt_arg_subparser(subparsers)
     _add_clean_arg_subparser(subparsers)
     return parser
 

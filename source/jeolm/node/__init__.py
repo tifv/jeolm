@@ -590,10 +590,11 @@ class FollowingPathNode(PathNode): # {{{1
 class FilelikeNode(PathNode): # {{{1
     """Represents path which can be opened as file."""
 
-    def open(self, mode='r', *, encoding='utf-8', **kwargs):
-        """Open a file-like node.path (try, at least)."""
-        return open( str(self.path),
-            mode=mode, encoding=encoding, **kwargs )
+    def open(self, mode='r', **kwargs):
+        """Open a file-like node.path."""
+        if 'encoding' not in kwargs and 'b' not in mode:
+            kwargs['encoding'] = 'utf-8'
+        return open(self.path, mode=mode, **kwargs)
 
 
 class SourceFileNode(FollowingPathNode, FilelikeNode): # {{{1

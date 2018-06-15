@@ -115,6 +115,7 @@ from pathlib import PurePosixPath
 from unidecode import unidecode
 
 from jeolm.record_path import RecordPath
+from jeolm.flags import FlagContainer
 from jeolm.target import Target
 from jeolm.records import MetaRecords
 
@@ -762,7 +763,7 @@ class RegularDriver(MetaRecords): # {{{1
                 self.attribute_key_regex.fullmatch(outname_key).group('flags')
             )
             outname_flag_set = target.flags.as_frozenset - omitted_flag_set
-        outname_flags = '{:optional}'.format(target.flags.__class__(
+        outname_flags = '{:optional}'.format(FlagContainer(
             outname_flag_set ))
         return outname + outname_flags
 

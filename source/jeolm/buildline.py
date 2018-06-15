@@ -11,7 +11,7 @@ import jeolm.commands.review
 import jeolm.commands.clean
 import jeolm.project
 import jeolm.node
-import jeolm.node_factory
+import jeolm.node_factory.target
 import jeolm.metadata
 
 from jeolm.commands.diffprint import log_metadata_diff
@@ -138,7 +138,7 @@ class BuildLine:
         return targets
 
     def build(self, targets):
-        target_node_factory = jeolm.node_factory.TargetNodeFactory(
+        target_node_factory = jeolm.node_factory.target.TargetNodeFactory(
             project=self.project, driver=self.driver, )
         target_node = target_node_factory(targets, delegate=True)
         with suppress(NodeErrorReported):

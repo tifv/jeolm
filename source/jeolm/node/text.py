@@ -31,11 +31,11 @@ class WriteTextCommand(Command):
         await super().call()
 
 def text_hash(text):
-    return base64.b64encode( hashlib.sha256(text.encode()).digest(),
+    return base64.b64encode( hashlib.sha256(text.encode('utf-8')).digest(),
         b'+-' ).decode()[:-1]
 TEXT_HASH_PATTERN = r"[0-9a-zA-Z\+\-]{43}"
 
-class CleanupSymLinkCommand(SymLinkCommand):
+class _CleanupSymLinkCommand(SymLinkCommand):
 
     _var_name_regex = re.compile(
         r'(?P<name>.+)\.(?P<hash>' + TEXT_HASH_PATTERN + ')' )
@@ -56,9 +56,17 @@ class CleanupSymLinkCommand(SymLinkCommand):
                 old_var_path.unlink()
 
 
+class VarTextNode(FileNode):
+
+    def __init__(self, path, text, *,
+        name=None, needs=(), **kwargs
+    ):
+        super().__init__(path, name=name, needs=needs, **kwargs)
+        self.set_command(WriteTextCommand(self, text))
+
 class TextNode(SymLinkedFileNode):
 
-    _Command = CleanupSymLinkCommand
+    _Command = _CleanupSymLinkCommand
 
     def __init__(self, path, text,
         *, build_dir_node,
@@ -68,11 +76,10 @@ class TextNode(SymLinkedFileNode):
             raise RuntimeError(path)
         var_name = '{name}.{hash}'.format(
             name=path.name, hash=text_hash(text) )
-        var_text_node = FileNode(
-            path=path.with_name(var_name),
+        var_text_node = VarTextNode(
+            path=path.with_name(var_name), text=text,
             name='{}:var'.format(name),
             needs=(build_dir_node,) )
-        var_text_node.set_command(WriteTextCommand(var_text_node, text))
         if isinstance(build_dir_node, BuildDirectoryNode):
             build_dir_node.register_node(var_text_node)
         super().__init__(

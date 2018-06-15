@@ -17,7 +17,7 @@ class _NodeMap: # {{{1
         self.ready_nodes = set()
 
     def clear(self):
-        """Must be called before reusing the updater."""
+        """Must be called before reusing the map."""
         self.needs_map.clear()
         self.revneeds_map.clear()
         self.ready_nodes.clear()
