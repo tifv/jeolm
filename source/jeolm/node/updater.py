@@ -16,12 +16,6 @@ class _NodeMap: # {{{1
         self.revneeds_map = dict()
         self.ready_nodes = set()
 
-    def clear(self):
-        """Must be called before reusing the map."""
-        self.needs_map.clear()
-        self.revneeds_map.clear()
-        self.ready_nodes.clear()
-
     def add_node(self, node, *, _rev_need=None):
         assert not node.updated
         try:
