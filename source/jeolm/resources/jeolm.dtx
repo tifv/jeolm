@@ -394,7 +394,7 @@
 \let\jeolmdate\relax
 \newskip\worksheet@afterskip
 \worksheet@afterskip 2.3ex \@plus.2ex
-\newcommand\worksheet{
+\newcommand\@worksheet{
     \if@nobreak\vskip-\worksheet@afterskip\fi
     \@startsection%
         {section}%                          name
@@ -404,6 +404,10 @@
         {\worksheet@afterskip}%             afterskip
         {\normalfont\Large\bfseries}%       style
 }
+\newcommand\@worksheet@star{\@worksheet*}
+\newif\ifworksheetnumerated
+\worksheetnumeratedfalse
+\newcommand\worksheet{\ifworksheetnumerated\expandafter\@worksheet\else\expandafter\@worksheet@star\fi}
 %    \end{macrocode}
 % \end{macro}
 %
