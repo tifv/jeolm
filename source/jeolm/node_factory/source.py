@@ -16,8 +16,10 @@ class SourceNodeFactory:
     def __call__(self, inpath):
         assert isinstance(inpath, PurePosixPath), type(inpath)
         assert not inpath.is_absolute(), inpath
-        with suppress(KeyError):
+        try:
             return self.nodes[inpath]
+        except KeyError:
+            pass
         node = self.nodes[inpath] = self._prebuild_source(inpath)
         return node
 

@@ -20,62 +20,61 @@ logger = logging.getLogger(__name__)
 
 class TestDriver(RegularDriver):
 
-    @ensure_type_items((RegularDriver.MetabodyItem, Target))
+    @ensure_type_items(RegularDriver.BodyItem)
     @processing_target
-    def _generate_source_metabody(self, target, metarecord):
-        no_postword = (
-            not metarecord.get('$test', False) or
-            'no-test-postword' in target.flags )
-        if no_postword:
-            yield from super()._generate_source_metabody(target, metarecord)
+    def _generate_body_auto( self, target, record,
+        *, preamble, header_info,
+        _seen_targets,
+    ):
+        if not record.get('$test', False) or \
+                'contained' not in target.flags or \
+                'no-test-guard' in target.flags:
+            yield from super()._generate_body_auto( target, record,
+                preamble=preamble, header_info=header_info,
+                _seen_targets=_seen_targets )
             return
+        target = target.flags_union({'no-test-guard'})
+        yield from self._generate_body( target, record,
+            preamble=preamble, header_info=header_info,
+            _seen_targets=_seen_targets )
+        yield from self._generate_test_briefing(target, record)
 
-        yield target.flags_union({'no-test-postword'})
-        yield from self._generate_test_postword(target, metarecord)
-
-    @ensure_type_items((RegularDriver.MetabodyItem))
+    @ensure_type_items((RegularDriver.BodyItem))
     @processing_target
-    def _generate_test_postword(self, target, metarecord):
+    def _generate_test_briefing(self, target, metarecord):
         problem_scores = metarecord.get('$test$problem-scores')
         mark_limits = metarecord.get('$test$mark-limits')
-        test_duration = metarecord.get('$test$duration')
-        has_problem_scores = ( problem_scores is not None and
-            'no-problem-scores' not in target.flags )
-        has_mark_limits = ( has_problem_scores and
-            mark_limits is not None and
-            'no-mark-limits' not in target.flags )
-        has_test_duration = ( test_duration is not None and
-            'no-test-duration' not in target.flags )
-        if not has_problem_scores and not has_test_duration:
+        duration = metarecord.get('$test$duration')
+        if problem_scores is None and mark_limits is None and duration is None:
             return # no-op
         yield self.VerbatimBodyItem(
-            self.begin_postword_template.substitute() )
-        postword_items = []
-        if has_problem_scores:
-            postword_items.append(
-                self._constitute_problem_scores(problem_scores) )
-        if has_mark_limits:
-            postword_items.append(
-                self._constitute_mark_limits(mark_limits) )
-        if has_test_duration:
-            postword_items.append(
-                self._constitute_test_duration(test_duration) )
+            self.begin_briefing_template.substitute() )
+        briefing_items = []
+        if problem_scores is not None:
+            briefing_items.append(
+                self._constitute_test_problem_scores(problem_scores) )
+        if mark_limits is not None:
+            briefing_items.append(
+                self._constitute_test_mark_limits(mark_limits) )
+        if duration is not None:
+            briefing_items.append(
+                self._constitute_test_duration(duration) )
         need_newline = False
-        for item in postword_items:
+        for item in briefing_items:
             if need_newline:
                 yield self.VerbatimBodyItem('\\\\')
             yield self.VerbatimBodyItem(item)
             need_newline = True
         yield self.VerbatimBodyItem(
-            self.end_postword_template.substitute() )
+            self.end_briefing_template.substitute() )
 
-    begin_postword_template = Template(
+    begin_briefing_template = Template(
         r'\begin{flushright}\scriptsize' )
-    end_postword_template = Template(
+    end_briefing_template = Template(
         r'\end{flushright}' )
 
     @classmethod
-    def _constitute_problem_scores(cls, problem_scores):
+    def _constitute_test_problem_scores(cls, problem_scores):
         score_items, score_sum = cls._flatten_score_items(problem_scores)
         return r'\({} = {}\)%'.format(''.join(score_items), score_sum)
 
@@ -96,7 +95,8 @@ class TestDriver(RegularDriver):
                 if not first:
                     score_items.append('+')
                 first = False
-                subitems, subsum = cls._flatten_score_items(item, recursed=True)
+                subitems, subsum = \
+                    cls._flatten_score_items(item, recursed=True)
                 score_items.extend(subitems)
                 score_sum += subsum
             if recursed:
@@ -108,19 +108,19 @@ class TestDriver(RegularDriver):
                 "found {}".format(type(problem_scores)) )
 
     @classmethod
-    def _constitute_mark_limits(cls, mark_limits):
-        return r'\({}\)%'.format(r',\ '.join(
-            r'{score} \mapsto \mathbf{{{mark}}}'.format(mark=mark, score=score)
+    def _constitute_test_mark_limits(cls, mark_limits):
+        return r'\({' + r',\ '.join(
+            fr'{score} \mapsto \mathbf{{{mark}}}'
             for mark, score in sorted(mark_limits.items())
-        ))
+        ) + '}\)%'
 
     @classmethod
-    def _constitute_test_duration(cls, test_duration):
-        if isinstance(test_duration, (int, float)):
-            return '{}m'.format(test_duration)
-        elif isinstance(test_duration, list):
-            duration, unit = test_duration
+    def _constitute_test_duration(cls, duration):
+        if isinstance(duration, (int, float)):
+            return '{}m'.format(duration)
+        elif isinstance(duration, list):
+            duration, unit = duration
             return '{} {}'.format(duration, unit)
         else:
-            return str(test_duration)
+            return str(duration)
 

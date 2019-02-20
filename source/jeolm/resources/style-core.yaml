@@ -1,48 +1,68 @@
 # vim: set foldmethod=marker :
 
-$target$able: off
+$delegate$able: off
+$content$able: off
 
 $style:
 
-  - delegate: compiler
+  - compiler
 
-  - document class: article
-    options: [a4paper,10pt]
+  - verbatim: \documentclass[a4paper,10pt]{article}
     condition: {not: no-document-class}
+    provide: documentclass
   - package: inputenc
     options: [utf8]
     condition: {or: [latex, pdflatex]}
   - package: multicol
   - package: graphicx
+  - package: datetime2
+    options:
+      suggested: [useregional]
 
-  - delegate: jeolm
+  - jeolm
 
-  - delegate: text-config
+  - text-config
 
-  - delegate: page-config
+  - page-config
 
-  - delegate: hyperref
-
-# Compiler selection {{{1
+  - hyperref
 
 $style[-compiler-selection-guard]:
-  - delegate: compiler-selection[compiler-selection-guard]
+  - compiler-selection[compiler-selection-guard]
+
+$style[asy]:
+  - .[-asy,asy-guard]
+
+$style[asy-guard,compiler-selection-guard]:
+
+  - compiler
+
+  - package: inputenc
+    options: [utf8]
+    condition: {or: [latex, pdflatex]}
+
+  - text-config
+
+$style[-compiler-selection-guard,asy-guard]:
+  - compiler-selection[compiler-selection-guard]
+
+# Compiler selection {{{1
 
 compiler-selection: # {{{
 
   $style:
-  - delegate: .[default-compiler]
+  - .[default-compiler]
   $style[default-compiler]:
-  - delegate: .[pdflatex,-default-compiler]
+  - .[pdflatex,-default-compiler]
 
   $style[latex]:
-  - delegate: ..
+  - ..
   $style[pdflatex]:
-  - delegate: ..
+  - ..
   $style[xelatex]:
-  - delegate: ..
+  - ..
   $style[lualatex]:
-  - delegate: ..
+  - ..
 
 # }}}
 
@@ -63,100 +83,113 @@ compiler: # {{{
 text-config:
 
   $style:
-  - delegate: font-config
+  - style: [font-config]
     condition: {not: no-font-config}
-  - delegate: math-font-config
+  - style: [math-font-config]
     condition: {not: no-font-config}
-  - delegate: language-config
+  - style: [language-config]
     condition: {not: no-language-config}
-  - delegate: shrink-formulas
+  - style: [shrink-formulas]
     condition: shrink-formulas
   - package: parskip
     condition: {not: no-parskip}
 
   $style[-font-selection-guard]:
-    - delegate: font-selection[font-selection-guard]
+    - font-selection[font-selection-guard]
 
   $style[-language-selection-guard,font-selection-guard]:
-    - delegate: language-selection[language-selection-guard]
+    - language-selection[language-selection-guard]
+
+  $style[asy-guard]:
+  - style: [font-config]
+    condition: {not: no-font-config}
+  - style: [math-font-config]
+    condition: {not: no-font-config}
+  - style: [language-config]
+    condition: {not: no-language-config}
+
+  $style[-font-selection-guard,asy-guard]:
+    - font-selection[font-selection-guard]
+
+  $style[-language-selection-guard,font-selection-guard,asy-guard]:
+    - language-selection[language-selection-guard]
 
   font-selection: # {{{
 
     $style[latex]:
-    - delegate: ..
+    - ..
     $style[pdflatex]:
-    - delegate: ..
+    - ..
 
     $style:
-    - delegate: .[default-font]
+    - .[default-font]
     $style[default-font]:
-    - delegate: .[stix-two,stix-two-math,-default-font]
+    - .[stix-two,stix-two-math,-default-font]
 
     $style[computer-modern]:
-    - delegate: .[computer-modern-math]
+    - .[computer-modern-math]
     $style[computer-modern,computer-modern-math]:
-    - delegate: ..
+    - ..
     $style[computer-modern,latin-modern]:
-    - delegate: ..
+    - ..
 
     $style[liberation]:
-    - delegate: .[computer-modern-math]
+    - .[computer-modern-math]
     $style[liberation,computer-modern-math]:
-    - delegate: ..
+    - ..
     $style[liberation,latin-modern]:
-    - delegate: ..
+    - ..
     $style[liberation,xits-math]:
-    - delegate: ..
+    - ..
 
     $style[times]:
-    - delegate: ..
+    - ..
     $style[times,xits-math]:
-    - delegate: ..
+    - ..
 
     $style[xits]:
-    - delegate: .[xits-math]
+    - .[xits-math]
     $style[xits,xits-math]:
-    - delegate: ..
+    - ..
 
     $style[stix-two]:
-    - delegate: .[stix-two-math]
+    - .[stix-two-math]
     $style[stix-two,stix-two-math]:
-    - delegate: ..
+    - ..
 
     $style[palatino]:
-    - delegate: .[asana-math]
+    - .[asana-math]
     $style[palatino,asana-math]:
-    - delegate: ..
+    - ..
 
   # }}}
 
   language-selection: # {{{
 
     $style:
-    - delegate: .[default-language]
+    - .[default-language]
     $style[default-language]:
-    - delegate: .[russian,-default-language]
+    - .[russian,-default-language]
 
     $style[russian]:
-    - delegate: ..
-
+    - ..
     $style[english]:
-    - delegate: ..
+    - ..
 
   # }}}
 
   font-config: # {{{
 
     $style[latex]:
-    - delegate: fontenc
+    - style: [fontenc]
     - package: anyfontsize
     $style[pdflatex]:
-    - delegate: fontenc
+    - style: [fontenc]
     - package: anyfontsize
     $style[xelatex]:
-    - delegate: fontspec
+    - style: [fontspec]
     $style[lualatex]:
-    - delegate: fontspec
+    - style: [fontspec]
 
     fontenc: # {{{
       $style:
@@ -171,7 +204,7 @@ text-config:
         options: [no-math]
       - verbatim:
           \defaultfontfeatures{Ligatures=TeX,Scale=MatchLowercase}
-      - delegate: setfont
+      - setfont
       - verbatim: |-
           \let\cyrillicfont\normalfont
           \let\cyrillicfontsf\sffamily
@@ -183,36 +216,36 @@ text-config:
         - error: core misconfiguration
 
         $style[computer-modern]:
-        - delegate: computer-modern-unicode
+        - computer-modern-unicode
 
         $style[liberation]:
-        - delegate: liberation
+        - liberation
 
         $style[xits]:
-        - delegate: xits
-        - delegate: croscorefonts/arimo
-        - delegate: liberation/mono
+        - xits
+        - croscorefonts/arimo
+        - liberation/mono
 
         $style[stix-two]:
-        - delegate: stix-two
-        - delegate: croscorefonts/arimo
-        - delegate: liberation/mono
+        - stix-two
+        - croscorefonts/arimo
+        - liberation/mono
 
         $style[times]:
-        - delegate: corefonts/times
-        - delegate: corefonts/arial
-        - delegate: liberation/mono
+        - corefonts/times
+        - corefonts/arial
+        - liberation/mono
 
         $style[palatino]:
-        - delegate: palladio
-        - delegate: croscorefonts/arimo
-        - delegate: croscorefonts/cousine
+        - palladio
+        - croscorefonts/arimo
+        - croscorefonts/cousine
 
         computer-modern-unicode: # {{{
           $style:
-          - delegate: serif
-          - delegate: sans-serif
-          - delegate: typewriter
+          - serif
+          - sans-serif
+          - typewriter
           serif:
             $style:
             - verbatim: \setmainfont{CMU Serif}
@@ -242,9 +275,9 @@ text-config:
 
         dejavu: # {{{
           $style:
-          - delegate: serif
-          - delegate: sans
-          - delegate: sans-mono
+          - serif
+          - sans
+          - sans-mono
           serif:
             $style:
             - verbatim: \setmainfont{DejaVu Serif}
@@ -269,9 +302,9 @@ text-config:
 
         liberation: # {{{
           $style:
-          - delegate: serif
-          - delegate: sans
-          - delegate: mono
+          - serif
+          - sans
+          - mono
           serif:
             $style:
             - verbatim: \setmainfont{Liberation Serif}
@@ -320,9 +353,9 @@ text-config:
 
         corefonts: # {{{
           $style:
-          - delegate: times
-          - delegate: arial
-          - delegate: courier
+          - times
+          - arial
+          - courier
           times:
             $style:
             - verbatim: \setmainfont{Times New Roman}
@@ -346,9 +379,9 @@ text-config:
 
         croscorefonts: # {{{
           $style:
-          - delegate: tinos
-          - delegate: arimo
-          - delegate: cousine
+          - tinos
+          - arimo
+          - cousine
           tinos:
             $style:
             - verbatim: \setmainfont{Tinos}
@@ -377,9 +410,11 @@ text-config:
       - package: amssymb
       - package: mathabx
       - package: upgreek
-      - delegate: swap-vargreek/default
-      - delegate: swap-vargreek/upgreek
-      - delegate: ineq-slanted
+      - style:
+        - swap-vargreek/default
+        - swap-vargreek/upgreek
+        condition: {not: asy-guard}
+      - style: [ineq-slanted]
         condition: russian
     $style[pdflatex]:
       *default-math-font-config
@@ -392,10 +427,12 @@ text-config:
       &unicode-math-font-config
       - package: amsmath
       - package: amssymb
-      - delegate: unicode-math
-      - delegate: swap-vargreek/default
-      - delegate: swap-vargreek/mupgreek
-      - delegate: ineq-slanted
+      - unicode-math
+      - style:
+        - swap-vargreek/default
+        - swap-vargreek/mupgreek
+        condition: {not: asy-guard}
+      - style: [ineq-slanted]
         condition: russian
     $style[xelatex]:
       *unicode-math-font-config
@@ -426,8 +463,8 @@ text-config:
         options:
         - math-style=ISO
         - partial=upright
-      - delegate: setfont
-      - verbatim: \AtBeginDocument{\let\setminus\smallsetminus}
+      - setfont
+#      - verbatim: \AtBeginDocument{\let\setminus\smallsetminus}
 
       setfont: # {{{
 
@@ -435,19 +472,19 @@ text-config:
         - error: core misconfiguration
 
         $style[latin-modern]:
-        - delegate: latin-modern
+        - latin-modern
 
         $style[times,-xits-math]:
-        - delegate: tex-gyre/termes
+        - tex-gyre/termes
 
         $style[xits-math]:
-        - delegate: xits
+        - xits
 
         $style[stix-two-math]:
-        - delegate: stix-two
+        - stix-two
 
         $style[asana-math]:
-        - delegate: asana-math
+        - asana-math
 
         latin-modern: # {{{
           $style:
@@ -464,9 +501,9 @@ text-config:
 
         stix-two: # {{{
           $style:
-          - verbatim:
+          - verbatim: |-
               \setmathfont{STIX Two Math}
-              \setmathfont[range={\frac,\sqrt}]{Tex Gyre Pagella Math}
+              \setmathfont[range={\frac,\bigtriangleup}]{Tex Gyre Pagella Math}
             provide: setmathfont
         # }}}
 
@@ -496,13 +533,17 @@ text-config:
   language-config: # {{{
 
     $style[latex]:
-    - delegate: babel
+    - babel
+    - datetime
     $style[pdflatex]:
-    - delegate: babel
+    - babel
+    - datetime
     $style[xelatex]:
-    - delegate: polyglossia
+    - polyglossia
+    - datetime
     $style[lualatex]:
-    - delegate: polyglossia
+    - polyglossia
+    - datetime
 
     babel: # {{{
 
@@ -523,7 +564,7 @@ text-config:
 
       $style:
       - package: polyglossia
-      - delegate: setlanguage
+      - setlanguage
 
       setlanguage: # {{{
 
@@ -537,6 +578,25 @@ text-config:
         $style[english]:
         - verbatim: \setdefaultlanguage{english}
           provide: setdefaultlanguage
+
+      # }}}
+
+    # }}}
+
+    datetime: # {{{
+
+      $style:
+      - error: core misconfiguration
+
+      $style[asy-guard]: []
+
+      $style[russian,-asy-guard]:
+      - verbatim: \DTMusemodule{russian}{russian}
+        provide: DTMusemodule:russian
+
+      $style[english,-asy-guard]:
+      - verbatim: \DTMusemodule{english}{en-GB}
+        provide: DTMusemodule:english
 
       # }}}
 
@@ -560,65 +620,65 @@ page-config:
   - verbatim: '\pagestyle{empty}'
     provide: pagestyle
     condition: {not: no-pagestyle}
-  - delegate: geometry
+  - style: [geometry]
     condition: {not: no-geometry}
-  - delegate: pgfpages
+  - style: [pgfpages]
     condition: {not: no-pgfpages}
 
   $style[-paper-selection-guard]:
-    - delegate: paper-selection[paper-selection-guard]
+    - paper-selection[paper-selection-guard]
 
   $style[-orientation-selection-guard,paper-selection-guard]:
-    - delegate: orientation-selection[orientation-selection-guard]
+    - orientation-selection[orientation-selection-guard]
 
   $style[-layout-selection-guard,orientation-selection-guard]:
-    - delegate: layout-selection[layout-selection-guard]
+    - layout-selection[layout-selection-guard]
 
   paper-selection: # {{{
 
     $style:
-    - delegate: .[default-paper]
+    - .[default-paper]
     $style[default-paper]:
-    - delegate: .[a5paper,-default-paper]
+    - .[a5paper,-default-paper]
     $style[default-paper,print]:
-    - delegate: .[a5paper,-default-paper]
+    - .[a5paper,-default-paper]
     $style[default-paper,print,tiled4]:
-    - delegate: .[a6paper,-default-paper]
+    - .[a6paper,-default-paper]
 
     $style[no-geometry]:
-    - delegate: ..
+    - ..
 
     $style[a3paper]:
-    - delegate: ..
+    - ..
     $style[a4paper]:
-    - delegate: ..
+    - ..
     $style[a5paper]:
-    - delegate: ..
+    - ..
     $style[a6paper]:
-    - delegate: ..
+    - ..
     $style[screen]:
-    - delegate: ..
+    - ..
 
   # }}}
 
   orientation-selection: # {{{
 
     $style:
-    - delegate: .[default-orientation]
+    - .[default-orientation]
     $style[default-orientation]:
-    - delegate: .[portrait,-default-orientation]
+    - .[portrait,-default-orientation]
     $style[default-orientation,a6paper]:
-    - delegate: .[landscape,-default-orientation]
+    - .[landscape,-default-orientation]
     $style[default-orientation,screen]:
-    - delegate: .[landscape,-default-orientation]
+    - .[landscape,-default-orientation]
 
     $style[no-geometry]:
-    - delegate: ..
+    - ..
 
     $style[portrait]:
-    - delegate: ..
+    - ..
     $style[landscape]:
-    - delegate: ..
+    - ..
 
     $style[screen,portrait]:
     - error: screen is incompatible with portrait
@@ -628,28 +688,28 @@ page-config:
   layout-selection: # {{{
 
     $style[-print,-no-pgfpages]:
-    - delegate: .[no-pgfpages]
+    - .[no-pgfpages]
 
     $style:
-    - delegate: .[default-layout]
+    - .[default-layout]
     $style[-tiled4,default-layout]:
-    - delegate: .[no-pgfpages,-default-layout]
+    - .[no-pgfpages,-default-layout]
     $style[a5paper,-tiled4,default-layout]:
-    - delegate: .[2-on-1,-default-layout]
+    - .[2-on-1,-default-layout]
     $style[a6paper,-tiled4,default-layout]:
-    - delegate: .[4-on-1,-default-layout]
+    - .[4-on-1,-default-layout]
     $style[tiled4,default-layout]:
-    - delegate: .[4-on-1,-default-layout]
+    - .[4-on-1,-default-layout]
 
     $style[no-pgfpages]:
-    - delegate: ..
+    - ..
 
     $style[resize-to]:
-    - delegate: ..
+    - ..
     $style[2-on-1]:
-    - delegate: ..
+    - ..
     $style[4-on-1]:
-    - delegate: ..
+    - ..
 
   # }}}
 
@@ -660,8 +720,8 @@ page-config:
 
     $style:
     - package: geometry
-    - delegate: set-paper-size
-    - delegate: set-margin
+    - set-paper-size
+    - style: [set-margin]
       condition: {not: no-geometry-margin}
 
     set-paper-size: # {{{
@@ -734,8 +794,9 @@ page-config:
 
     $style:
     - package: pgfpages
-    - no package: hyperref
-    - delegate: uselayout
+    - package: hyperref
+      prohibited: true
+    - uselayout
 
     uselayout: # {{{
       $style:
@@ -766,7 +827,10 @@ page-config:
 
 hyperref: # {{{
 
-  $style[print]: []
+  $style[print]:
+  - package: url
+  - verbatim: \let\phantomsection\relax
+    provide: def:phantomsection
 
   $style:
   - package: hyperref
@@ -775,7 +839,8 @@ hyperref: # {{{
     options:
       suggested: [bookmarks=false]
     condition: lualatex
-  - no package: pgfpages
+  - package: pgfpages
+    prohibited: true
   - verbatim: \hypersetup{colorlinks}
     provide: hypersetup:colorlinks
     condition: [colour-links]

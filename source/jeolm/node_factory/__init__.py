@@ -19,4 +19,3 @@ def _cache_node(key_function):
 
 # pylint: enable=protected-access
 
-

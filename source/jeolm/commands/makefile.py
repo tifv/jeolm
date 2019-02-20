@@ -7,8 +7,11 @@ from jeolm.node import ( Node, PathNode, BuildablePathNode,
 from jeolm.node.directory import DirectoryNode, MakeDirCommand
 from jeolm.node.symlink import SymLinkNode, SymLinkCommand, ProxyNode
 from jeolm.node.text import WriteTextCommand
+from jeolm.node.cyclic import AutowrittenNeed
+from jeolm.node.latex import LaTeXCommand
 
-from jeolm.node_factory import TargetNode
+from jeolm.node_factory.target import TargetNode
+from jeolm.node_factory.document import AsymptoteFigureNode
 
 import logging
 logger = logging.getLogger(__name__)
@@ -96,12 +99,20 @@ class RuleRepresenter:
         for need in node.needs:
             if not isinstance(need, (PathNode, TargetNode)):
                 continue
+            if isinstance(need, AutowrittenNeed):
+                continue
             while True:
                 if isinstance(need, SymLinkNode):
                     order_only_needs.append(need)
                     need = need.source
                 elif isinstance(need, ProxyNode):
                     need = need.source
+                elif isinstance(need, AsymptoteFigureNode):
+                    if need.link_node is None:
+                        need.refresh()
+                    if need.link_node is None:
+                        raise RuntimeError
+                    need = need.link_node
                 else:
                     break
             if cls._is_order_only_need(node, need):
@@ -122,12 +133,14 @@ class RuleRepresenter:
 class TargetRuleRepresenter(RuleRepresenter):
 
     _template = (
+        '# {node.name}' '\n'
         '{dependencies}' '\n'
         '.PHONY: {target}' )
 
     @classmethod
     def represent(cls, node, *, viewpoint):
         return cls._template.format(
+            node=node,
             target=cls._represent_node_TargetNode(node),
             dependencies=cls._represent_dependencies(
                 node, viewpoint=viewpoint )
@@ -141,6 +154,7 @@ class TargetRuleRepresenter(RuleRepresenter):
 class LinkRuleRepresenter(RuleRepresenter):
 
     _template = (
+        '# {node.name}' '\n'
         '{dependencies}' '\n'
         '\t' 'ln --symbolic --force {link_target} "$@"' )
 
@@ -150,9 +164,10 @@ class LinkRuleRepresenter(RuleRepresenter):
         if not isinstance(command, SymLinkCommand):
             raise RuntimeError(type(command))
         return cls._template.format(
+            node=node,
             dependencies=cls._represent_dependencies(
                 node, viewpoint=viewpoint ),
-            link_target=quote(node.link_target) )
+            link_target=quote(command.target) )
 
     @classmethod
     def _is_order_only_need(cls, node, need):
@@ -164,10 +179,12 @@ class LinkRuleRepresenter(RuleRepresenter):
 class DirectoryRuleRepresenter(RuleRepresenter):
 
     _template = (
+        '# {node.name}' '\n'
         '{dependencies}' '\n'
         '\t' 'mkdir "$@"' )
 
     _template_parents = (
+        '# {node.name}' '\n'
         '{dependencies}' '\n'
         '\t' 'mkdir --parents "$@"' )
 
@@ -179,6 +196,7 @@ class DirectoryRuleRepresenter(RuleRepresenter):
         template = ( cls._template_parents
             if command.parents else cls._template )
         return template.format(
+            node=node,
             dependencies=cls._represent_dependencies(
                 node, viewpoint=viewpoint ), )
 
@@ -186,6 +204,7 @@ class DirectoryRuleRepresenter(RuleRepresenter):
 class SubprocessRuleRepresenter(RuleRepresenter):
 
     _template = (
+        '# {node.name}' '\n'
         '{dependencies}' '\n'
         '\t' '{command}' )
 
@@ -193,6 +212,7 @@ class SubprocessRuleRepresenter(RuleRepresenter):
     def represent(cls, node, *, viewpoint):
         command = node.command
         return cls._template.format(
+            node=node,
             dependencies=cls._represent_dependencies(
                 node, viewpoint=viewpoint ),
             command=cls._represent_command(
@@ -207,12 +227,56 @@ class SubprocessRuleRepresenter(RuleRepresenter):
             callargs=' '.join(quote(arg) for arg in command.callargs) )
 
 
+class LaTeXRuleRepresenter(RuleRepresenter):
+
+    _template = (
+        '# {node.name}' '\n'
+        '{dependencies}' '\n'
+        '\t' '{command}' )
+
+    @classmethod
+    def represent(cls, node, *, viewpoint):
+        command = node.command
+        return cls._template.format(
+            node=node,
+            dependencies=cls._represent_dependencies(
+                node, viewpoint=viewpoint ),
+            command=cls._represent_command(
+                command, viewpoint=viewpoint ) )
+
+    _command_template = 'cd {cwd} && latexmk {latexmk_args}'
+
+    _compiler_opts = {
+        'latex' : None,
+        'pdflatex' : '-pdf',
+        'lualatex' : '-lualatex',
+        'xelatex' : '-xelatex',
+    }
+
+    @classmethod
+    def _represent_command(cls, command, *, viewpoint):
+        assert isinstance(command, LaTeXCommand)
+        cwd = command.cwd
+        latexmk_args = ( cls._compiler_opts[command.latex_command],
+            f'-output-directory={command.output_dir.relative_to(cwd)}',
+            f'-jobname={command.jobname}',
+            *command.latex_mode_args,
+            command.source_name,
+        )
+        return cls._command_template.format(
+            cwd=quote(str(cwd.relative_to(viewpoint))),
+            latexmk_args=' '.join( quote(arg)
+                for arg in latexmk_args if arg is not None )
+        )
+
+
 class MakefileGenerator:
 
     _TargetRuleRepresenter = TargetRuleRepresenter
     _LinkRuleRepresenter = LinkRuleRepresenter
     _DirectoryRuleRepresenter = DirectoryRuleRepresenter
     _SubprocessRuleRepresenter = SubprocessRuleRepresenter
+    _LaTeXRuleRepresenter = LaTeXRuleRepresenter
 
     @classmethod
     def generate(cls, node, *, viewpoint):
@@ -271,6 +335,12 @@ class MakefileGenerator:
     def _represent_path_rule(cls, node, *, viewpoint):
         if isinstance(node, ProxyNode):
             raise UnrepresentableNode(node)
+        if isinstance(node, AsymptoteFigureNode):
+            if node.link_node is None:
+                node.refresh()
+            raise UnrepresentableNode(node)
+        if isinstance(node, AutowrittenNeed):
+            raise UnrepresentableNode(node)
         if not isinstance(node, BuildablePathNode):
             raise UnbuildableNode(node)
         if isinstance(node, SymLinkNode):
@@ -289,8 +359,11 @@ class MakefileGenerator:
     def _represent_file_rule(cls, node, *, viewpoint):
         command = node.command
         if command is None:
-            raise RuntimeError("FileNode is expected to have a command")
+            raise ValueError("FileNode is expected to have a command")
         if isinstance(command, SubprocessCommand):
+            if isinstance(command, LaTeXCommand):
+                return cls._LaTeXRuleRepresenter.represent(
+                    node, viewpoint=viewpoint )
             return cls._SubprocessRuleRepresenter.represent(
                 node, viewpoint=viewpoint )
         if isinstance(command, WriteTextCommand):

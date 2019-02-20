@@ -4,9 +4,9 @@ Nodes, and dependency trees constructed of them.
 
 # Imports and logging {{{1
 
-from itertools import chain
 from contextlib import contextmanager
 from types import coroutine
+from shlex import quote
 
 import os
 import sys
@@ -16,11 +16,18 @@ import subprocess
 
 import threading
 
-from pathlib import Path
+from pathlib import PurePosixPath, PosixPath
 
 import logging
 logger = logging.getLogger(__name__)
 
+import typing
+from typing import ( NewType, ClassVar, Any, Union, Optional,
+    Iterable, Sequence,
+    Tuple, List, Set, Dict,
+    Coroutine, Generator )
+if typing.TYPE_CHECKING:
+    import posix
 
 class MissingTargetError(FileNotFoundError): # {{{1
     """Missing target file after execution of build commands."""
@@ -29,8 +36,7 @@ class MissingTargetError(FileNotFoundError): # {{{1
 class NodeErrorReported(ValueError): # {{{1
     pass
 
-
-def _mtime_less(mtime, other): # {{{1
+def _mtime_less(mtime: Optional[int], other: Optional[int]) -> bool: # {{{1
     if other is None:
         return False
     if mtime is None:
@@ -50,253 +56,200 @@ class Node: # {{{1
             prerequisites of this node.
             Should not be populated directly.
         updated (bool):
-            if the node was updated. If True, node will never be rebuilt.
-            When True, must never revert to False.
+            if the node was updated. If True, node will not be rebuilt.
         modified (bool):
             if the node was modified. If True, will cause most dependent
             nodes to be rebuilt. (Although some Node subclasses may
             ignore it.)
     """
 
-    def __init__(self, *, name=None, needs=()):
-        """
-        Initialize Node instance.
+    name: str
+    needs: List['Node']
+    updated: bool
+    modified: bool
 
-        Args:
-            name (str, optional):
-                assigned to the node.name attribute.
-            needs (iterable of Node, optional):
-                iterated over, forming node.needs attribute.
-        """
+    def __init__( self,
+        *, name: Optional[str] = None, needs: Iterable['Node'] = (),
+    ) -> None:
         if name is not None:
             self.name = str(name)
         else:
             self.name = self._default_name()
-        self.needs = list(needs)
+        self.needs = list()
+        for need in needs:
+            self._append_needs(need)
 
         self.updated = False
         self.modified = False
 
-    def _default_name(self):
+    def _default_name(self) -> str:
         return str(id(self))
 
-    def __hash__(self):
+    def __hash__(self) -> Any:
         return hash((type(self).__name__, id(self)))
 
-    # Should be only called by NodeUpdater
-    async def update_self(self):
+    async def update_self(self) -> None:
         self.updated = True
 
-    def append_needs(self, node):
+    def append_needs(self, node: 'Node') -> None:
         """
         Append a node to the needs list.
-
-        Args:
-            node (Node): a node to be appended to needs.
-
-        Returns None.
         """
         self._append_needs(node)
 
-    def extend_needs(self, nodes):
+    def extend_needs(self, nodes: Iterable['Node']) -> None:
         """
         Extend needs list with nodes.
-
-        Args:
-            nodes (iterable of Node): a nodes to be appended to needs.
-
-        Returns None.
         """
         for node in nodes:
             self._append_needs(node)
 
-    def _append_needs(self, node):
+    def _append_needs(self, node: 'Node') -> None:
         if not isinstance(node, Node):
             raise TypeError(node)
         self.needs.append(node)
 
-    def iter_needs(self, _seen_nodes=None, _reversed=False):
+    def iter_needs( self,
+        *, _seen_nodes: Optional[Set['Node']] = None,
+    ) -> Iterable['Node']:
         """
-        Yield all needs of this node, recursively.
+        Yield all needs of this node, recursively, depth-first.
 
         Yields:
             Node instances: all needs of this node, recursively, including
             this node (first). No repeats (they are skipped).
-            Every node is guaranteed to come before all of its prerequisites,
-            given that nodes do not form a cycle.
+            Order is depth-first.
+            node.needs is not inspected until after the node is yielded.
         """
-        if not _reversed:
-            if _seen_nodes is not None:
-                raise RuntimeError
-            yield from reversed(list(self.iter_needs(_reversed=True)))
-            return
         if _seen_nodes is None:
-            _seen_nodes = {self}
-        elif self in _seen_nodes:
+            _seen_nodes = set()
+        if self in _seen_nodes:
             return
         else:
             _seen_nodes.add(self)
-        for need in reversed(self.needs):
-            yield from need.iter_needs(
-                _seen_nodes=_seen_nodes, _reversed=True )
         yield self
+        for need in self.needs:
+            yield from need.iter_needs(_seen_nodes=_seen_nodes)
 
     @property
-    def logger(self):
-        return self._LoggerAdapter(logger, node=self)
+    def logger(self) -> 'Node.LoggerAdapter':
+        return self.LoggerAdapter(logger, extra=dict(node=self))
 
-    class _LoggerAdapter(logging.LoggerAdapter): # {{{2
+    class LoggerAdapter(logging.LoggerAdapter): # {{{2
 
-        # pylint: disable=redefined-outer-name
+        extra: Any
 
-        def __init__(self, logger, node):
-            super().__init__(logger, extra=dict(node=node))
-
-        # pylint: enable=redefined-outer-name
-
-        def process(self, msg, kwargs):
+        # override, internal
+        def process(self, msg: Any, kwargs: Any) -> Any:
             extra = kwargs.setdefault('extra', {})
             extra.update(self.extra)
             return msg, kwargs
 
-        def log_prog_output(self, level, prog, output):
+        def log_prog_output( self, level: int, prog: str, output: str,
+        ) -> None:
             self.log( level,
                 "Command %(prog)s output:",
                 dict(prog=prog),
-                extra=dict(prog_output=output)
-            )
+                extra=dict(prog_output=output) )
+
+        def log_prog_error( self, prog: str, returncode: int, output: str,
+        ) -> None:
+            self.error(
+                "Command %(prog)s returned code %(returncode)d, output:",
+                dict(prog=prog, returncode=returncode),
+                extra=dict(prog_output=output) )
+
     # }}}2
 
-    def __repr__(self):
-        return (
-            "{node.__class__.__name__}(name='{node.name}')"
-            .format(node=self) )
+    def __repr__(self) -> str:
+        return f"{self.__class__.__name__}(name={self.name!r})"
 
 
 class BuildableNode(Node): # {{{1
     """
     Represents a target that can be built by a command.
-
-    Attributes (additional to superclasses):
-        command (callable):
-            command that is responsible for (re)building the node and
-            setting node.modified attribute as appropriate.
-            Should not be set directly.
     """
 
-    def __init__(self, *, name=None, needs=(), **kwargs):
-        """
-        Initialize BuildableNode instance.
+    command: Optional['Command']
+    _forced: bool = False
 
-        Args:
-            name, needs (optional)
-                passed to the superclass.
-        """
-        super().__init__(name=name, needs=needs, **kwargs)
+    def __init__( self,
+        *, name: Optional[str] = None, needs: Iterable[Node] = (),
+    ) -> None:
+        super().__init__(name=name, needs=needs)
         self.command = None
 
-    # Partial override
-    async def update_self(self):
+    # Override
+    async def update_self(self) -> None:
         if self._needs_build():
             await self._run_command()
         else:
-            await super().update_self()
-            self.command.clear()
+            self.updated = True
 
-    def _needs_build(self):
-        """
-        If the node needs to be (re)built.
-
-        Node needs to be rebuilt in the following case:
-          - any of needed nodes are modified.
-        Subclasses may introduce different conditions.
-
-        Returns:
-            bool: True if the node needs to be rebuilt, False otherwise.
-        """
-        if any(node.modified for node in self.needs):
+    def _needs_build(self) -> bool:
+        if self._forced:
             return True
-        return False
+        return any(need.modified for need in self.needs)
 
-    def force(self):
+    def force(self) -> None:
         """Make the node unconditionally need to be rebuilt."""
-        force_node = Node(name='{}:force'.format(self.name))
-        self.needs.insert(0, force_node)
-        force_node.updated = True
-        force_node.modified = True
+        self._forced = True
 
-    def set_command(self, command):
-        """
-        Set the argement as node.command attribute.
-
-        Args:
-            command (Command):
-                a command to be assigned to the node.command attribute.
-        """
-        if not isinstance(command, Command):
-            raise TypeError(type(command))
-        self.command = command
-
-    def set_subprocess_command(self, callargs, *, cwd, **kwargs):
-        return self.set_command(SubprocessCommand( self,
-            callargs, cwd=cwd, **kwargs ))
-
-    async def _run_command(self):
-        # Should be only called by self.update_self()
+    async def _run_command(self) -> None:
         if self.command is None:
             raise ValueError(
                 "Node {node} cannot be rebuilt due to the lack of command"
                 .format(node=self) )
-        await self.command.call()
+        await self.command.run()
 
 
 class Command: # {{{1
     """A base class for commands used with nodes."""
 
-    def __init__(self, node):
+    node: BuildableNode
+
+    def __init__(self, node: BuildableNode) -> None:
         if not isinstance(node, Node):
             raise RuntimeError(type(node))
         self.node = node
 
-    async def call(self):
+    async def run(self) -> None:
         self.node.updated = True
-        self.clear()
-
-    def clear(self):
-        del self.node # break reference cycle
 
     @property
-    def logger(self):
+    def logger(self) -> Node.LoggerAdapter:
         return self.node.logger
 
 
 class SubprocessCommand(Command): # {{{1
     """A command that will execute some external process."""
 
-    def __init__(self, node, callargs, *, cwd, **kwargs):
+    callargs: List[str]
+    cwd: PosixPath
+
+    def __init__( self, node: BuildableNode, callargs: Sequence[str],
+        *, cwd: PosixPath,
+    ) -> None:
         super().__init__(node)
-        self.callargs = callargs
-        if not isinstance(cwd, Path):
-            raise ValueError(
-                "cwd must be a pathlib.Path instance, not {cwd_type}"
-                .format(cwd_type=type(cwd)) )
+        self.callargs = list(callargs)
+        if not isinstance(cwd, PosixPath):
+            raise TypeError(
+                f"cwd must be a pathlib.PosixPath instance, not {type(cwd)}" )
         if not cwd.is_absolute():
-            raise ValueError("cwd must be an absolute path")
+            raise ValueError(
+                f"cwd must be an absolute path, got {cwd}" )
         self.cwd = cwd
-        self.kwargs = kwargs
 
-    async def call(self):
+    # Override
+    async def run(self) -> None:
         await self._subprocess()
-        await super().call()
+        self.node.updated = True
 
-    async def _subprocess(self):
+    async def _subprocess(self) -> None:
         """
         Run external process.
 
-        Process output (see _subprocess_output() method documentation)
-        is catched and logged (with INFO level).
-
-        Returns None.
+        Process output is catched and logged (with INFO level).
 
         Raises:
             subprocess.CalledProcessError:
@@ -308,21 +261,23 @@ class SubprocessCommand(Command): # {{{1
             return
         self._log_output(logging.INFO, output)
 
-    @coroutine
-    def _subprocess_output(self, log_error_output=True):
+    @coroutine # type: ignore
+    def _subprocess_output(self, log_error_output: bool = True
+    ) -> Coroutine['SubprocessCommand', bytes, str]:
         """
         Run external process.
 
         Process output (the combined stdout and stderr of the spawned
         process, decoded with default encoding and errors='replace')
-        is catched and done something with, depending on args.
+        is catched and returned (in case on no error).
 
         Args:
             log_error_output (bool, optional):
                 If True (default), in case of process error its output will be
-                logged (with ERROR level). If False, it will not be logged.
-                Defaults to True. In any case, any received
-                subprocess.CalledProcessError exception is reraised.
+                logged (with ERROR level), and NodeErrorReported exception will
+                be raised.
+                If False, in case of process error output will not be logged,
+                and CalledProcessError exception will be raised.
 
         Returns:
             Process output (str).
@@ -342,27 +297,22 @@ class SubprocessCommand(Command): # {{{1
             "<GREEN><ITALIC>%(command)s<UPRIGHT><NOCOLOUR>",
             dict(
                 cwd=root_relative(self.cwd),
-                command=' '.join(self.callargs), )
+                command=' '.join(quote(arg) for arg in self.callargs), )
         )
 
         try:
-            encoded_output = (yield self)
+            encoded_output: bytes = (yield self) # event loop doing its thing
         except subprocess.CalledProcessError as exception:
             if not log_error_output:
                 raise
-            self.logger.error(
-                "Command %(prog)s returned code %(returncode)d, output:",
-                dict(
-                    prog=exception.cmd[0],
-                    returncode=exception.returncode, ),
-                extra=dict(
-                    prog_output=exception.output.decode(errors='replace'), )
-            )
+            self.logger.log_prog_error(
+                exception.cmd[0], exception.returncode,
+                exception.output.decode(encoding='utf-8', errors='replace') )
             raise NodeErrorReported from exception
         else:
             return encoded_output.decode(encoding='utf-8', errors='replace')
 
-    def _log_output(self, level, output):
+    def _log_output(self, level: int, output: str) -> None:
         self.logger.log_prog_output( level,
             self.callargs[0], output )
 
@@ -376,61 +326,58 @@ class DatedNode(Node): # {{{1
             Usually returned by some os.stat as st_mtime_ns attribute.
     """
 
-    def __init__(self, name=None, needs=(), **kwargs):
-        """
-        Initialize DatedNode instance.
+    mtime: Optional[int]
 
-        Args:
-            name, needs (optional)
-                passed to the superclass.
-        """
-        super().__init__(name=name, needs=needs, **kwargs)
+    def __init__( self,
+        *, name: Optional[str] = None, needs: Iterable[Node] = (),
+    ) -> None:
+        super().__init__(name=name, needs=needs)
         self.mtime = None
 
-    async def update_self(self):
+    # Override
+    async def update_self(self) -> None:
         self._load_mtime()
-        await super().update_self()
+        self.updated = True
 
-    def _load_mtime(self):
+    def _load_mtime(self) -> None:
         """
-        Set node.mtime attribute to appropriate value.
-
-        No-op here. Subclasses may introduce appropriate behavior.
+        Set self.mtime attribute to appropriate value.
         """
         pass
 
-    def touch(self):
-        """Set node.mtime to the current time."""
+    def touch(self) -> None:
+        """
+        Set self.mtime to the current time.
+        """
         self.mtime = int(time.time() * (10**9))
 
 
-# BuildableNode overrides update_self(), while DatedNode extends it.
-# So, the order of superclasses is important.
 class BuildableDatedNode(DatedNode, BuildableNode): # {{{1
     """Represents a target that has a modification time."""
 
-    def _needs_build(self):
-        """
-        If the node needs to be (re)built.
+    # Override
+    async def update_self(self) -> None:
+        self._load_mtime()
+        if self._needs_build():
+            await self._run_command()
+        else:
+            self.updated = True
 
-        Extension.
-        DatedNode needs to be rebuilt in the following cases:
-          - node.mtime is None (this means that node was never built);
-          - any of prerequisites has mtime newer than node.mtime;
-        or for some other reason (see superclasses).
+    async def _run_command(self) -> None:
+        await super()._run_command()
+        self._load_mtime()
 
-        Returns:
-            bool: True if the node needs to be rebuilt, False otherwise.
-        """
-        if super()._needs_build():
+    def _needs_build(self) -> bool:
+        if self._forced:
             return True
-        mtime = self.mtime
-        if mtime is None:
+        if any(need.modified for need in self.needs):
+            return True
+        if self.mtime is None:
             return True
         for need in self.needs:
             if not isinstance(need, DatedNode):
                 continue
-            if _mtime_less(mtime, need.mtime):
+            if _mtime_less(self.mtime, need.mtime):
                 return True
         return False
 
@@ -440,47 +387,35 @@ class PathNode(DatedNode): # {{{1
     Represents a filesystem object.
 
     Attributes (additional to superclasses):
-        path (pathlib.Path):
+        path (pathlib.PosixPath):
             absolute path, represented by the node.
 
     Class attributes:
-        root (pathlib.Path or None):
+        root (pathlib.PosixPath or None):
             absolute path, relative to which various paths will appear in
             log messages.
     """
 
-    root = None
+    root: ClassVar[Optional[PosixPath]] = None
+    path: PosixPath
 
-    def __init__(self, path, *, name=None, needs=(), **kwargs):
-        """
-        Initialize PathNode instance.
-
-        Args:
-            path (pathlib.Path):
-                absolute path, assigned to the node.path attribute.
-            name, needs (optional):
-                passed to the superclass.
-                The default for name is str(path).
-        """
-        if not isinstance(path, Path):
+    def __init__( self, path: PosixPath,
+        *, name: Optional[str] = None, needs: Iterable[Node] = ()
+    ) -> None:
+        if not isinstance(path, PosixPath):
             raise TypeError(type(path))
         if not path.is_absolute():
             raise ValueError(
-                "{cls.__name__} cannot be initialized "
-                "with relative path: '{path}'"
-                .format(cls=self.__class__, path=path) )
+                f"{self.__class__.__name__} cannot be initialized "
+                f"with relative path: {path!r}" )
         if name is None:
             name = str(path)
-        super().__init__(name=name, needs=needs, **kwargs)
+        super().__init__(name=name, needs=needs)
         self.path = path
 
-    def _load_mtime(self):
+    def _load_mtime(self) -> None:
         """
-        Set node.mtime attribute to appropriate value.
-
-        Set node.mtime to None if node.path does not exist as filesystem path.
-        Otherwise, use st_mtime_ns attribute from the structure returned by
-        node.stat().
+        Set self.mtime attribute to the self.path's mtime.
         """
         try:
             stat = self.stat()
@@ -489,49 +424,44 @@ class PathNode(DatedNode): # {{{1
         else:
             self.mtime = stat.st_mtime_ns # nanoseconds
 
-    def touch(self):
+    def touch(self) -> None:
         """
-        Set node.mtime and actual node.path mtime to the current time.
+        Set self.mtime and actual self.path mtime to the current time.
         """
         # Override, making use of os.utime default behavior.
         os.utime(str(self.path))
         self._load_mtime()
 
-    def stat(self, follow_symlinks=False):
+    def stat(self, follow_symlinks: bool = False) -> 'posix.stat_result':
         """
-        Return appropriate stat structure.
-
-        By default, do not follow symlinks.
+        Return stat structure of self.path.
         """
         return os.stat(str(self.path), follow_symlinks=follow_symlinks)
 
-    def __repr__(self):
-        return ( "{node.__class__.__name__}(name='{node.name}', "
-            "path='{node.relative_path}')"
-            .format(node=self) )
+    def __repr__(self) -> str:
+        return ( f"{self.__class__.__name__}(name={self.name!r}, "
+            f"path={node.relative_path!r})" )
 
     @property
-    def relative_path(self):
+    def relative_path(self) -> PurePosixPath:
         return self.root_relative(self.path)
 
     @classmethod
-    def root_relative(cls, path):
+    def root_relative(cls, path: PosixPath) -> PurePosixPath:
         if cls.root is None:
             return path
         return path.relative_to(cls.root)
 
-
 class BuildablePathNode(PathNode, BuildableDatedNode): # {{{1
     """Represents a filesystem object that can be (re)built."""
 
-    async def _run_command(self):
+    async def _run_command(self) -> None:
         prerun_mtime = self.mtime
         await super()._run_command()
-        self._load_mtime()
         if _mtime_less(prerun_mtime, self.mtime):
             self.modified = True
         else:
-            self.logger.error( "File %(path)s was not updated",
+            self.logger.error( "Path %(path)s was not updated",
                 dict(path=self.relative_path) )
             raise MissingTargetError(self)
 
@@ -546,39 +476,31 @@ class ProductNode(BuildablePathNode): # {{{1
     Attributes (additional to superclasses):
         source (PathNode):
             prominent prerequisite, whatever it means.
-            Exact semantics is defined by subclasses.
+            Exact semantics may be defined by subclasses.
     """
 
-    def __init__(self, source, path, *, name=None, needs=(), **kwargs):
-        """
-        Initialize ProductNode instance.
+    source: PathNode
 
-        Args:
-            source (PathNode):
-                assigned to the node.source attribute.
-                Prepended to needs.
-            path (pathlib.Path):
-                passed to the superclass.
-            name, needs (optional)
-                passed to the superclass.
-        """
+    def __init__( self, source: PathNode, path: PosixPath,
+        *, name: Optional[str] = None, needs: Iterable[Node] = ()
+    ) -> None:
         if not isinstance(source, PathNode):
             raise TypeError(type(source))
         self.source = source
-        needs = chain((source,), needs)
-        super().__init__(path=path, name=name, needs=needs, **kwargs)
+        super().__init__( path=path, name=name,
+            needs=(source, *needs) )
 
-    def __repr__(self):
-        return ( "{node.__class__.__name__}(name='{node.name}', "
-            "path='{node.relative_path}', source={node.source!r})"
-            .format(node=self) )
+    def __repr__(self) -> str:
+        return (
+            f"{self.__class__.__name__}(name={self.name!r}, "
+            f"path={self.relative_path!r}, source={self.source!r})" )
 
 
 class FollowingPathNode(PathNode): # {{{1
     """Represents a path that can be or not be a symbolic link."""
 
     # Override
-    def stat(self, follow_symlinks=True):
+    def stat(self, follow_symlinks: bool = True) -> 'posix.stat_result':
         """
         Return appropriate stat structure.
 
@@ -589,29 +511,26 @@ class FollowingPathNode(PathNode): # {{{1
 
 class FilelikeNode(PathNode): # {{{1
     """Represents path which can be opened as file."""
-
-    def open(self, mode='r', **kwargs):
-        """Open a file-like node.path."""
-        if 'encoding' not in kwargs and 'b' not in mode:
-            kwargs['encoding'] = 'utf-8'
-        return open(self.path, mode=mode, **kwargs)
+    pass
 
 
 class SourceFileNode(FollowingPathNode, FilelikeNode): # {{{1
     """Represents a source file."""
 
-    async def update_self(self):
-        await super().update_self()
+    # Override
+    async def update_self(self) -> None:
+        self._load_mtime()
         if self.mtime is None:
             self.logger.error( "Source file %(path)s is missing",
                 dict(path=self.relative_path) )
             raise NodeErrorReported from MissingTargetError(self.path)
+        self.updated = True
 
 
 class FileNode(BuildablePathNode, FilelikeNode): # {{{1
     """Represents a file target."""
 
-    async def _run_command(self):
+    async def _run_command(self) -> None:
         # Avoid writing to remnant symlink.
         if self.path.is_symlink():
             self.path.unlink()

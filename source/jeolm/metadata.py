@@ -1,3 +1,4 @@
+from functools import partial
 import os
 import io
 import re
@@ -9,8 +10,10 @@ from pathlib import PurePosixPath
 
 import jeolm.yaml
 
-from .record_path import RecordPath, NAME_PATTERN, RELATIVE_NAME_PATTERN
-from .records import Records, ATTRIBUTE_KEY_PATTERN
+from jeolm.utils.ordering import filename_keyfunc
+from jeolm.records import ( RecordPath, Records,
+    NAME_PATTERN, RELATIVE_NAME_PATTERN )
+from jeolm.driver import ATTRIBUTE_KEY_PATTERN
 
 import logging
 logger = logging.getLogger(__name__)
@@ -25,8 +28,8 @@ FIGURE_REF_PATTERN = (
         '(?:(?:' + RELATIVE_NAME_PATTERN + ')/)*'
         '(?:' + NAME_PATTERN + ')'
     r')'
-    r'(?:\.(?P<figure_type>'
-        'asy|svg|pdf|eps|png|jpg'
+    r'(?::(?P<figure_code>'
+        + NAME_PATTERN +
     r'))?'
 )
 
@@ -36,6 +39,7 @@ ASY_ACCESSED_PATH_PATTERN = (
 )
 
 class MetadataPath(RecordPath):
+
     @property
     def suffix(self):
         name = self.name
@@ -63,13 +67,17 @@ class MetadataPath(RecordPath):
             self.parent,
             name[:self._suffix_pos(name)] + suffix )
 
+    def sorting_key(self, keyfunc=filename_keyfunc):
+        return super().sorting_key(keyfunc=keyfunc)
+
 
 class Metadata(Records):
-    Dict = dict
-    Path = MetadataPath
+    _Dict = dict
+    _Path = MetadataPath
     dir_name_regex = re.compile(DIR_NAME_PATTERN)
     file_name_regex = re.compile(FILE_NAME_PATTERN)
     name_regex = re.compile(DIR_NAME_PATTERN + '|' + FILE_NAME_PATTERN)
+    ordering_keyfunc = partial(filename_keyfunc)
 
     source_types = {
         '.yaml' : 'metadata in YAML',
@@ -114,159 +122,158 @@ class Metadata(Records):
 
     _metadata_cache_name = 'metadata.cache.pickle'
 
-    def feed_metadata(self, metarecords):
-        for metainpath, record in self.items():
-            if metainpath.is_root() or metainpath.suffix == '':
+    def feed_metadata(self, records):
+        for metadata_path, record in self.items():
+            if metadata_path.is_root() or metadata_path.suffix == '':
                 assert '$metadata' not in record
                 continue
-            elif metainpath.suffix == '.yaml':
-                metapath = metainpath.parent
+            elif metadata_path.suffix == '.yaml':
+                record_path = metadata_path.parent
             else:
-                metapath = metainpath.with_suffix('')
+                record_path = metadata_path.with_suffix('')
             metadata = record.get('$metadata')
-            metarecords.absorb(metadata, metapath, overwrite=False)
-        return metarecords
+            records.absorb(metadata, record_path, overwrite=False)
+        return records
 
-    def review(self, inpath):
-
-        if not isinstance(inpath, PurePosixPath):
-            raise RuntimeError(type(inpath))
-        metainpath = MetadataPath.from_inpath(inpath)
-        inpath = metainpath.as_inpath()
-        path = self.project.source_dir/inpath
+    def review(self, source_path):
+        if not isinstance(source_path, PurePosixPath):
+            raise TypeError(type(source_path))
+        if source_path.is_absolute():
+            raise ValueError(source_path)
+        if '..' in source_path.parts:
+            raise ValueError(source_path)
+        metadata_path = MetadataPath.from_source_path(source_path)
+        #inpath = metadata_path.as_inpath()
+        path = self.project.source_dir/source_path
 
         exists = path.exists()
-        recorded = metainpath in self
+        recorded = metadata_path in self
         if not exists:
-            assert not metainpath.is_root()
+            assert not metadata_path.is_root()
             if recorded:
-                self.delete(metainpath)
+                self.delete(metadata_path)
             else:
                 logger.warning(
                     "Reviewed source path was not recorded and "
                     "does not exist as file: %(path)s",
-                    dict(path=inpath) )
+                    dict(path=source_path) )
             return
         # path exists
 
         is_dir = path.is_dir()
-        dir_names = inpath.parts if is_dir else inpath.parts[:-1]
-        for dir_name in dir_names:
-            if not self.dir_name_regex.fullmatch(dir_name):
-                raise ValueError(
-                    "Nonconfirming directory name {name} in path {path}"
-                    .format(name=dir_name, path='source'/inpath) )
-        if not is_dir:
-            if not self.file_name_regex.fullmatch(inpath.name):
-                raise ValueError( "Nonconfirming file name in path {path}"
-                    .format(path='source'/inpath) )
-            suffix = inpath.suffix
-            if suffix not in self.source_types:
-                raise ValueError( "Unknown file suffix in path {path}"
-                    .format(path='source'/inpath) )
-
+        self._check_source_path(source_path, is_dir=is_dir)
         if is_dir and recorded:
-            self.clear(metainpath)
+            self.clear(metadata_path)
         if is_dir:
-            self._review_subpaths(inpath)
-            self.absorb(None, metainpath)
+            self._review_subpaths(source_path)
+            self.absorb(None, metadata_path)
             return
-        metadata = self._query_file(inpath)
-        self.absorb({'$metadata' : metadata}, metainpath, overwrite=True)
+        metadata = self._query_file(source_path)
+        self.absorb({'$metadata' : metadata}, metadata_path, overwrite=True)
 
-    def _review_subpaths(self, inpath):
-        for subname in os.listdir(str(self.project.source_dir/inpath)):
+    @classmethod
+    def _check_source_path(cls, source_path, *, is_dir):
+        dir_names = source_path.parts if is_dir else source_path.parts[:-1]
+        for dir_name in dir_names:
+            if not cls.dir_name_regex.fullmatch(dir_name):
+                raise ValueError(
+                    f"Nonconforming directory name {dir_name} in "
+                    f"source path {source_path}" )
+        if not is_dir:
+            if not cls.file_name_regex.fullmatch(source_path.name):
+                raise ValueError(
+                    f"Nonconforming file name in source path "
+                    f"{source_path}" )
+            suffix = source_path.suffix
+            if suffix not in cls.source_types:
+                raise ValueError(
+                    f"Unknown file suffix in source path "
+                    f"{source_path}" )
+
+    def _review_subpaths(self, source_path):
+        # XXX symlinked directories and files
+        for subname in os.listdir(str(self.project.source_dir/source_path)):
             if subname.startswith('.'):
                 continue
-            subinpath = inpath/subname
-            subpath = self.project.source_dir/subinpath
-            subpath_is_dir = subpath.is_dir()
-            def warn(message, subname=subname):
-                logger.warning(
-                    "Source directory <MAGENTA>%(path)s<NOCOLOUR>: " +
-                        message,
-                    dict(path=inpath, name=subname) )
-            if subpath_is_dir:
+            sub_source_path = source_path/subname
+            subpath = self.project.source_dir/sub_source_path
+            if subpath.is_dir():
                 if not self.dir_name_regex.fullmatch(subname):
-                    warn( "nonconforming directory name "
-                        "<YELLOW>%(name)s<NOCOLOUR>" )
+                    logger.warning(
+                        "Nonconforming directory name "
+                            "<YELLOW>%(path)s<NOCOLOUR>",
+                        dict(path=sub_source_path) )
                     continue
-            if not subpath_is_dir:
+            else:
                 if not self.file_name_regex.fullmatch(subname):
-                    warn( "nonconforming file name "
-                        "<YELLOW>%(name)s<NOCOLOUR>" )
+                    logger.warning(
+                        "Nonconforming file name "
+                            "<YELLOW>%(path)s<NOCOLOUR>",
+                        dict(path=sub_source_path) )
                     continue
-                subsuffix = subinpath.suffix
+                subsuffix = sub_source_path.suffix
                 if subsuffix not in self.source_types:
-                    warn( "unknown suffix in file name "
-                        "<YELLOW>%(name)s<NOCOLOUR>" )
+                    logger.warning(
+                        "Unknown suffix in file name "
+                            "<YELLOW>%(path)s<NOCOLOUR>",
+                        dict(path=sub_source_path) )
                     continue
-            self.review(subinpath)
+            self.review(sub_source_path)
 
-    def _query_file(self, inpath):
-        filetype = inpath.suffix
-        if filetype == '':
-            raise RuntimeError
-        elif filetype == '.yaml':
-            query_method = self._query_yaml_file
-        elif filetype == '.tex':
-            query_method = self._query_tex_file
-        elif filetype == '.dtx':
-            query_method = self._query_dtx_file
-        elif filetype == '.sty':
-            query_method = self._query_sty_file
-        elif filetype == '.asy':
-            query_method = self._query_asy_file
-        elif filetype == '.svg':
-            query_method = self._query_svg_file
-        elif filetype == '.pdf':
-            query_method = self._query_pdf_file
-        elif filetype == '.eps':
-            query_method = self._query_eps_file
-        elif filetype == '.png':
-            query_method = self._query_png_file
-        elif filetype == '.jpg':
-            query_method = self._query_jpg_file
-        else:
-            raise RuntimeError
-        return query_method(inpath)
+    def _query_file(self, source_path):
+        filetype = source_path.suffix
+        assert filetype in self.source_types
+        query_method = getattr(self, f'_query_{filetype[1:]}_file')
+        return query_method(source_path)
 
-    def _open_inpath(self, inpath, mode='r'):
-        return (self.project.source_dir/inpath).open(
+    def _open_source_path(self, source_path, mode='r'):
+        return (self.project.source_dir/source_path).open(
             mode=mode, encoding='utf-8' )
 
-    def _query_yaml_file(self, inpath):
-        with self._open_inpath(inpath) as yaml_file:
+    def _query_yaml_file(self, source_path):
+        with self._open_source_path(source_path) as yaml_file:
             metadata = jeolm.yaml.load(yaml_file)
         if not isinstance(metadata, dict):
             raise TypeError(
-                "Metadata in {} is of type {}, expected dictionary"
-                .format(inpath, type(metadata)) )
+                f"Metadata in {source_path} is of type {type(metadata)}, "
+                f"expected dictionary" )
         return metadata
 
-    def _query_tex_file(self, inpath):
-        with self._open_inpath(inpath) as tex_file:
+    def _query_tex_file(self, source_path):
+        with self._open_source_path(source_path) as tex_file:
             tex_content = tex_file.read()
         metadata = OrderedDict((
             ('$source$able', True),
             ('$source$type$tex', True),
         ))
-        metadata.update(self._query_tex_content(inpath, tex_content))
+        metadata.update(self._query_tex_content(source_path, tex_content))
         return metadata
 
-    def _query_tex_content(self, inpath, tex_content):
+    def _query_tex_content(self, source_path, tex_content):
         metadata = OrderedDict()
-        metadata.update(self._query_tex_figures(inpath, tex_content))
-        metadata.update(self._query_tex_sections(inpath, tex_content))
-        metadata.update(self._query_tex_metadata(inpath, tex_content))
+        filtered_tex_content = self._filter_tex_comments(tex_content)
+        metadata.update(
+            self._query_tex_figures(source_path, filtered_tex_content) )
+        metadata.update(
+            self._query_tex_sections(source_path, filtered_tex_content) )
+        metadata.update(
+            self._query_tex_metadata(source_path, tex_content) )
         return metadata
 
-    def _query_tex_figures(self, inpath, tex_content):
+    @classmethod
+    def _filter_tex_comments(cls, tex_content):
+        return cls._tex_comment_regex.sub('', tex_content)
+
+    _tex_comment_regex = re.compile( r'(?m)'
+        r'(?!<\\)%.*\n\s*'
+    )
+
+    def _query_tex_figures(self, source_path, tex_content):
         if self._tex_includegraphics_regex.search(tex_content) is not None:
             logger.warning(
                 "Source file <MAGENTA>%(path)s<NOCOLOUR>: "
                 r"<YELLOW>\includegraphics<NOCOLOUR> command found",
-                dict(path=inpath) )
+                dict(path=source_path) )
         figure_refs = list()
         figure_refs_set = set()
         for match in self._tex_figure_regex.finditer(tex_content):
@@ -282,7 +289,7 @@ class Metadata(Records):
                 "Source file <MAGENTA>%(path)s<NOCOLOUR>: "
                 "unable to parse some of the "
                 r"<YELLOW>\jeolmfigure<NOCOLOUR> commands",
-                dict(path=inpath) )
+                dict(path=source_path) )
         if figure_refs:
             return {'$source$figures' : figure_refs}
         else:
@@ -303,7 +310,7 @@ class Metadata(Records):
 
     # pylint: disable=unused-argument
 
-    def _query_tex_sections(self, inpath, tex_content):
+    def _query_tex_sections(self, source_path, tex_content):
         sections = [
             match.group('section')
             for match in self._tex_section_regex.finditer(tex_content) ]
@@ -317,7 +324,7 @@ class Metadata(Records):
 
     # pylint: enable=unused-argument
 
-    def _query_tex_metadata(self, inpath, tex_content):
+    def _query_tex_metadata(self, source_path, tex_content):
         metadata = OrderedDict()
         for match in self._tex_metadata_regex.finditer(tex_content):
             piece_lines = match.group(0).splitlines(keepends=True)
@@ -331,13 +338,13 @@ class Metadata(Records):
                 extend = False
             piece = ''.join(piece_lines)
             piece_io = io.StringIO(piece)
-            piece_io.name = inpath
+            piece_io.name = source_path
             piece = jeolm.yaml.load(piece_io)
             if not isinstance(piece, dict) or len(piece) != 1:
                 logger.error(
                     "Source file <MAGENTA>%(path)s<NOCOLOUR>: "
                     "unrecognized metadata piece",
-                    dict(path=inpath) )
+                    dict(path=source_path) )
                 raise ValueError(piece)
             (key, value), = piece.items()
             if extend:
@@ -349,7 +356,7 @@ class Metadata(Records):
                     logger.error(
                         "Source file <MAGENTA>%(path)s<NOCOLOUR>: "
                         "extending value may be only a list or a dict",
-                        dict(path=inpath) )
+                        dict(path=source_path) )
                     raise TypeError(value)
             else:
                 metadata[key] = value
@@ -362,56 +369,56 @@ class Metadata(Records):
         r'(?:% [ \-#].+\n)*'
     )
 
-    def _query_dtx_file(self, inpath):
-        with self._open_inpath(inpath) as dtx_file:
+    def _query_dtx_file(self, source_path):
+        with self._open_source_path(source_path) as dtx_file:
             dtx_content = dtx_file.read()
         metadata = {
             '$package$able' : True,
             '$package$type$dtx' : True,
             '$source$able' : True,
             '$source$type$dtx' : True }
-        metadata.update(self._query_package_content(inpath, dtx_content,
+        metadata.update(self._query_package_content(source_path, dtx_content,
             package_type='dtx' ))
         return metadata
 
-    def _query_sty_file(self, inpath):
-        with self._open_inpath(inpath) as sty_file:
+    def _query_sty_file(self, source_path):
+        with self._open_source_path(source_path) as sty_file:
             sty_content = sty_file.read()
         metadata = {
             '$package$able' : True,
             '$package$type$sty' : True }
-        metadata.update(self._query_package_content(inpath, sty_content,
+        metadata.update(self._query_package_content(source_path, sty_content,
             package_type='sty' ))
         return metadata
 
-    def _query_package_content( self, inpath, package_content,
+    def _query_package_content( self, source_path, package_content,
         *, package_type
     ):
         match = self._package_name_regex.search(package_content)
         if match is not None:
             package_name = match.group('package_name')
         else:
-            package_name = inpath.with_suffix('').name
+            package_name = source_path.with_suffix('').name
         return {'$package${}$name'.format(package_type) : package_name}
 
     _package_name_regex = re.compile(
         r'\\ProvidesPackage\{(?P<package_name>' + NAME_PATTERN + r')\}'
     )
 
-    def _query_asy_file(self, inpath):
-        with self._open_inpath(inpath) as asy_file:
+    def _query_asy_file(self, source_path):
+        with self._open_source_path(source_path) as asy_file:
             asy_content = asy_file.read()
         metadata = {
             '$figure$able' : True,
             '$figure$type$asy' : True }
-        metadata.update(self._query_asy_content(inpath, asy_content))
+        metadata.update(self._query_asy_content(source_path, asy_content))
         return metadata
 
-    def _query_asy_content(self, inpath, asy_content):
-        metadata = self._query_asy_accessed(inpath, asy_content)
+    def _query_asy_content(self, source_path, asy_content):
+        metadata = self._query_asy_accessed(source_path, asy_content)
         return metadata or {}
 
-    def _query_asy_accessed(self, inpath, asy_content):
+    def _query_asy_accessed(self, source_path, asy_content):
         accessed = OrderedDict()
         for match in self._asy_access_regex.finditer(asy_content):
             accessed[match.group('alias_name')] = match.group('accessed_path')
@@ -420,8 +427,9 @@ class Metadata(Records):
                 continue
             logger.warning(
                 "Source file <MAGENTA>%(path)s<NOCOLOUR>: "
-                "invalid 'access path' line spotted",
-                dict(path=inpath) )
+                "invalid 'access path' line spotted "
+                "(correct form is '// access ../common/ as common.asy'",
+                dict(path=source_path) )
         if accessed:
             return {'$figure$asy$accessed' : accessed}
         else:
@@ -437,31 +445,31 @@ class Metadata(Records):
 
     # pylint: disable=no-self-use,unused-argument
 
-    def _query_svg_file(self, inpath):
+    def _query_svg_file(self, source_path):
         metadata = {
             '$figure$able' : True,
             '$figure$type$svg' : True }
         return metadata
 
-    def _query_pdf_file(self, inpath):
+    def _query_pdf_file(self, source_path):
         metadata = {
             '$figure$able' : True,
             '$figure$type$pdf' : True }
         return metadata
 
-    def _query_eps_file(self, inpath):
+    def _query_eps_file(self, source_path):
         metadata = {
             '$figure$able' : True,
             '$figure$type$eps' : True }
         return metadata
 
-    def _query_png_file(self, inpath):
+    def _query_png_file(self, source_path):
         metadata = {
             '$figure$able' : True,
             '$figure$type$png' : True }
         return metadata
 
-    def _query_jpg_file(self, inpath):
+    def _query_jpg_file(self, source_path):
         metadata = {
             '$figure$able' : True,
             '$figure$type$jpg' : True }

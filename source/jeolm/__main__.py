@@ -131,12 +131,13 @@ def _build_force_latex(target_node):
 
 def _build_force_generate(target_node):
     from jeolm.node.latex import LaTeXNode
-    from jeolm.node import FileNode
+    from jeolm.node.text import TextNode, VarTextNode
     for node in target_node.iter_needs():
         if (isinstance(node, LaTeXNode) and
-            isinstance(node.source, FileNode)
+            isinstance(node.source, TextNode) and
+            isinstance(node.source.source, VarTextNode)
         ):
-            node.source.force()
+            node.source.source.force()
 
 def _build_get_node_updater(jobs):
     assert isinstance(jobs, int), type(jobs)
@@ -220,19 +221,28 @@ def _add_list_arg_subparser(subparsers):
         nargs='*', metavar='TARGET', type=jeolm.target.Target.from_string )
     parser.add_argument( '--type',
         help="searched-for infiles type",
-        choices=['tex', 'asy'], default='tex',
+        choices=['tex', 'asy', 'figure'], default='tex',
         dest='source_type', metavar='SOURCE_TYPE' )
     parser.set_defaults(command_func=main_list)
 
 def main_list(args, *, project):
-    from jeolm.commands.list_sources import print_source_list
+    from jeolm.commands.list_sources import list_sources
     if not args.targets:
-        logger.warning("No-op: no targets for source list")
-    print_source_list( args.targets,
-        viewpoint=Path.cwd(), project=project,
-        driver=jeolm.commands.simple_load_driver(project),
-        source_type=args.source_type )
-
+        logger.warning("No-op: no targets for source listing")
+    if args.source_type == 'tex':
+        suffixes = {'.tex'}
+    elif args.source_type == 'asy':
+        suffixes = {'.asy'}
+    elif args.source_type == 'figure':
+        suffixes = {'.asy', '.svg', '.pdf', '.eps', '.png', '.jpg'}
+    else:
+        raise RuntimeError
+    paths = [ path.relative_to(Path.cwd())
+        for path in list_sources( args.targets,
+            project=project, suffixes=suffixes )
+    ]
+    for path in paths:
+        print(path)
 
 ####################
 # spell
@@ -250,7 +260,6 @@ def main_spell(args, *, project):
         logger.warning("No-op: no targets for spell check")
     check_spelling( args.targets,
         project=project,
-        driver=jeolm.commands.simple_load_driver(project),
         colour=args.colour )
 
 
@@ -290,7 +299,7 @@ def main_makefile(args, *, project):
         for node in unbuildable_nodes:
             node_updater.update(node)
     for node in unrepresentable_nodes:
-        node.logger.warning(
+        node.logger.debug(
             "Node has no possible representation in Makefile" )
     _open = partial(open, encoding='utf-8')
     with _open(args.output_makefile, 'w') as makefile:

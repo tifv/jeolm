@@ -118,9 +118,6 @@
 % Mentioning previous subproblem without mentioning the problem number:
 % \subref{a subproblem} for |\subref{a subproblem}|.
 % This is useful for references within the problem.
-% \\
-% Macros |\sp| and |\spx| are corresponding |\let| aliases for |\subproblem|
-% and |\subproblemx|.
 %
 % \DescribeEnv{problems}
 % The |problems| environment utilises |list|, inserting problem numbers in list
@@ -177,6 +174,7 @@
 %    \end{macrocode}
 %
 %    \begin{macrocode}
+\RequirePackage{etoolbox}
 \RequirePackage{amsmath}
 \RequirePackage{amssymb}
 \RequirePackage{graphicx}
@@ -184,12 +182,6 @@
 %    \end{macrocode}
 %
 % \subsection{Package options}
-%
-%    \begin{macrocode}
-\newif\ifjeolmfigure@lazy
-    \jeolmfigure@lazyfalse
-\DeclareOption{lazy-figures}{\jeolmfigure@lazytrue}
-%    \end{macrocode}
 %
 %    \begin{macrocode}
 \ProcessOptions
@@ -218,17 +210,11 @@
 % Allow exchanging greek letters with their variants.
 %    \begin{macrocode}
 \newcommand\swapvar[2][]{\begingroup
-\expandafter\let\expandafter\swap\csname #1#2\endcsname
-\expandafter\let\expandafter\varswap\csname #1var#2\endcsname
-\global\expandafter\let\csname #1#2\endcsname\varswap
-\global\expandafter\let\csname #1var#2\endcsname\swap
+\letcs{\swap}{#1#2}
+\letcs{\varswap}{#1var#2}
+\global\cslet{#1#2}{\varswap}
+\global\cslet{#1var#2}{\swap}
 \endgroup}
-%    \end{macrocode}
-%
-% This macro will work only on the second run, when the label is substituted.
-% Watch out for build cycles!
-%    \begin{macrocode}
-\def\iflabelundefined#1{\expandafter\ifx\csname r@#1\endcsname\relax}
 %    \end{macrocode}
 %
 % \subsubsection{Centering-overlap}
@@ -289,53 +275,72 @@
 % \subsection{Figures}
 %
 % \begin{macro}{\jeolmfiguremap}
-% Use the |\csname| to create a macro.
-% The set of such macros will define a mapping.
 %    \begin{macrocode}
-\newcommand\jeolmfiguremap[2]{%
-\expandafter\def\csname jeolmfiguremap@#1\endcsname{#2}}
+\newcommand\jeolmfiguremap[3]{%
+    \csdef{jeolmfigure@#1}{#2}%
+    \ifstrempty{#3}%
+        {\csundef{jeolmfigure@sizefile@#1}}%
+        {\csdef{jeolmfigure@sizefile@#1}{#3}}%
+}
 %    \end{macrocode}
 % \end{macro}
 %
 % \begin{macro}{\jeolmfigure}
-% In automatic environment, where all figures are predictable and are
-% built in advance, strict variant of the macro should be used.
+% To be used in automatic environment, where all figures are predictable and
+% are built in advance.
 %    \begin{macrocode}
-\newcommand\jeolmfigure@strict[2][]{%
-    \edef\jeolmfigure@name{\csname jeolmfiguremap@#2\endcsname}%
-    \includegraphics[#1]{\jeolmfigure@name}}
+\providebool{jeolmfigurewritesize}
+\ifbool{jeolmfigurewritesize}{
+    \newlength\jeolmfigurewidth
+    \newlength\jeolmfigureheight
+    \newwrite\jeolmfigurefile
+    \newcommand\jeolmfigure[2][]{%
+        \ifcsdef{jeolmfigure@sizefile@#2}{\begingroup
+            \setkeys{Gin}{#1}%
+            \ifx\Gin@ewidth\Gin@exclamation\else
+                \setlength\jeolmfigurewidth\Gin@ewidth
+            \fi
+            \ifx\Gin@eheight\Gin@exclamation\else
+                \setlength\jeolmfigureheight\Gin@eheight
+            \fi
+            \immediate\openout\jeolmfigurefile=\csuse{jeolmfigure@sizefile@#2}\relax
+            \immediate\write\jeolmfigurefile{width=\the\jeolmfigurewidth}%
+            \immediate\write\jeolmfigurefile{height=\the\jeolmfigureheight}%
+            \closeout\jeolmfigurefile
+        \endgroup
+            \csundef{jeolmfigure@sizefile@#2}%
+        }{}%
+        \includegraphics[#1]{\csname jeolmfigure@#2\endcsname}%
+    }
+}{
+    \newcommand\jeolmfigure[2][]{%
+        \includegraphics[#1]{\csname jeolmfigure@#2\endcsname}%
+    }
+}
 %    \end{macrocode}
-% The lazy variant of the macro, although a functional replacement for strict
-% variant, is not to be used in automatic environment.
-% Rather, it allows latexmk to catch up with all figures on second run.
+% \end{macro}
+%
+% \subsection{Lazy figures}
+%
+% \begin{macro}{\maybefigure}
+% It allows latexmk to catch up with all figures on second run.
 % This implies that latexmk will be able to rebuild missing figures, like
 % from Asymptote source.
 %    \begin{macrocode}
-\newcommand\jeolmfigure@lazy[2][]{%
-    \ifcsname jeolmfiguremap@#2\endcsname
-      \edef\jeolmfigure@name{\csname jeolmfiguremap@#2\endcsname}%
-    \else
-      \edef\jeolmfigure@name{\jeolmfiguredir#2\jeolmfiguresuffix}%
-    \fi
-    \IfFileExists{\jeolmfigure@name}%
-        {\includegraphics[#1]{\jeolmfigure@name}}%
+\newcommand\maybefigure[2][]{%
+    \edef\maybefigure@name{\maybefiguredir#2\maybefiguresuffix}%
+    \IfFileExists{\maybefigure@name}%
+        {\includegraphics[#1]{\maybefigure@name}}%
         {\leavevmode
-            \PackageWarning{jeolm}{file `\jeolmfigure@name' not found}}%
+            \PackageWarning{jeolm}{file `\maybefigure@name' not found}}%
 }
-\newcommand\jeolmfiguredir{\currfiledir figures/}
-\def\jeolm@ifpdfgraphics#1\jeolmend{\in@{,.pdf,}{,#1,}\ifin@}
-\expandafter\jeolm@ifpdfgraphics\Gin@extensions\jeolmend
-    \newcommand\jeolmfiguresuffix{.pdf}
+\newcommand\maybefiguredir{\currfiledir figures/}
+\begingroup
+\def\maybefigure@ifpdfgraphics#1\maybefigure@end{\in@{,.pdf,}{,#1,}\ifin@}
+\expandafter\maybefigure@ifpdfgraphics\Gin@extensions\maybefigure@end
+    \endgroup\newcommand\maybefiguresuffix{.pdf}
 \else
-    \newcommand\jeolmfiguresuffix{.eps}
-\fi
-%    \end{macrocode}
-% Resolve package option.
-%    \begin{macrocode}
-\ifjeolmfigure@lazy
-    \let\jeolmfigure\jeolmfigure@lazy
-\else
-    \let\jeolmfigure\jeolmfigure@strict
+    \endgroup\newcommand\maybefiguresuffix{.eps}
 \fi
 %    \end{macrocode}
 % \end{macro}
@@ -407,7 +412,18 @@
 \newcommand\@worksheet@star{\@worksheet*}
 \newif\ifworksheetnumerated
 \worksheetnumeratedfalse
-\newcommand\worksheet{\ifworksheetnumerated\expandafter\@worksheet\else\expandafter\@worksheet@star\fi}
+\newcommand\worksheet{%
+    \ifworksheetnumerated%
+        \expandafter\@worksheet%
+    \else%
+        \expandafter\@worksheet@star%
+    \fi}
+%    \end{macrocode}
+% \end{macro}
+%
+% \begin{macro}{\jeolmdisplayperiod}
+%    \begin{macrocode}
+\newcommand\jeolmdisplayperiod[1]{, пара #1}
 %    \end{macrocode}
 % \end{macro}
 %
@@ -427,7 +443,6 @@
 % \end{macro}
 %
 % \begin{macro}{\subproblem}
-% \begin{macro}{\sp}
 % These macros boil down to |\subproblem@yx|, which is defined later.
 %    \begin{macrocode}
 \newcommand\subproblem{\subproblemx{}}
@@ -437,10 +452,7 @@
 \newcommand\subproblemyx[2]{%
     \subproblem@yx{#1}{#2}%
     \ifmmode\subproblem@space@math\else\subproblem@space\fi}
-\let\sp\subproblem
-\let\spx\subproblemx
 %    \end{macrocode}
-% \end{macro}
 % \end{macro}
 %
 % \subsubsection{Numbering}

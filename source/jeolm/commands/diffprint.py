@@ -6,7 +6,7 @@ import difflib
 
 import jeolm.yaml
 
-from jeolm.records import MetaRecords
+from jeolm.driver import DriverRecords
 
 import logging
 logger = logging.getLogger(__name__)
@@ -26,15 +26,15 @@ def _dump(data, Dumper=_Dumper, default_flow_style=False, **kwargs):
 
 @contextmanager
 def log_metadata_diff(metadata, logger=logger):
-    old_metarecords = MetaRecords()
+    old_metarecords = DriverRecords()
     metadata.feed_metadata(old_metarecords)
 
     yield
 
-    new_metarecords = MetaRecords()
+    new_metarecords = DriverRecords()
     metadata.feed_metadata(new_metarecords)
 
-    comparing_iterator = MetaRecords.compare_items(
+    comparing_iterator = DriverRecords.compare_items(
         old_metarecords, new_metarecords, original=True )
     for inpath, old_record, new_record in comparing_iterator:
         old_record = old_record.copy() if old_record is not None else None

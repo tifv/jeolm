@@ -1,104 +1,256 @@
 # Documentation {{{1
 r"""
-Keys recognized in metarecords:
-  $target$able (boolean)
-    - if false then raise error on delegate and outrecord stages
-    - propagates to children, assumed true by default
-  $build$able (boolean)
-    - if false then raise error on outrecord stage
-    - propagates to children, assumed true by default
-  $source$able (boolean)
-    - if false then raise error on auto metabody stage
-      (hence, not checked if a suitable $matter key is found)
-    - false by default
-    - set to true by metadata grabber on .tex and .dtx files
-  $source$type$tex, $source$type$dtx (boolean)
-    - set to true by metadata grabber on respectively .tex and .dtx
-      files
-  $source$figures (ordered dict)
-    { alias_name : accessed_path for all accessed paths }
-    - set by metadata grabber
-  $figure$able (boolean)
-    - if false then raise error on figure_record stage
-    - assumed false by default
-    - set to true by metadata grabber on .asy, .svg, .pdf, .eps, .png
-      and .jpg files
-  $figure$type$* (boolean)
-    - set to true by metadata grabber on respectively .asy, .svg, .pdf,
-      .eps, .png and .jpg files
-  $figure$asy$accessed (dict)
-    - set by metadata grabber
-  $package$able (boolean)
-    - if false then raise error on package_record stage
-    - assumed false by default
-    - set to true by metadata grabber on .dtx and .sty files
-  $package$type$dtx, $package$type$sty (boolean)
-    - set to true by metadata grabber on respectively .dtx and .sty
-      files
-  $package$name
-    - in build process, the package is symlinked with that very name
-      (with .sty extension added)
-    - extracted by metadata grabber from \ProvidesPackage command in
-      .sty or .dtx file
-    - in absence of \ProvidesPackage, borrowed by metadata grabber
-      from the filename
+Record keys recognized by the driver:
+* $delegate$able:
+    - boolean;
+    - indicates that the target may be used as document target;
+    - if false then raise error on delegate and document_recipe stages;
+    - affects $delegate$child.
+    * default:
+        - inherited from parent;
+        - otherwise true;
+* $content$able:
+    - boolean;
+    - if false then raise error on content stage;
+    - affects $content$child.
+    * default:
+        - inherited from parent;
+        - otherwise true;
 
-  $delegate[*]
-    Values:
-    - <delegator (string)>
-    - delegate: <delegator (string)>
-    Dictionary values may be extended with 'condition' key.
+* $source$able:
+    - boolean;
+    - indicates that the path corresponds to a source file;
+    - affects $delegate$auto and $content$auto behavior;
+    - if not true then raise error on source stage.
+    * set to true by metadata grabber on .tex and .dtx files.
+* $source$type$tex, $source$type$dtx:
+    - boolean;
+    * set to true by metadata grabber on respectively
+      .tex and .dtx files.
+* $source$figures:
+    - a list of items:
+        - [<figure_ref (string)>, <figure_option_string>]
+    * set by metadata grabber on .tex files.
 
-  $build$outname[*]
-    Provides stem for outname. Key flags will be subtracted from the
-    target keys when outname is computed.
+* $figure$able:
+    - boolean;
+    - indicates that the path corresponds to a figure file;
+    - if not true then raise error on figure_recipe stage.
+    * set to true by metadata grabber on
+      .asy, .svg, .pdf, .eps, .png and .jpg files
+* $figure$type$asy, $figure$type$svg, $figure$type$pdf,
+  $figure$type$eps, $figure$type$png, $figure$type$jpg:
+    - boolean;
+    * set to true by metadata grabber on respectively
+      .asy, .svg, .pdf, .eps, .png and .jpg files.
+* $figure$asy$accessed
+    - a dictionary:
+        <alias_name (string)> : <accessed_path (string)>
+    * set by metadata grabber on .asy files.
 
-  $build$matter[*]
-    Values are same as of $matter
-  $build$style[*]
-    Values are same as of $style
+* $package$able:
+    - boolean;
+    - indicates that the path corresponds to a package file;
+    - if not true then raise error on package_recipe stage.
+    * set to true by metadata grabber on .dtx and .sty files.
+* $package$type$dtx, $package$type$sty:
+    - boolean;
+    * set to true by metadata grabber on respectively
+      .dtx and .sty files
+* $package$dtx$name, $package$sty$name
+    - string;
+    - indicates the package name; this is the filename the package is
+      supposed to be symlinked with during the build process.
+    * set by metadata grabber on .sty or .dtx files.
 
-  $matter[*]
-    Values expected from metadata:
-    - verbatim: <string>
-    - <delegator (string)>
-    - delegate: <delegator (string)>
-    - preamble verbatim: <string>
-      provide: <key (string)>
-    - preamble package: <package name>
-    - preamble package: <package name>
-      options: [<package options>]
-    - preamble package: <package name>
-      options:
-        required: [<package options>]
-        suggested: [<package options>]
-    Non-string values may be extended with conditions.
-  $style[*]
-    Values expected from metadata:
-    - verbatim: <string>
-    - verbatim: <string>
-      provide: <key (string)>
-    - <delegator (string)>
-    - delegate: <delegator (string)>
-    - document class: <LaTeX class name>
-      options: [<LaTeX class options>]
-    - package: <package name>
-    - package: <package name>
-      options: [<package options>]
-    - package: <package name>
-      options:
-        required: [<package options>]
-        suggested: [<package options>]
-    - resize font: [<size>, <skip>]
-        # best used with anyfontsize package
-        # only affects font size at the beginning of document
-        # (like, any size command including \normalsize will undo this)
-    Non-string values may be extended with conditions.
+* $delegate[*]
+    - either boolean false (implying no delegation),
+    - or a list of items:
+        - <delegator (string)>
+        - delegate:
+            - a list of items, same as in $delegate;
+            - nested delegate items are not allowed.
+        - children: null
+          exclude: [<name (string)>, …] (optional)
+        - error: <string>
+            * raises error
+        * dictionary items may also contain 'condition' key.
+* $delegate$child:
+    - boolean or condition;
+    - if false then disable including this name in the list of children
+      of its parent.
+    * default:
+        - false if $delegate$able is false;
+        - otherwise true.
+        * (Not inheritable.)
+* key $delegate$auto:
+    - boolean or condition;
+    - if true then imply
+        - (unless applicable $delegate key is found)
+        - if $source$able is not true
+            $delegate: [{children: {}}]
+        - otherwise nothing.
+    * default is:
+        - inherited from parent;
+        - otherwise false.
 
-  $date
+* $document$outname[*]:
+    - string;
+    - provides stem for outname;
+    * key flags will be subtracted from the target flags when outname
+      is computed;
+    * outname may contain its own flags, which will be placed before
+      remaining target flags (after subtraction).
+* $document$flags[*]
+    - a list of additional flags for the target
+* $document$content[*]
+    - a list of items, same as $content;
+    - will be used as initial content for document.
+* $document$style[*]
+    - a list of items, same as $style;
+    - will be used as initial style for document.
 
-  $path:
-    Used internally.
+* $content[*]
+    - a list of items:
+        - <delegator (string)>
+        - content:
+            * a list of items, same as in $content;
+            * nested content items are prohibited.
+          header:
+            * a dict or false, optional.
+            date: <Date>
+              * may be null to remove date from the header;
+              * default is the minimal date of the items in content.
+            caption: <string>
+              * only affects toc;
+              * may be null to disable toc line;
+              * default is the captions of the content items,
+                joined by "; ".
+            authors: [<author_item>, …]
+              * may be null to remove authors from the header;
+              * items are same as in $authors;
+              * abbreviation strategy is applied;
+              * default is the union of authors of the items
+                in content.
+            * if header is present, content items are granted
+              'contained' flag that blocks them from generating headers
+              of their own by default.
+            * header may also be false, which still grants 'contained'
+              flag to content items, but generates no header.
+          newpage:
+            * boolean, optional;
+            * if true, generates \clearpage around content;
+            * if true and content is empty, empty page is generated;
+            * default is true.
+        - children: null
+          exclude: [<name (string)>, …]
+            * exclude is optional, deafult is [].
+          order: 'record' or 'date'
+            * order is optional, defaults to $content$order.
+        - verbatim: <string>
+        - source: <delegator (string)>
+            * if the delegator appears to be not $source$able, this
+              will cause an error
+        - figure: <delegator (string)>
+            * if the delegator appears to be not $figure$able, this
+              will cause an error
+          options: [<option (string)>, …] (optional)
+            * \jeolmfigure options, like width etc.
+        - error: <string>
+            * raises error
+        - style:
+            * a list of items, same as in $style;
+              * targets, 'style', 'compiler' and 'package'+'source'
+                items are not allowed;
+            * appended to the end of the preamble
+        * dictionary items may also contain 'condition' key.
+* $content$order
+    - either 'record' or 'date'
+    - defines default order of children items in $content.
+    * default:
+        - inherited from parent;
+        - otherwise 'record'.
+* $content$child:
+    - boolean or condition;
+    - if false then disable including this name in the list of children
+      of its parent.
+    * default:
+        - false if $content$able is false;
+        - otherwise true.
+        * (Not inheritable.)
+* $content$auto
+    - boolean or condition;
+    - if true then imply
+        - (unless applicable $content key is found)
+        - if $source$able is not true
+            $content: [{children: {}}]
+        - if $source$able is true and target has no 'contained' flag
+            $content: [{header: {}, content: [.]}]
+        - if $source$able is true and target has 'contained' flag
+            $content: [{source: .}]
+    * default is:
+        - inherited from parent;
+        - otherwise false.
+
+* $style[*]:
+    - a list of items:
+        - <delegator (string)>
+        - style:
+            * a list of items, same as in $style;
+            * nested style items are prohibited.
+        - compiler: <string>
+        - verbatim: <string>
+        - verbatim: <string> or null
+          provide: <key (string)>
+        - package: <package_name>
+          options:
+            required: [<package_option>, …]
+            suggested: [<package_option>, …]
+            prohibited: [<package_option>, …]
+            * options is optional
+            * options may also be just a list, in which case
+              required and suggested will default to it
+            * otherwise required defaults to [];
+            * suggested defaults to required;
+            * prohibited defaults to [];
+            * the ultimate set of options, after all package items are
+              recollected, is union(suggested) - union(prohibited).
+              If it is not a subset of union(required), an error is raised.
+        - package: <package_name>
+          prohibited: true
+          * such package must not be included.
+        - package-source: <delegator (string)>
+          * if delegator appears to be not $package$able, this
+            will cause an error.
+        - error: <string>
+            * raises error
+        * dictionary items may also contain 'condition' key.
+- $style$auto
+    - boolean or condition;
+    - if true then imply
+        - (unless applicable $style key is found)
+        - if $package$able is not true
+            $content: [{style: ..}]
+        - if $package$able is true
+            $content: [{source_package: .}]
+    * default is:
+        - inherited from parent;
+        - otherwise true.
+
+* $date:
+    - datetime.date or jeolm.utils.Date instance
+* $authors:
+    - a list of items:
+        - <name (string)>
+        - name: <name (string)>
+        - name: <name (string)>
+          abbr: <abbreviation (string)>
+    * unless abbr is specified, abbreviation strategy will be applied
+* $caption:
+    - string.
+
+* $path:
+    * used internally.
 
 """
 
@@ -108,38 +260,37 @@ from functools import partial
 from contextlib import suppress
 from collections import OrderedDict
 from string import Template
-import datetime
 import re
-
 from pathlib import PurePosixPath
-from unidecode import unidecode
 
-from jeolm.record_path import RecordPath
-from jeolm.flags import FlagContainer
-from jeolm.target import Target
-from jeolm.records import MetaRecords
-
-from jeolm.records import RecordNotFoundError
+from jeolm.records import RecordPath, RecordNotFoundError
+from jeolm.target import Target, OUTNAME_PATTERN
 from jeolm.metadata import NAME_PATTERN, FIGURE_REF_PATTERN
 
-from jeolm.utils import check_and_set, ClashingValueError
+from jeolm.date import Date, Never
+from jeolm.utils.check_and_set import check_and_set, ClashingValueError
+from jeolm.utils.unique import unique
 
-from . import ( DriverError, folding_driver_errors, checking_target_recursion,
+from . import ( DriverRecords, DocumentTemplate,
+    DriverError, folding_driver_errors, checking_target_recursion,
     process_target_aspect, process_target_key,
     processing_target, processing_package_path, processing_figure_path,
-    ensure_type_items, )
+    ensure_type_items,
+)
 
 import logging
 logger = logging.getLogger(__name__)
 
 
-class RegularDriver(MetaRecords): # {{{1
+class RegularDriver(DriverRecords): # {{{1
 
     def __init__(self):
         super().__init__()
         self._cache.update(
-            outrecords=dict(), package_records=dict(), figure_records=dict(),
+            document_recipes=dict(),
+            package_recipes=dict(), figure_recipes=dict(),
             delegated_targets=dict() )
+
 
     ##########
     # Interface methods and attributes {{{2
@@ -147,58 +298,42 @@ class RegularDriver(MetaRecords): # {{{1
     class NoDelegators(Exception):
         pass
 
-    class StopDelegation(NoDelegators):
-        pass
-
     @folding_driver_errors
-    def list_delegated_targets(self, *targets, recursively=True):
-        if not recursively and len(targets) != 1:
-            raise RuntimeError
+    def list_delegated_targets(self, *targets):
         for target in targets:
             try:
-                delegators = \
-                    self._cache['delegated_targets'][target, recursively]
+                delegated_targets = self._cache['delegated_targets'][target]
             except KeyError:
-                if not recursively:
-                    try:
-                        delegators = list(self._generate_delegators(target))
-                    except self.NoDelegators:
-                        delegators = None
-                else:
-                    delegators = list(self._generate_delegated_targets(target))
-                self._cache['delegated_targets'][target, recursively] = \
-                    delegators
-            if delegators is None:
-                raise self.NoDelegators
-            else:
-                yield from delegators
+                delegated_targets = list(self._generate_targets(target))
+                self._cache['delegated_targets'][target] = delegated_targets
+            yield from delegated_targets
 
     @folding_driver_errors
-    def list_metapaths(self):
+    def list_targetable_paths(self):
         # Caching is not necessary since no use-case involves calling this
         # method several times.
-        yield from self._generate_metapaths()
+        yield from self._generate_targetable_paths()
 
     @folding_driver_errors
-    def metapath_is_targetable(self, metapath):
-        return self.get(metapath)['$target$able']
+    def path_is_targetable(self, record_path):
+        return self.get(record_path)['$delegate$able']
 
     @folding_driver_errors
-    def list_targetable_children(self, metapath):
-        for name in self.get(metapath):
+    def list_targetable_children(self, record_path):
+        for name in self.get(record_path):
             if name.startswith('$'):
                 continue
             assert '/' not in name
-            submetapath = metapath / name
-            if self.get(submetapath)['$target$able']:
-                yield submetapath
+            child_path = record_path / name
+            if self.get(child_path)['$delegate$able']:
+                yield child_path
 
     @folding_driver_errors
-    def produce_outrecord(self, target):
+    def produce_document_recipe(self, target):
         """
-        Return outrecord.
+        Return document recipe.
 
-        Each outrecord must contain the following fields:
+        Recipe must contain the following fields:
         'outname'
             string
         'type'
@@ -206,172 +341,215 @@ class RegularDriver(MetaRecords): # {{{1
         'compiler'
             one of 'latex', 'pdflatex', 'xelatex', 'lualatex'
 
-        'regular' outrecord must also contain fields:
-        'sources'
-            {alias_name : inpath for each inpath}
-            where alias_name is a filename with '.tex' extension, and inpath
-            also has '.tex' extension.
-        'figures'
-            {alias_stem : (figure_path, figure_type) for each figure}
+        'regular' recipe must also contain field:
         'document'
-            LaTeX document as a string
-        'package_paths'
-            {alias_name : package_path for each local package}
-            (for latexdoc, this is the corresponding package)
-
+            LaTeX document as a driver.DocumentTemplate
+            keys should include
+            ('source', source_path) for each source,
+            ('package', package_path) for each package,
+            ('figure', figure_path, figure_index)
+                for each figure.
+        'asy_latex_compiler'
+            one of 'latex', 'pdflatex', 'xelatex', 'lualatex'
+        'asy_latex_preamble'
+            a string
         """
+        # XXX will also provide asy_preamble
+        # (a version of preamble for asymptote figures)
         with suppress(KeyError):
-            return self._cache['outrecords'][target]
-        outrecord = self._cache['outrecords'][target] = \
-            self._generate_outrecord(target)
-        keys = outrecord.keys()
-        if not keys >= {'outname', 'type', 'compiler'}:
-            raise RuntimeError(keys)
-        if outrecord['type'] not in {'regular'}:
+            return self._cache['document_recipes'][target]
+        document_recipe = self._cache['document_recipes'][target] = \
+            self._generate_document_recipe(target)
+        if not document_recipe.keys() >= {'outname', 'type', 'compiler'}:
             raise RuntimeError
-        if not keys >= {'sources', 'figures', 'document'}:
+        if '/' in document_recipe['outname']:
             raise RuntimeError
-        for figure_path, figure_type in outrecord['figures'].values():
-            if not isinstance(figure_path, RecordPath):
-                raise RuntimeError(type(figure_path))
-            if figure_type not in { None,
-                    'asy', 'svg', 'eps', 'pdf', 'png', 'jpg'}:
-                raise RuntimeError(figure_type)
-        if 'package_paths' not in keys:
+        if document_recipe['type'] not in {'regular'}:
             raise RuntimeError
-        if outrecord['compiler'] not in {
+        if document_recipe['compiler'] not in {
                 'latex', 'pdflatex', 'xelatex', 'lualatex' }:
             raise RuntimeError
-        return outrecord
+        if not document_recipe.keys() >= {'document'}:
+            raise RuntimeError
+        for key in document_recipe['document'].keys():
+            if not isinstance(key, tuple):
+                raise RuntimeError
+            key_type, *key_value = key
+            if key_type == 'source':
+                source_path, = key_value
+                if not isinstance(source_path, PurePosixPath):
+                    raise RuntimeError
+            elif key_type in {'figure', 'figure-size'}:
+                figure_path, figure_index, = key_value
+                if not isinstance(figure_path, RecordPath):
+                    raise RuntimeError
+                if not isinstance(figure_index, int):
+                    raise RuntimeError
+            elif key_type == 'package':
+                package_path, = key_value
+                if not isinstance(package_path, RecordPath):
+                    raise RuntimeError
+            else:
+                raise RuntimeError
+        return document_recipe
 
     @folding_driver_errors
-    def produce_package_records(self, package_path):
+    def produce_package_recipe(self, package_path):
         """
-        Return {package_type : package_record} dictionary.
+        Return package recipe.
 
-        Each package_record must contain the following fields:
-        'type'
+        Recipe must contain the following fields:
+        'source_type'
             one of 'dtx', 'sty'
         'source'
-            inpath
+            source_path
         'name'
             package name, as in ProvidesPackage.
         """
         assert isinstance(package_path, RecordPath), type(package_path)
         with suppress(KeyError):
-            return self._cache['package_records'][package_path]
-        package_records = self._cache['package_records'][package_path] = \
-            dict(self._generate_package_records(package_path))
+            return self._cache['package_recipes'][package_path]
+        package_recipe = self._cache['package_recipes'][package_path] = \
+            self._generate_package_recipe(package_path)
         # QA
-        if not package_records:
-            raise RuntimeError(package_path)
-        for package_type, package_record in package_records.items():
-            keys = package_record.keys()
-            if not keys >= {'type', 'source', 'name'}:
-                raise RuntimeError(keys)
-            if package_type not in {'dtx', 'sty'}:
-                raise RuntimeError(package_type)
-            if package_record['type'] != package_type:
-                raise RuntimeError
-        return package_records
+        if not package_recipe.keys() >= {'source_type', 'source', 'name'}:
+            raise RuntimeError
+        if package_recipe['source_type'] not in {'dtx', 'sty'}:
+            raise RuntimeError
+        if not isinstance(package_recipe['source'], PurePosixPath):
+            raise RuntimeError
+        if not isinstance(package_recipe['name'], str):
+            raise RuntimeError
+        return package_recipe
 
     @folding_driver_errors
-    def produce_figure_records(self, figure_path):
+    def produce_figure_recipe( self, figure_path,
+        figure_formats=frozenset(('pdf', 'png', 'jpg'))
+    ):
         """
-        Return {figure_type : figure_record} dictionary.
+        Return figure recipe.
 
-        Each figure_record must contain the following fields:
-        'type':
+        Recipe must contain the following fields:
+        'format'
+            one of 'pdf', 'eps', 'png', 'jpg'
+        'source_type'
             one of 'asy', 'svg', 'pdf', 'eps', 'png', 'jpg'
         'source'
-            inpath
+            source_path
 
-        In case of Asymptote file ('asy' type), figure_record must also
-        contain:
+        In case of Asymptote file ('asy' source type), figure_record must
+        also contain:
         'other_sources'
-            {accessed_name : inpath for each accessed inpath}
+            {accessed_name : source_path for each accessed source_path}
             where accessed_name is a filename with '.asy' extension,
-            and inpath has '.asy' extension
+            and source_path has '.asy' extension
         """
         assert isinstance(figure_path, RecordPath), type(figure_path)
+        if not isinstance(figure_formats, frozenset):
+            figure_formats = frozenset(figure_formats)
         with suppress(KeyError):
-            return self._cache['figure_records'][figure_path]
-        figure_records = self._cache['figure_records'][figure_path] = \
-            dict(self._generate_figure_records(figure_path))
+            return self._cache['figure_recipes'][figure_path, figure_formats]
+        figure_recipe = \
+            self._cache['figure_recipes'][figure_path, figure_formats] = \
+            self._generate_figure_recipe(figure_path, figure_formats)
         # QA
-        if not figure_records:
-            raise RuntimeError(figure_path)
-        for figure_type, figure_record in figure_records.items():
-            keys = figure_record.keys()
-            if not keys >= {'type', 'source'}:
-                raise RuntimeError(keys)
-            if figure_type not in {'asy', 'svg', 'pdf', 'eps', 'png', 'jpg'}:
-                raise RuntimeError(figure_type)
-            if figure_record['type'] != figure_type:
+        if not figure_recipe.keys() >= {'format', 'source_type', 'source'}:
+            raise RuntimeError
+        if figure_recipe['format'] not in {'pdf', 'eps', 'png', 'jpg'}:
+            raise RuntimeError
+        if figure_recipe['format'] not in figure_formats:
+            raise RuntimeError
+        if figure_recipe['source_type'] not in \
+                {'asy', 'svg', 'pdf', 'eps', 'png', 'jpg'}:
+            raise RuntimeError
+        if figure_recipe['source_type'] == 'asy':
+            if 'other_sources' not in figure_recipe:
                 raise RuntimeError
-            if figure_record['type'] == 'asy':
-                if 'other_sources' not in keys:
+            other_sources = figure_recipe['other_sources']
+            if not isinstance(other_sources, dict):
+                raise RuntimeError
+            for accessed_name, accessed_path in other_sources.items():
+                if not isinstance(accessed_name, str):
                     raise RuntimeError
-                if not isinstance(figure_record['other_sources'], dict):
+                if not isinstance(accessed_path, RecordPath):
                     raise RuntimeError
-        return figure_records
+        return figure_recipe
 
-    @folding_driver_errors
-    def list_inpaths(self, *targets, inpath_type='tex'):
-        if inpath_type not in {'tex', 'asy'}:
-            raise RuntimeError(inpath_type)
-        for target in targets:
-            outrecord = self.produce_outrecord(target)
-            if outrecord['type'] not in {'regular'}:
-                raise DriverError(
-                    "Can only list inpaths for regular documents: {target}"
-                    .format(target=target) )
-            if inpath_type == 'tex':
-                for inpath in outrecord['sources'].values():
-                    if inpath.suffix == '.tex':
-                        yield inpath
-            elif inpath_type == 'asy':
-                yield from self._list_inpaths_asy(target, outrecord)
+#    # XXX this belongs to node_factory
+#    # Driver has not much to do with inpaths
+#    @folding_driver_errors
+#    def list_inpaths(self, *targets, inpath_type='tex'):
+#        if inpath_type not in {'tex', 'asy'}:
+#            raise RuntimeError(inpath_type)
+#        for target in targets:
+#            outrecord = self.produce_outrecord(target)
+#            if outrecord['type'] not in {'regular'}:
+#                raise DriverError(
+#                    "Can only list inpaths for regular documents: {target}"
+#                    .format(target=target) )
+#            if inpath_type == 'tex':
+#                for inpath in outrecord['sources'].values():
+#                    if inpath.suffix == '.tex':
+#                        yield inpath
+#            elif inpath_type == 'asy':
+#                yield from self._list_inpaths_asy(target, outrecord)
+#
+#    # XXX this belongs to node_factory
+#    def _list_inpaths_asy(self, target, outrecord):
+#        for figure_path, figure_type in outrecord['figures'].values():
+#            if figure_type != 'asy':
+#                continue
+#            for figure_record in self.produce_figure_records(figure_path):
+#                if figure_record['type'] != 'asy':
+#                    continue
+#                yield figure_record['source']
+#                break
+#            else:
+#                raise DriverError(
+#                    "No 'asy' type figure found for {path} in {target}"
+#                    .format(path=figure_path, target=target) )
 
-    def _list_inpaths_asy(self, target, outrecord):
-        for figure_path, figure_type in outrecord['figures'].values():
-            if figure_type != 'asy':
-                continue
-            for figure_record in self.produce_figure_records(figure_path):
-                if figure_record['type'] != 'asy':
-                    continue
-                yield figure_record['source']
-                break
-            else:
-                raise DriverError(
-                    "No 'asy' type figure found for {path} in {target}"
-                    .format(path=figure_path, target=target) )
 
     ##########
     # Record extension {{{2
 
     def _derive_record(self, parent_record, child_record, path):
         super()._derive_record(parent_record, child_record, path)
-        child_record.setdefault('$target$able',
-            parent_record.get('$target$able', True) )
-        child_record.setdefault('$build$able',
-            parent_record.get('$build$able', True) )
 
-    def _generate_metapaths(self, path=None):
-        """Yield metapaths."""
+        child_record.setdefault( '$delegate$able',
+            parent_record.get('$delegate$able', True) )
+        child_record.setdefault( '$delegate$child',
+            child_record.get('$delegate$able') )
+        child_record.setdefault( '$delegate$auto',
+            parent_record.get('$delegate$auto', False) )
+
+        child_record.setdefault( '$content$able',
+            parent_record.get('$content$able', True) )
+        child_record.setdefault( '$content$child',
+            child_record.get('$content$able') )
+        child_record.setdefault( '$content$auto',
+            parent_record.get('$content$auto', False) )
+        child_record.setdefault( '$content$order',
+            parent_record.get('$content$order', 'record') )
+
+        child_record.setdefault('$style$auto',
+            parent_record.get('$style$auto', True) )
+
+    def _generate_targetable_paths(self, path=None):
+        """Yield targetable paths."""
         if path is None:
             path = RecordPath()
         record = self.get(path)
-        if record.get('$target$able', True):
+        if record.get('$delegate$able', True):
             yield path
         for key in record:
             if key.startswith('$'):
                 continue
             assert '/' not in key
-            yield from self._generate_metapaths(path=path/key)
+            yield from self._generate_targetable_paths(path=path/key)
 
     dropped_keys = dict()
-    dropped_keys.update(MetaRecords.dropped_keys)
+    dropped_keys.update(DriverRecords.dropped_keys)
     dropped_keys.update({
         '$manner' : '$build$matter',
         '$rigid'  : '$build$matter',
@@ -390,850 +568,1246 @@ class RegularDriver(MetaRecords): # {{{1
         '$target$delegate' : '$delegate',
         '$targetable' : '$target$able',
         '$delegate$stop' : '$delegate',
+        # XXX
     })
+
 
     ##########
     # Record-level functions (delegate) {{{2
 
     @checking_target_recursion()
+    @ensure_type_items(Target)
     @processing_target
-    def _generate_delegated_targets( self, target, metarecord=None,
+    def _generate_targets( self, target, record=None,
         *, _seen_targets=None
     ):
-        if metarecord is None:
-            metarecord = self.get(target.path)
-
-        try:
-            delegators = list(self._generate_delegators(target, metarecord))
-        except self.NoDelegators:
-            yield target
-        else:
-            for delegator in delegators:
-                yield from self._generate_delegated_targets(
-                    delegator, _seen_targets=_seen_targets )
-
-    @processing_target
-    def _generate_delegators(self, target, metarecord=None):
-        """Yield targets."""
-        if metarecord is None:
-            metarecord = self.get(target.path)
-        if not metarecord.get('$target$able', True):
-            raise DriverError( "Target {target} is not targetable"
-                .format(target=target) )
-
-        delegate_key, delegators = self.select_flagged_item(
-            metarecord, '$delegate', target.flags )
+        if record is None:
+            record = self.get(target.path)
+        if not record.get('$delegate$able', True):
+            raise DriverError( f"Target {target} is not targetable" )
+        delegate_key, delegate = self.select_flagged_item(
+            record, '$delegate', target.flags )
         if delegate_key is None:
-            raise self.NoDelegators
+            yield from self._generate_targets_auto( target, record,
+                _seen_targets=_seen_targets )
+            return
+        yield from self._generate_targets_delegate( target, record,
+            delegate_key=delegate_key, delegate=delegate,
+            _seen_targets=_seen_targets )
+
+    @ensure_type_items(Target)
+    @processing_target
+    def _generate_targets_delegate( self, target, record,
+        *, delegate_key, delegate, _recursed=False,
+        _seen_targets,
+    ):
         with process_target_key(target, delegate_key):
-            if not isinstance(delegators, list):
-                raise DriverError(type(delegators))
-            derive_target = partial( target.derive_from_string,
-                origin='delegate {target}, key {key}'
-                    .format(target=target, key=delegate_key)
-            )
-            for item in delegators:
-                if isinstance(item, str):
-                    yield derive_target(item)
-                    continue
-                if not isinstance(item, dict):
-                    raise DriverError(type(item))
-                item = item.copy()
-                condition = item.pop('condition', True)
-                if not target.flags.check_condition(condition):
-                    continue
-                if item.keys() == {'delegate'}:
-                    yield derive_target(item['delegate'])
-                else:
-                    raise DriverError(item)
+            if not isinstance(delegate, list):
+                raise DriverError(
+                     "$delegate must be a list, "
+                    f"not {type(delegate)}" )
+            for item in delegate:
+                yield from self._generate_targets_delegate_item(
+                    target, record,
+                    delegate_key=delegate_key, delegate_item=item,
+                    _recursed=_recursed,
+                    _seen_targets=_seen_targets )
+
+    @ensure_type_items(Target)
+    def _generate_targets_delegate_item( self, target, record,
+        *, delegate_key, delegate_item, _recursed,
+        _seen_targets,
+    ):
+        if isinstance(delegate_item, str):
+            yield from self._generate_targets(
+                target.derive_from_string( delegate_item,
+                    origin=f'delegate {target}, key {delegate_key}' ),
+                _seen_targets=_seen_targets )
+            return
+        if not isinstance(delegate_item, dict):
+            raise DriverError( "Element of $delegate must be a dictionary, "
+               f"not {type(delegate_item)}" )
+        delegate_item = delegate_item.copy()
+        condition = delegate_item.pop('condition', True)
+        if not target.flags.check_condition(condition):
+            return
+        if 'delegate' in delegate_item.keys():
+            if delegate_item.keys() != {'delegate'}:
+                raise DriverError(delegate_item.keys())
+            if _recursed:
+                raise DriverError("Nested 'delegate' items are not allowed.")
+            yield from self._generate_targets_delegate( target, record,
+                delegate_key=delegate_key+"/delegate",
+                delegate=delegate_item,
+                _recursed=True,
+                _seen_targets=_seen_targets )
+        elif 'children' in delegate_item.keys():
+            yield from self._generate_targets_delegate_children(
+                target, record, delegate_item=delegate_item,
+                _seen_targets=_seen_targets )
+        elif 'error' in delegate_item.keys():
+            if delegate_item.keys() == {'error'}:
+                raise DriverError(delegate_item['error'])
+            else:
+                raise DriverError(delegate_item.keys())
+        else:
+            raise DriverError(delegate_item)
+
+    @ensure_type_items(Target)
+    def _generate_targets_delegate_children( self, target, record,
+        *, delegate_item,
+        _seen_targets,
+    ):
+        if not delegate_item.keys() <= {'children', 'exclude'}:
+            raise DriverError(delegate_item.keys())
+        if delegate_item['children'] is not None:
+            raise DriverError( "In 'children' item, "
+                "the value of 'children' must be None, "
+               f"not {type(delegate_item['children'])}" )
+        exclude = delegate_item.get('exclude', ())
+        if not isinstance(delegate_item['exclude'], (tuple, list)):
+            raise DriverError( "In 'children' item, "
+                "the value of 'exclude' must be a list, "
+               f"not {type(delegate_item['exclude'])}" )
+        for child in exclude:
+            if not isinstance(child, str):
+                raise DriverError(type(child))
+            if self._child_pattern.fullmatch(child) is None:
+                raise DriverError(repr(child))
+        yield from self._generate_targets_children( target, record,
+            exclude=exclude,
+            _seen_targets=_seen_targets )
+
+    _child_pattern = re.compile(NAME_PATTERN)
+
+    @ensure_type_items(Target)
+    @processing_target
+    def _generate_targets_children( self, target, record,
+        *, exclude=frozenset(),
+        _seen_targets,
+    ):
+        exclude = frozenset(exclude)
+        for key in record:
+            if key.startswith('$'):
+                continue
+            if key in exclude:
+                continue
+            child_target = target.path_derive(key)
+            child_record = self.get(child_target.path)
+            if not child_record.get('$delegate$child'):
+                continue
+            yield from self._generate_targets( child_target, child_record,
+                _seen_targets=_seen_targets )
+
+    @ensure_type_items(Target)
+    @processing_target
+    def _generate_targets_auto( self, target, record,
+        *, _seen_targets,
+    ):
+        if not record.get('$delegate$auto', False):
+            yield target
+            return
+        if record.get('$source$able', False):
+            yield from self._generate_targets_auto_source( target, record,
+                _seen_targets=_seen_targets )
+            return
+        yield from self._generate_targets_children( target, record,
+            _seen_targets=_seen_targets )
+
+    @ensure_type_items(Target)
+    @processing_target
+    def _generate_targets_auto_source( self, target, record,
+        *, _seen_targets,
+    ):
+        yield target
+        return
 
 
     ##########
-    # Metabody and metapreamble items {{{2
+    # Document body and preamble items {{{2
 
-    class MetabodyItem:
+    class BodyItem:
         __slots__ = []
 
-    class VerbatimBodyItem(MetabodyItem):
+    class VerbatimBodyItem(BodyItem):
         """These items represent a piece of LaTeX code."""
         __slots__ = ['value']
 
         def __init__(self, value):
-            self.value = str(value)
             super().__init__()
+            self.value = str(value)
 
-    class ControlBodyItem(MetabodyItem):
-        """These items has no representation in document body."""
-        __slots__ = []
-
-    class SourceBodyItem(MetabodyItem):
+    class SourceBodyItem(BodyItem):
         """These items represent inclusion of a source file."""
-        __slots__ = ['metapath', 'alias', 'figure_map']
+        __slots__ = ['record_path']
         include_command = r'\input'
         file_suffix = '.tex'
 
-        def __init__(self, metapath):
-            if not isinstance(metapath, RecordPath):
-                raise RuntimeError(metapath)
-            self.metapath = metapath
+        def __init__(self, record_path):
             super().__init__()
+            if not isinstance(record_path, RecordPath):
+                raise RuntimeError(type(record_path))
+            self.record_path = record_path
 
         @property
-        def inpath(self):
-            return self.metapath.as_inpath(suffix=self.file_suffix)
-
-    class ClearPageBodyItem(VerbatimBodyItem):
-        __slots__ = []
-        _value = r'\clearpage' '\n'
-
-        def __init__(self):
-            super().__init__(value=self._value)
-
-    class EmptyPageBodyItem(VerbatimBodyItem):
-        __slots__ = []
-        _value = r'\strut\clearpage' '\n'
-
-        def __init__(self):
-            super().__init__(value=self._value)
+        def source_path(self):
+            return self.record_path.as_source_path(suffix=self.file_suffix)
 
     class DocSourceBodyItem(SourceBodyItem):
         __slots__ = []
         include_command = r'\DocInput'
         file_suffix = '.dtx'
 
-    class MetapreambleItem:
+    class FigureDefBodyItem(BodyItem):
+        __slots__ = ['figure_ref', 'figure_path']
+
+        def __init__(self, figure_ref, figure_path):
+            if not isinstance(figure_ref, str):
+                raise DriverError(type(figure_ref))
+            self.figure_ref = figure_ref
+            if not isinstance(figure_path, RecordPath):
+                raise RuntimeError(type(figure_path))
+            self.figure_path = figure_path
+
+    class NewPageBodyItem(VerbatimBodyItem):
+        __slots__ = []
+        _value = r'\clearpage' '\n'
+
+        def __init__(self):
+            super().__init__(value=self._value)
+
+    class PreambleItem:
         __slots__ = []
 
         def __init__(self):
             super().__init__()
 
-    class VerbatimPreambleItem(MetapreambleItem):
+    class VerbatimPreambleItem(PreambleItem):
         __slots__ = ['value']
 
         def __init__(self, value):
-            if value is None:
-                self.value = None
-            else:
-                self.value = str(value)
             super().__init__()
+            if value is not None and not isinstance(value, str):
+                raise DriverError(type(value))
+            self.value = value
 
-    class CompilerItem(MetapreambleItem):
+    class CompilerItem(PreambleItem):
         __slots__ = ['compiler']
 
         def __init__(self, compiler):
+            super().__init__()
             self.compiler = str(compiler)
+
+    class LocalPackagePreambleItem(PreambleItem):
+        __slots__ = ['package_path']
+
+        def __init__(self, package_path):
             super().__init__()
-
-    class DocumentClassItem(MetapreambleItem):
-        __slots__ = ['document_class', 'options']
-
-        def __init__(self, document_class, options=()):
-            self.document_class = str(document_class)
-            if isinstance(options, str):
-                raise DriverError(
-                    "Class options must not be a single string, "
-                    "but a sequence." )
-            self.options = [str(item) for item in options]
-            super().__init__()
-
-    class LocalPackagePreambleItem(MetapreambleItem):
-        __slots__ = ['package_path', 'package_type', 'package_name']
-
-        def __init__(self, package_path, package_type):
             if not isinstance(package_path, RecordPath):
-                raise RuntimeError(package_path)
+                raise RuntimeError(type(package_path))
             self.package_path = package_path
-            self.package_type = package_type
-            super().__init__()
 
-    class ProvidePreamblePreambleItem(VerbatimPreambleItem):
+    class ProvideVerbatimPreambleItem(VerbatimPreambleItem):
         __slots__ = ['key']
 
         def __init__(self, key, value):
-            assert isinstance(key, str), type(key)
-            self.key = key
             super().__init__(value=value)
+            if not isinstance(key, str):
+                raise DriverError(type(key))
+            self.key = key
 
-    class RequirePreambleBodyItem(ProvidePreamblePreambleItem, ControlBodyItem):
-        __slots__ = []
-
-    class ProvidePackagePreambleItem(MetapreambleItem):
-        __slots__ = ['package', 'options_required', 'options_suggested']
+    class ProvidePackagePreambleItem(PreambleItem):
+        __slots__ = [ 'package',
+            'options_required', 'options_suggested', 'options_prohibited']
 
         def __init__(self, package, options=None):
-            self.package = str(package)
+            super().__init__()
+            if not isinstance(package, str):
+                raise DriverError(type(package))
+            self.package = package
             if options is None:
                 self.options_required = []
                 self.options_suggested = []
-            elif isinstance(options, dict):
-                options_required = options.get('required', ())
-                self.options_required = [str(item) for item in options_required]
-                options_suggested = options.get('suggested', ())
-                self.options_suggested = [str(item) for item in options_suggested]
-            elif isinstance(options, (list, tuple)):
-                self.options_required = [str(item) for item in options]
-                self.options_suggested = list(self.options_required)
-            elif isinstance(options, str):
-                self.options_required = [options]
-                self.options_suggested = [options]
-            else:
-                raise DriverError(options)
-            if not set(self.options_required).issubset(self.options_suggested):
-                raise DriverError(options)
-            super().__init__()
+                self.options_prohibited = []
+                return
+            if isinstance(options, (list, tuple)):
+                options = {'required' : options}
+            if not isinstance(options, dict):
+                raise DriverError(type(options))
+            self.options_required = self._list_of_strings(
+                options.get('required', ()) )
+            self.options_suggested = self._list_of_strings(
+                options.get('suggested', self.options_required) )
+            self.options_prohibited = self._list_of_strings(
+                options.get('prohibited', ()) )
 
-    class RequirePackageBodyItem(ProvidePackagePreambleItem, ControlBodyItem):
-        __slots__ = []
+        @staticmethod
+        def _list_of_strings(what):
+            if not isinstance(what, (list, tuple)):
+                raise DriverError(type(what))
+            result = []
+            for item in what:
+                if not isinstance(item, str):
+                    raise DriverError(type(item))
+                result.append(str(item))
+            return result
 
-    class ProhibitPackagePreambleItem(MetapreambleItem):
+    class ProhibitPackagePreambleItem(PreambleItem):
         __slots__ = ['package']
 
         def __init__(self, package):
             self.package = str(package)
             super().__init__()
 
-    class ProhibitPackageBodyItem(ProhibitPackagePreambleItem, ControlBodyItem):
-        __slots__ = []
+    class PackagePreambleItem(PreambleItem):
+        # Only produced by reconciling package options.
+        __slots__ = ['package', 'options']
 
-    @classmethod
-    def _classify_matter_item(cls, item):
-        if not isinstance(item, dict):
-            raise RuntimeError(item)
-        elif item.keys() == {'verbatim'}:
-            return cls.VerbatimBodyItem(value=item['verbatim'])
-        elif item.keys() == {'preamble verbatim', 'provide'}:
-            return cls.RequirePreambleBodyItem(
-                value=item['preamble verbatim'], key=item['provide'] )
-        elif item.keys() == {'preamble package'}:
-            return cls.RequirePackageBodyItem(
-                package=item['preamble package'] )
-        elif item.keys() == {'preamble package', 'options'}:
-            return cls.RequirePackageBodyItem(
-                package=item['preamble package'], options=item['options'] )
-        elif item.keys() == {'preamble no package'}:
-            return cls.ProhibitPackageBodyItem(
-                package=item['preamble no package'] )
-        elif item.keys() == {'error'}:
-            raise DriverError(item['error'])
-        else:
-            raise DriverError(item)
+        def __init__(self, package, options):
+            super().__init__()
+            assert isinstance(package, str)
+            self.package = package
+            assert isinstance(options, list)
+            assert all(isinstance(option, str) for option in options)
+            self.options = options
 
-    @classmethod
-    def _classify_style_item(cls, item):
-        if not isinstance(item, dict):
-            raise RuntimeError(item)
-        elif item.keys() & {'verbatim'}:
-            return cls._classify_style_verbatim_item(item)
-        elif item.keys() & {'package', 'no package'}:
-            return cls._classify_style_package_item(item)
-        elif item.keys() == {'resize font'}:
-            size, skip = item['resize font']
-            return cls.ProvidePreamblePreambleItem(
-                value=cls.selectfont_template.substitute(
-                    size=float(size), skip=float(skip)
-                ), key='AtBeginDocument:fontsize' )
-        elif item.keys() == {'compiler'}:
-            return cls.CompilerItem(
-                compiler=item['compiler'] )
-        elif item.keys() == {'document class'}:
-            return cls.DocumentClassItem(
-                document_class=item['document class'] )
-        elif item.keys() == {'document class', 'options'}:
-            return cls.DocumentClassItem(
-                document_class=item['document class'],
-                options=item['options'] )
-        elif item.keys() == {'error'}:
-            raise DriverError(item['error'])
-        else:
-            raise DriverError(item)
+    class Author:
+        __slots__ = ['name', 'abbr']
 
-    @classmethod
-    def _classify_style_verbatim_item(cls, item):
-        if item.keys() == {'verbatim'}:
-            return cls.VerbatimPreambleItem(
-                value=item['verbatim'] )
-        elif item.keys() == {'verbatim', 'provide'}:
-            return cls.ProvidePreamblePreambleItem(
-                value=item['verbatim'], key=item['provide'] )
-        else:
-            raise DriverError(item)
+        def __init__(self, author_item):
+            if isinstance(author_item, RegularDriver.Author):
+                self.name = author_item.name
+                self.abbr = author_item.abbr
+            elif isinstance(author_item, dict):
+                if not {'name'} <= author_item.keys() <= {'name', 'abbr'}:
+                    raise DriverError(author_item.keys())
+                if not isinstance(author_item['name'], str):
+                    raise DriverError(type(author_item['name']))
+                self.name = author_item['name']
+                if 'abbr' in author_item and \
+                        not isinstance(author_item['abbr'], str):
+                    raise DriverError(type(author_item['abbr']))
+                self.abbr = author_item.get('abbr', None)
+            elif isinstance(author_item, str):
+                self.name = author_item
+                self.abbr = None
+            else:
+                raise DriverError(type(author_item))
 
-    @classmethod
-    def _classify_style_package_item(cls, item):
-        if item.keys() == {'package'}:
-            return cls.ProvidePackagePreambleItem(
-                package=item['package'] )
-        elif item.keys() == {'package', 'options'}:
-            return cls.ProvidePackagePreambleItem(
-                package=item['package'], options=item['options'] )
-        elif item.keys() == {'no package'}:
-            return cls.ProhibitPackagePreambleItem(
-                package=item['no package'] )
-        else:
-            raise DriverError(item)
+        def __str__(self):
+            return self.name
+
+        def __repr__(self):
+            if self.abbr is None:
+                return f'Author({self.name})'
+            else:
+                return f'Author(name={self.name}, abbr={self.abbr})'
 
     ##########
-    # Record-level functions (outrecord) {{{2
+    # Record-level functions (document_recipe) {{{2
 
     @processing_target
-    def _generate_outrecord(self, target, metarecord=None):
-        if metarecord is None:
-            metarecord = self.get(target.path)
-        if not metarecord.get('$target$able', True) or \
-                not metarecord.get('$build$able', True):
+    def _generate_document_recipe(self, target, record=None):
+        if record is None:
+            record = self.get(target.path)
+        if not record['$delegate$able'] or \
+                not record['$content$able']:
             raise DriverError( "Target {target} is not buildable"
                 .format(target=target) )
         if target.path.is_root():
             raise DriverError("Direct building of '/' is prohibited." )
 
-        return self._generate_regular_outrecord(target)
+        return self._generate_regular_document_recipe(target, record=record)
 
     @processing_target
-    def _generate_regular_outrecord(self, target, metarecord=None):
+    def _generate_regular_document_recipe(self, target, record=None):
         """
-        Return outrecord.
+        Return document recipe.
         """
-        if metarecord is None:
-            metarecord = self.get(target.path)
+        if record is None:
+            record = self.get(target.path)
 
-        date_set = set()
+        document_recipe = {'type' : 'regular'}
 
-        outrecord = {'type' : 'regular'}
+        compilers = []
+        header_info = {'dates' : [], 'captions' : [], 'authors' : []}
 
-        # We must exhaust _generate_metabody() to fill date_set
-        metabody = list(self._generate_metabody(
-            target, metarecord, date_set=date_set ))
-        metapreamble = list(self._generate_metapreamble(
-            target, metarecord ))
-
-        sources = outrecord['sources'] = OrderedDict()
-        figures = outrecord['figures'] = OrderedDict()
-        package_paths = outrecord['package_paths'] = OrderedDict()
-        outrecord.setdefault('date', self._min_date(date_set))
-        compilers = list()
-
-        metabody = list(self._digest_metabody(
-            target, metabody,
-            sources=sources, figures=figures,
-            metapreamble=metapreamble ))
-        metapreamble = list(self._digest_metapreamble(
-            target, metapreamble,
-            package_paths=package_paths,
+        document_target = self._get_attuned_target(target, record)
+        # We must exhaust _generate_body() to fill header_info
+        preamble = list(self._generate_preamble_document(
+            document_target, record,
             compilers=compilers ))
+        body = list(self._generate_body_document(
+            document_target, record,
+            preamble=preamble, header_info=header_info ))
 
         target.check_unutilized_flags()
-        target.abandon_children()
+        target.abandon_children() # clear references
 
-        assert 'outname' not in outrecord
-        outrecord['outname'] = self._select_outname(
-            target, metarecord, date=outrecord['date'] )
+        document_recipe['outname'] = self._select_outname(
+            target, record,
+            date=self._min_date(header_info['dates']) )
+
         if not compilers:
             raise DriverError("Compiler is not specified")
         if len(compilers) > 1:
             raise DriverError("Compiler is specified multiple times")
         # pylint: disable=unbalanced-tuple-unpacking
-        outrecord['compiler'], = compilers
+        document_recipe['compiler'], = compilers
         # pylint: enable=unbalanced-tuple-unpacking
 
+        preamble = list(self._reconcile_packages(preamble))
         with process_target_aspect(target, 'document'):
-            outrecord['document'] = self._constitute_document(
-                outrecord,
-                metapreamble=metapreamble, metabody=metabody, )
-        return outrecord
+            document_recipe['document'] = \
+                self._constitute_document(
+                    document_recipe, preamble=preamble, body=body, )
+            document_recipe['document'].freeze()
 
-    def _select_outname(self, target, metarecord, date=None):
-        """Return outname."""
-        outname = self._select_outname_stem(target, metarecord)
-        if isinstance(date, datetime.date):
-            outname = date.isoformat() + '-' + outname
-        assert '/' not in outname, repr(outname)
-        return outname
+        asy_latex_compilers = []
+        asy_latex_preamble = list(self._generate_preamble_document(
+            document_target.flags_union({'asy'}), record,
+            compilers=asy_latex_compilers ))
+        asy_latex_preamble = list(self._reconcile_packages(
+            asy_latex_preamble ))
+        asy_latex_preamble = self._constitute_preamble(
+            document_recipe,
+            preamble=asy_latex_preamble )
+        if len(asy_latex_compilers) != 1:
+            raise DriverError
+        # pylint: disable=unbalanced-tuple-unpacking
+        document_recipe['asy_latex_compiler'], = asy_latex_compilers
+        # pylint: enable=unbalanced-tuple-unpacking
+        if asy_latex_preamble.keys() != ():
+            raise DriverError
+        document_recipe['asy_latex_preamble'] = asy_latex_preamble.substitute({})
 
-    def _select_outname_stem(self, target, metarecord):
+        return document_recipe
+
+    _outname_regex = re.compile(OUTNAME_PATTERN)
+
+    def _select_outname(self, target, record, date=None):
         """Return outname, except for date part."""
         outname_key, outname = self.select_flagged_item(
-            metarecord, '$build$outname', target.flags )
-        if outname_key is None:
-            outname = '-'.join(target.path.parts)
-            outname_flag_set = target.flags.as_frozenset
-        else:
+            record, '$document$outname', target.flags )
+        if outname_key is not None:
             if not isinstance(outname, str):
                 raise DriverError("Outname must be a string.")
-            omitted_flag_set = target.flags.split_flags_group(
-                self.attribute_key_regex.fullmatch(outname_key).group('flags')
+            key_match = self._attribute_key_regex.fullmatch(outname_key)
+            outname_match = self._outname_regex.fullmatch(outname)
+            omitted_flag_set = frozenset(target.flags.split_flags_string(
+                key_match.group('flags'),
+                relative_flags=False ))
+            added_flags = target.flags.split_flags_string(
+                outname_match.group('flags'),
+                relative_flags=False )
+            assert isinstance(added_flags, list), type(added_flags)
+            outname_flags = target.flags.__format__( 'optional',
+                sorted_flags=added_flags +
+                    sorted(target.flags.as_frozenset - omitted_flag_set)
             )
-            outname_flag_set = target.flags.as_frozenset - omitted_flag_set
-        outname_flags = '{:optional}'.format(FlagContainer(
-            outname_flag_set ))
-        return outname + outname_flags
+            return outname + outname_flags
+        else:
+            return self._select_outname_auto(target, record, date)
 
-    @ensure_type_items(MetabodyItem)
+    def _select_outname_auto(self, target, record, date=None):
+        """Return outname."""
+        outname_base = '-'.join(target.path.parts)
+        outname_flags = target.flags.__format__('optional')
+        outname = outname_base + outname_flags
+        if isinstance(date, (Date, *Date.date_types)):
+            outname = str(Date(date)) + '-' + outname
+        return outname
+
+    def _get_attuned_target(self, target, record):
+        flags_key, flags = self.select_flagged_item(
+            record, '$document$flags', target.flags )
+        if flags_key is None:
+            return target
+        else:
+            with process_target_key(target, flags_key):
+                if not isinstance(flags, list):
+                    raise DriverError(type(flags))
+                return target.flags_delta_mixed( flags,
+                    origin=f'attuned target {target}, key {flags_key}' )
+
+
+    ##########
+    # Record-level functions (document preamble) {{{2
+
+    @ensure_type_items(PreambleItem)
     @processing_target
-    def _generate_metabody(self, target, metarecord=None,
-        *, date_set
+    def _generate_preamble_document( self, target, record=None,
+        *, compilers,
     ):
-        """
-        Yield metabody items.
-        Update date_set.
-        """
-        if metarecord is None:
-            metarecord = self.get(target.path)
+        if record is None:
+            record = self.get(target.path)
+        style_key, style = self.select_flagged_item(
+            record, '$document$style', target.flags,
+            required_flags={'asy'}
+                    if 'asy' in target.flags
+                else (),
+        )
+        if style_key is None:
+            yield from self._generate_preamble( target, record,
+                compilers=compilers,
+                _seen_targets=None )
+        else:
+            yield from self._generate_preamble_style( target, record,
+                style_key=style_key, style=style,
+                compilers=compilers,
+                _seen_targets=None )
 
-        matter_key, matter = self.select_flagged_item(
-            metarecord, '$build$matter', target.flags )
-        yield from self._generate_resolved_metabody( target, metarecord,
-            matter_key=matter_key, matter=matter, date_set=date_set )
-
-    # pylint: disable=no-self-use,unused-argument,invalid-name
-    def _generate_resolved_metabody_skip_check( self, target, *args,
-        matter_key=None, **kwargs
-    ):
-        return matter_key is not None
-    # pylint: enable=no-self-use,unused-argument,invalid-name
-
-    @checking_target_recursion(
-        skip_check=_generate_resolved_metabody_skip_check )
-    @ensure_type_items(MetabodyItem)
+    @checking_target_recursion()
+    @ensure_type_items(PreambleItem)
     @processing_target
-    def _generate_resolved_metabody( self, target, metarecord=None,
-        *, matter_key=None, matter=None, date_set,
-        _seen_targets=None
+    def _generate_preamble( self, target, record=None,
+        *, compilers,
+        _seen_targets,
     ):
-        """
-        Yield metabody items.
-        Update date_set.
-        """
-        if metarecord is None:
-            metarecord = self.get(target.path)
+        if record is None:
+            record = self.get(target.path)
+        style_key, style = self.select_flagged_item(
+            record, '$style', target.flags,
+            required_flags={'asy'}
+                    if 'asy' in target.flags
+                else (),
+        )
+        if style_key is None:
+            yield from self._generate_preamble_auto( target, record,
+                compilers=compilers,
+                _seen_targets=_seen_targets )
+        else:
+            yield from self._generate_preamble_style( target, record,
+                style_key=style_key, style=style,
+                compilers=compilers,
+                _seen_targets=_seen_targets )
 
-        date = self._find_date(target, metarecord)
-        if date is not None:
-            date_set.add(date)
-            date_set = set()
+    @ensure_type_items(PreambleItem)
+    @processing_target
+    def _generate_preamble_style( self, target, record,
+        *, style_key, style, _recursed=False,
+        compilers,
+        _seen_targets,
+    ):
+        with process_target_key(target, style_key):
+            if not isinstance(style, list):
+                raise DriverError(
+                     "$style must be a list, "
+                    f"not {type(style)}" )
+            for item in style:
+                yield from self._generate_preamble_style_item(
+                    target, record,
+                    style_key=style_key, style_item=item,
+                    _recursed=_recursed,
+                    compilers=compilers,
+                    _seen_targets=_seen_targets )
 
-        if 'header' in target.flags:
-            date_subset = set()
-            # exhaust iterator to find date_subset
-            metabody = list(self._generate_resolved_metabody(
-                target.flags_delta(
-                    difference={'header'},
-                    union={'no-header'} ),
-                metarecord,
-                matter_key=matter_key, matter=matter, date_set=date_subset,
-                _seen_targets=_seen_targets ))
-            yield from self._generate_header_metabody( target, metarecord,
-                date=self._min_date(date_subset) )
-            yield from metabody
-            date_set.update(date_subset)
+    @ensure_type_items(PreambleItem)
+    def _generate_preamble_style_item( self, target, record,
+        *, style_key, style_item, _recursed,
+        compilers,
+        _seen_targets,
+    ):
+        if isinstance(style_item, str):
+            yield from self._generate_preamble(
+                target.derive_from_string( style_item,
+                    origin=f'style {target}, key {style_key}' ),
+                compilers=compilers,
+                _seen_targets=_seen_targets )
             return
 
-        metabody_generator = self._generate_matter_metabody(
-            target, metarecord,
-            matter_key=matter_key, matter=matter, )
-        for item in metabody_generator:
-            if isinstance(item, self.MetabodyItem):
-                yield item
-            elif isinstance(item, Target):
-                yield from self._generate_resolved_metabody(
-                    item, date_set=date_set, _seen_targets=_seen_targets )
+        if not isinstance(style_item, dict):
+            raise DriverError(
+                 "$style item must be a string or a dictionary, "
+                f"not {type(style_item)}" )
+        style_item = style_item.copy()
+        condition = style_item.pop('condition', True)
+        if not target.flags.check_condition(condition):
+            return
+        if 'style' in style_item.keys():
+            if style_item.keys() != {'style'}:
+                raise DriverError(style_item.keys())
+            if _recursed:
+                raise DriverError("Nested 'style' items are not allowed.")
+            yield from self._generate_preamble_style( target, record,
+                style_key=style_key+"/style", style=style_item['style'],
+                _recursed=True,
+                compilers=compilers,
+                _seen_targets=_seen_targets )
+        elif 'compiler' in style_item.keys():
+            if style_item.keys() != {'compiler'}:
+                raise DriverError(style_item.keys())
+            compiler = style_item['compiler']
+            if not isinstance(compiler, str):
+                raise DriverError(type(compiler))
+            if compiler not in {'latex', 'pdflatex', 'xelatex', 'lualatex'}:
+                raise DriverError(compiler)
+            compilers.append(compiler)
+        elif 'package-source' in style_item.keys():
+            if style_item.keys() != {'package-source'}:
+                raise DriverError(style_item.keys())
+            if not isinstance(style_item['package-source'], str):
+                raise DriverError(type(style_item['package-source']))
+            package_path = \
+                RecordPath(target.path, style_item['package-source'])
+            if not self.get(package_path).get('$package$able', False):
+                raise DriverError
+            yield self.LocalPackagePreambleItem(
+                package_path=package_path )
+        else:
+            yield from self._generate_preamble_style_simple(style_item)
+
+    @ensure_type_items(PreambleItem)
+    def _generate_preamble_style_simple(self, style_item):
+        # coincides with the set of items that are allowed in 'style' items
+        # in $content
+        if 'verbatim' in style_item.keys():
+            yield from self._generate_preamble_style_verbatim(style_item)
+        elif 'package' in style_item.keys():
+            yield from self._generate_preamble_style_package(style_item)
+        elif 'error' in style_item.keys():
+            if style_item.keys() == {'error'}:
+                raise DriverError(style_item['error'])
             else:
-                raise RuntimeError(type(item))
+                raise DriverError(style_item.keys())
+        else:
+            raise DriverError(style_item.keys())
 
-    del _generate_resolved_metabody_skip_check
+    @ensure_type_items(PreambleItem)
+    def _generate_preamble_style_verbatim(self, style_item):
+        if style_item.keys() == {'verbatim'}:
+            if not isinstance(style_item['verbatim'], str):
+                raise DriverError(type(style_item['verbatim']))
+            yield self.VerbatimPreambleItem(value=style_item['verbatim'])
+        elif style_item.keys() == {'verbatim', 'provide'}:
+            if style_item['verbatim'] is not None and \
+                    not isinstance(style_item['verbatim'], str):
+                raise DriverError(type(style_item['verbatim']))
+            if not isinstance(style_item['provide'], str):
+                raise DriverError(type(style_item['provide']))
+            yield self.ProvideVerbatimPreambleItem(
+                value=style_item['verbatim'], key=style_item['provide'] )
+        else:
+            raise DriverError(style_item.keys())
 
-    @ensure_type_items(MetabodyItem)
+    @ensure_type_items(PreambleItem)
+    def _generate_preamble_style_package(self, style_item):
+        if style_item.keys() == {'package'}:
+            yield self.ProvidePackagePreambleItem(
+                package=style_item['package'] )
+        elif style_item.keys() == {'package', 'options'}:
+            yield self.ProvidePackagePreambleItem(
+                package=style_item['package'], options=style_item['options'] )
+        elif style_item.keys() == {'package', 'prohibited'}:
+            if style_item['prohibited'] is not True:
+                raise DriverError(style_item)
+            yield self.ProhibitPackagePreambleItem(
+                package=style_item['package'] )
+        else:
+            raise DriverError(style_item.keys())
+
+    @ensure_type_items(PreambleItem)
     @processing_target
-    def _generate_header_metabody( self, target, metarecord,
-        *, date, resetproblem=True
+    def _generate_preamble_auto( self, target, record,
+        compilers,
+        _seen_targets,
+    ):
+        if not record.get('$style$auto', True):
+            raise DriverError("$style is not defined")
+        if '$package$able' not in record:
+            if target.path.is_root():
+                raise DriverError("Toplevel $style is not defined")
+            yield from self._generate_preamble(
+                target.path_derive('..'),
+                compilers=compilers,
+                _seen_targets=_seen_targets )
+        else:
+            yield self.LocalPackagePreambleItem(
+                package_path=target.path )
+
+
+    ##########
+    # Record-level functions (document body) {{{2
+
+    @processing_target
+    @ensure_type_items(BodyItem)
+    def _generate_body_document(self, target, record=None,
+        *, preamble, header_info,
+    ):
+        if record is None:
+            record = self.get(target.path)
+        content_key, content = self.select_flagged_item(
+            record, '$document$content', target.flags )
+        if content_key is None:
+            yield from self._generate_body( target, record,
+                preamble=preamble,
+                header_info=header_info,
+                _seen_targets=None )
+        else:
+            yield from self._generate_body_content( target, record,
+                content_key=content_key, content=content,
+                preamble=preamble,
+                header_info=header_info,
+                _seen_targets=None )
+
+    @checking_target_recursion()
+    @processing_target
+    @ensure_type_items(BodyItem)
+    def _generate_body( self, target, record=None,
+        *, preamble, header_info,
+        _seen_targets,
+    ):
+        if record is None:
+            record = self.get(target.path)
+        content_key, content = self.select_flagged_item(
+            record, '$content', target.flags )
+        if content_key is None:
+            yield from self._generate_body_auto( target, record,
+                preamble=preamble, header_info=header_info,
+                _seen_targets=_seen_targets )
+        else:
+            yield from self._generate_body_content( target, record,
+                content_key=content_key, content=content,
+                preamble=preamble, header_info=header_info,
+                _seen_targets=_seen_targets )
+
+    @processing_target
+    @ensure_type_items(BodyItem)
+    def _generate_body_content(self, target, record,
+        *, content_key=None, content=None, _recursed=False,
+        preamble, header_info,
+        _seen_targets,
+    ):
+        with process_target_key(target, content_key):
+            if not isinstance(content, list):
+                raise DriverError(
+                     "$content must be a list, "
+                    f"not {type(content)}" )
+            for item in content:
+                yield from self._generate_body_content_item(
+                    target, record,
+                    content_key=content_key, content_item=item,
+                    _recursed=_recursed,
+                    preamble=preamble, header_info=header_info,
+                    _seen_targets=_seen_targets )
+
+    @ensure_type_items(BodyItem)
+    def _generate_body_content_item( self, target, record,
+        *, content_key, content_item, _recursed,
+        preamble, header_info,
+        _seen_targets,
+    ):
+        if isinstance(content_item, str):
+            yield from self._generate_body(
+                target.derive_from_string(content_item,
+                    origin=f'content {target}, key {content_key}' ),
+                preamble=preamble, header_info=header_info,
+                _seen_targets=_seen_targets )
+            return
+
+        if not isinstance(content_item, dict):
+            raise DriverError(
+                 "$content item must be a string or a dictionary, "
+                f"not {type(content_item)}" )
+        content_item = content_item.copy()
+        condition = content_item.pop('condition', True)
+        if not target.flags.check_condition(condition):
+            return
+        if 'content' in content_item.keys():
+            if _recursed:
+                raise DriverError("Nested 'content' items are not allowed.")
+            yield from self._generate_body_content_content( target, record,
+                content_key=content_key, content_item=content_item,
+                preamble=preamble, header_info=header_info,
+                _seen_targets=_seen_targets )
+        elif 'children' in content_item.keys():
+            yield from self._generate_body_content_children( target, record,
+                content_item=content_item,
+                preamble=preamble, header_info=header_info,
+                _seen_targets=_seen_targets )
+        elif 'verbatim' in content_item.keys():
+            if content_item.keys() != {'verbatim'}:
+                raise DriverError(content_item.keys())
+            yield self.VerbatimBodyItem(value=content_item['verbatim'])
+        elif 'source' in content_item.keys():
+            if content_item.keys() != {'source'}:
+                raise DriverError(content_item.keys())
+            if not isinstance(content_item['source'], str):
+                raise DriverError(type(content_item['source']))
+            yield from self._generate_body_source(
+                target.derive_from_string(content_item['source'],
+                    origin=f'content {target}, key {content_key}/source' ),
+                preamble=preamble, header_info=header_info,
+                _seen_targets=_seen_targets )
+        elif 'figure' in content_item.keys():
+            if not content_item.keys() <= {'figure', 'options'}:
+                raise DriverError(content_item.keys())
+            yield from self._generate_body_content_figure( target, record,
+                content_item=content_item )
+        elif 'style' in content_item.keys():
+            if content_item.keys() != {'style'}:
+                raise DriverError(content_item.keys())
+            if not isinstance(content_item['style'], list):
+                raise DriverError(type(content_item['style']))
+            for style_item in content_item['style']:
+                preamble.append(
+                    self._generate_preamble_style_simple(style_item) )
+        elif 'special' in content_item.keys():
+            special_name = content_item.pop('special')
+            special_method = getattr( self,
+                f'_generate_body_special_{special_name}' )
+            yield from special_method( target, record, content_item,
+                preamble=preamble, header_info=header_info,
+                _seen_targets=_seen_targets )
+        elif 'error' in content_item.keys():
+            if content_item.keys() == {'error'}:
+                raise DriverError(content_item['error'])
+            else:
+                raise DriverError(content_item.keys())
+        else:
+            raise DriverError(content_item.keys())
+
+    @ensure_type_items(BodyItem)
+    def _generate_body_content_content( self, target, record,
+        *, content_key, content_item,
+        preamble, header_info,
+        _seen_targets,
+    ):
+        if not content_item.keys() <= {'content', 'header', 'newpage'}:
+            raise DriverError(content_item.keys())
+
+        newpage = content_item.get('newpage', True)
+        if not isinstance(newpage, bool):
+            raise DriverError( "In 'content' item, "
+                "the value of 'newpage' must be a boolean, "
+               f"not {type(newpage)}" )
+
+        content = content_item['content']
+        if not isinstance(content, list):
+            raise DriverError( "In 'content' item, "
+                "the value of 'content' must be a list, "
+               f"not {type(content)}" )
+
+        header = None
+        if 'header' in content_item:
+            if content_item['header'] is False:
+                header = False
+            elif content_item['header'] is None:
+                header = {}
+            elif content_item['header'] is True:
+                header = {}
+            elif isinstance(content_item['header'], dict):
+                header = content_item['header'].copy()
+            else:
+                raise DriverError( "In 'content' item, "
+                    "the value of 'header' must be false or a list, "
+                   f"not {type(newpage)}" )
+
+        yield from self._generate_body_headered_content(
+            target, record,
+            content_key=content_key+'/content', content=content,
+            header=header, newpage=newpage,
+            preamble=preamble, header_info=header_info,
+            _seen_targets=_seen_targets )
+
+    @ensure_type_items(BodyItem)
+    def _generate_body_content_figure(self, target, record,
+        *, content_item,
+    ):
+        if not isinstance(content_item['figure'], str):
+            raise DriverError(type(content_item['figure']))
+        if 'options' in content_item:
+            if not isinstance(content_item['options'], list):
+                raise DriverError(type(content_item['options']))
+            for option in content_item['options']:
+                if not isinstance(option, str):
+                    raise DriverError(type(option))
+            options = content_item['options']
+        else:
+            options = None
+        figure_path = RecordPath(target.path, content_item['figure'])
+        figure_ref = '-'.join(figure_path.parts)
+        yield self.FigureDefBodyItem(figure_ref, figure_path)
+        yield self.VerbatimBodyItem(
+            self.jeolmfigure_template.substitute(
+                options=self._constitute_options(options),
+                figure_ref=figure_ref )
+        )
+
+    @ensure_type_items(BodyItem)
+    def _generate_body_headered_content( self, target, record,
+        *, content_key, content=None, header, newpage=True,
+        preamble, header_info,
+        _seen_targets,
+    ):
+        def generate_body(*, header_info=header_info):
+            yield from (
+                self._generate_body_content( target, record,
+                    content_key=content_key, content=content,
+                    preamble=preamble, header_info=header_info,
+                    _seen_targets=_seen_targets )
+            )
+
+        if newpage:
+            yield self.NewPageBodyItem()
+
+        if header is None:
+            yield from generate_body()
+        elif header is False:
+            target = target.flags_union({'contained'})
+            yield from generate_body()
+        else:
+            target = target.flags_union({'contained'})
+            content_header_info = \
+                {'dates' : [], 'captions' : [], 'authors' : []}
+            body = list(generate_body(header_info=content_header_info))
+            self._prepare_body_header( target, record, header,
+                super_header_info=header_info,
+                header_info=content_header_info )
+            yield from self._generate_body_header( target, record,
+                header=header )
+            yield from body
+
+        if newpage:
+            if not content and header is None:
+                yield self.VerbatimBodyItem(r'\null')
+            yield self.NewPageBodyItem()
+
+    def _prepare_body_header( self, target, record, header,
+        *, super_header_info, header_info,
+    ):
+        if 'date' not in header:
+            header['date'] = self._min_date(header_info['dates'])
+        if header['date'] is not None and header['date'] is not Never:
+            if not isinstance(header['date'], (Date, *Date.date_types, str)):
+                raise DriverError(type(header['date']))
+            super_header_info['dates'].append(header['date'])
+        if 'caption' not in header:
+            header['caption'] = \
+                self._join_captions(header_info['captions'])
+        if header['caption'] is not None:
+            if not isinstance(header['caption'], str):
+                raise DriverError(type(header['caption']))
+            super_header_info['captions'].append(header['caption'])
+        if 'authors' not in header:
+            header['authors'] = self._unique_authors(header_info['authors'])
+        if header['authors'] is not None:
+            if not isinstance(header['authors'], list):
+                raise DriverError(type(header['authors']))
+            super_header_info['authors'].extend(header['authors'])
+
+    @ensure_type_items(BodyItem)
+    def _generate_body_header( self, target, record,
+        *, header,
     ):
         yield self.VerbatimBodyItem(
             self.jeolmheader_begin_template.substitute() )
-        yield from self._generate_header_def_metabody(
-            target, metarecord, date=date )
+        yield from self._generate_body_header_def(
+            target, record, header=header )
         yield self.VerbatimBodyItem(
             self.jeolmheader_end_template.substitute() )
-        if resetproblem:
+        yield self.VerbatimBodyItem(
+            self.resetproblem_template.substitute() )
+
+    @ensure_type_items(BodyItem)
+    def _generate_body_header_def( self, target, record,
+        *, header,
+    ):
+        if header['date'] is not None and header['date'] is not Never:
             yield self.VerbatimBodyItem(
-                self.resetproblem_template.substitute() )
+                self._constitute_date_def(date=header['date']) )
+        if header['caption'] is not None:
+            yield self.VerbatimBodyItem(
+                self._constitute_caption_addtoc(caption=header['caption']) )
+        if header['authors'] is not None:
+            yield self.VerbatimBodyItem(
+                self._constitute_authors_def(author_list=header['authors']) )
 
-    # pylint: disable=no-self-use,unused-argument
-    @ensure_type_items(MetabodyItem)
-    def _generate_header_def_metabody(self, target, metarecord, *, date):
-        if not target.flags.intersection({'multidate', 'no-date'}):
-            if date is not None:
-                yield self.VerbatimBodyItem(
-                    self._constitute_date_def(date=date) )
-    # pylint: enable=no-self-use,unused-argument
-
-    # pylint: disable=no-self-use,unused-argument
-    def _find_date(self, target, metarecord):
-        return metarecord.get('$date')
-    # pylint: enable=no-self-use,unused-argument
-
-    @ensure_type_items((MetabodyItem, Target))
-    @processing_target
-    def _generate_matter_metabody(self, target, metarecord,
-        *, matter_key=None, matter=None
+    @ensure_type_items(BodyItem)
+    def _generate_body_content_children( self, target, record,
+        *, content_item,
+        preamble, header_info,
+        _seen_targets,
     ):
-        if matter_key is None:
-            matter_key, matter = self.select_flagged_item(
-                metarecord, '$matter', target.flags )
-            if matter_key is None:
-                yield from self._generate_auto_metabody(target, metarecord)
-                return
-        with process_target_key(target, matter_key):
-            if not isinstance(matter, list):
+        if not content_item.keys() <= {'children', 'exclude', 'order'}:
+            raise DriverError(content_item.keys())
+        if content_item['children'] is not None:
+            raise DriverError( "In 'children' item, "
+                "the value of 'children' must be None, "
+               f"not {type(content_item['children'])}" )
+        exclude = content_item.get('exclude', ())
+        if not isinstance(content_item['exclude'], (tuple, list)):
+            raise DriverError( "In 'children' item, "
+                "the value of 'exclude' must be a list, "
+               f"not {type(content_item['exclude'])}" )
+        for child in exclude:
+            if not isinstance(child, str):
+                raise DriverError(type(child))
+            if self._child_pattern.fullmatch(child) is None:
+                raise DriverError(repr(child))
+        order = content_item.get('order')
+        if order is not None:
+            if not isinstance(order, str):
+                raise DriverError( "In 'children' item, "
+                    "the value of 'order' must be a string, "
+                   f"not {type(order)}" )
+            if order not in {'record', 'date'}:
+                raise DriverError( "In 'children' item, "
+                    "the value of 'order' must be 'record' or 'date', "
+                   f"not {order!r}" )
+        yield from self._generate_body_children( target, record,
+            exclude=exclude, order=order,
+            preamble=preamble, header_info=header_info,
+            _seen_targets=_seen_targets )
+
+    @processing_target
+    @ensure_type_items(BodyItem)
+    def _generate_body_children( self, target, record,
+        *, exclude=frozenset(), order=None,
+        preamble, header_info,
+        _seen_targets,
+    ):
+        exclude = frozenset(exclude)
+        child_bodies = []
+        for key in record:
+            if key.startswith('$'):
+                continue
+            if key in exclude:
+                continue
+            child_target = target.path_derive(key)
+            child_record = self.get(child_target.path)
+            if not child_record.get('$content$child'):
+                continue
+            child_preamble = []
+            child_header_info = \
+                {'dates' : [], 'captions' : [], 'authors' : []}
+            child_bodies.append((
+                list(self._generate_body( child_target, child_record,
+                    preamble=child_preamble, header_info=child_header_info,
+                    _seen_targets=_seen_targets )),
+                child_preamble,
+                child_header_info,
+            ))
+        if order is None:
+            order = record.get('$content$order', 'record')
+            if not isinstance(order, str):
+                raise DriverError( "$content$order must be a string, "
+                   f"not {type(order)}" )
+            if order not in {'record', 'date'}:
                 raise DriverError(
-                    "Matter must be a list, not {}"
-                    .format(type(matter).__name__) )
-            for item in matter:
-                if isinstance(item, list):
-                    yield from self._generate_matter_long_item_metabody(
-                        target, metarecord,
-                        matter_key=matter_key, matter_item=item )
-                else:
-                    yield from self._generate_matter_item_metabody(
-                        target, metarecord,
-                        matter_key=matter_key, matter_item=item )
-
-    @ensure_type_items((MetabodyItem, Target))
-    def _generate_matter_long_item_metabody(self, target, metarecord,
-        *, matter_key, matter_item
-    ):
-        assert isinstance(matter_item, list)
-        if not matter_item:
-            yield self.EmptyPageBodyItem()
+                    "$content$order must be 'record' or 'date', "
+                   f"not {order!r}" )
+        if order == 'record':
+            pass
+        elif order == 'date':
+            def date_key(item):
+                body, preamble, header_info = item
+                return self._min_date(header_info['dates'])
+            child_bodies.sort(key=date_key)
         else:
-            yield self.ClearPageBodyItem()
-            for item in matter_item:
-                yield from self._generate_matter_item_metabody(
-                    target, metarecord,
-                    matter_key=matter_key, matter_item=item, )
-            yield self.ClearPageBodyItem()
+            raise RuntimeError(order)
+        for child_body, child_preamble, child_header_info in child_bodies:
+            preamble.extend(child_preamble)
+            for key in ('dates', 'captions', 'authors'):
+                header_info[key].extend(child_header_info[key])
+            yield from child_body
 
-    @ensure_type_items((MetabodyItem, Target))
-    def _generate_matter_item_metabody(self, target, metarecord,
-        *, matter_key, matter_item
+    @processing_target
+    @ensure_type_items(BodyItem)
+    def _generate_body_auto( self, target, record,
+        *, preamble, header_info,
+        _seen_targets,
     ):
-        derive_target = partial( target.derive_from_string,
-            origin='matter {target}, key {key}'
-                .format(target=target, key=matter_key)
-        )
-        assert not isinstance(matter_item, list)
-        if isinstance(matter_item, str):
-            yield derive_target(matter_item)
+        if not record.get('$content$auto', False):
+            raise DriverError("$content is not defined")
+        if record.get('$source$able', False):
+            yield from self._generate_body_auto_source( target, record,
+                preamble=preamble, header_info=header_info,
+                _seen_targets=_seen_targets )
             return
-        if not isinstance(matter_item, dict):
-            raise DriverError(
-                "Matter item must be a string or a dictionary, not {}"
-                .format(type(matter_item)) )
-        matter_item = matter_item.copy()
-        condition = matter_item.pop('condition', True)
-        if not target.flags.check_condition(condition):
-            return
-        if matter_item.keys() == {'delegate'}:
-            yield derive_target(matter_item['delegate'])
+        yield from self._generate_body_children( target, record,
+            preamble=preamble, header_info=header_info,
+            _seen_targets=_seen_targets )
+
+    @processing_target
+    @ensure_type_items(BodyItem)
+    def _generate_body_auto_source( self, target, record,
+        *, preamble, header_info,
+        _seen_targets,
+    ):
+        if 'contained' in target.flags:
+            yield from self._generate_body_source( target, record,
+                preamble=preamble, header_info=header_info,
+                _seen_targets=_seen_targets )
         else:
-            yield self._classify_matter_item(matter_item)
+            yield from self._generate_body_headered_content( target, record,
+                content_key='$content$auto',
+                content=['.'],
+                header={},
+                preamble=preamble, header_info=header_info,
+                _seen_targets=_seen_targets )
 
-    @ensure_type_items((MetabodyItem, Target))
     @processing_target
-    def _generate_auto_metabody(self, target, metarecord):
-        if not target.flags.intersection(('header', 'no-header')):
-            yield target.flags_union({'header'})
-            return
-        if not metarecord.get('$source$able', False):
-            raise DriverError( "Target {target} is not sourceable"
-                .format(target=target) )
-        yield from self._generate_source_metabody(
-            target, metarecord )
-        if 'multidate' in target.flags:
-            yield from self._generate_source_datestamp_metabody(
-                target, metarecord )
-
-    @ensure_type_items((MetabodyItem, Target))
-    @processing_target
-    def _generate_source_metabody(self, target, metarecord):
-        assert metarecord.get('$source$able', False)
-        has_source_tex = metarecord.get(
+    @ensure_type_items(BodyItem)
+    def _generate_body_source( self, target, record=None,
+        *, preamble, header_info,
+        _seen_targets,
+    ):
+        if record is None:
+            record = self.get(target.path)
+        if not record.get('$source$able', False):
+            raise DriverError
+        has_source_tex = record.get(
             self._get_source_type_key('tex'), False )
-        has_source_dtx = metarecord.get(
+        has_source_dtx = record.get(
             self._get_source_type_key('dtx'), False )
-        if has_source_tex:
-            yield self.SourceBodyItem(metapath=target.path)
-        elif has_source_dtx:
-            yield self.DocSourceBodyItem(metapath=target.path)
-        else:
-            raise RuntimeError
-        if has_source_tex and has_source_dtx:
-            logger.warning(
-                "File <MAGENTA>%(dtx_path)s<NOCOLOUR> is shadowed by "
-                "<MAGENTA>%(tex_path)s<NOCOLOUR>",
-                dict(
-                    dtx_path=target.path.as_inpath(suffix='.dtx'),
-                    tex_path=target.path.as_inpath(suffix='.tex') )
-            )
+        if has_source_tex + has_source_dtx > 1:
+            raise DriverError("Source type conflict")
+        if has_source_tex + has_source_dtx < 1:
+            raise DriverError
+        if has_source_dtx:
+            yield self.DocSourceBodyItem(record_path=target.path)
+            return
+        assert has_source_tex
+        header_info['dates'].append(self._get_source_date(target, record))
+        header_info['captions'].append(self._get_source_caption(target, record))
+        header_info['authors'].extend(self._get_source_authors(target, record))
+        yield from self._generate_body_source_figure_def(target, record)
+        yield self.SourceBodyItem(record_path=target.path)
 
     @staticmethod
     def _get_source_type_key(source_type):
         return '$source$type${}'.format(source_type)
 
-    @ensure_type_items(MetabodyItem)
-    @processing_target
-    def _generate_source_datestamp_metabody(self, target, metarecord):
-        if 'no-date' in target.flags:
-            return
-        date = self._find_date(target, metarecord)
+    def _get_source_date(self, target, record):
+        date = record.get('$date', None)
         if date is None:
-            return
-        yield self.VerbatimBodyItem(
-            self.datestamp_template.substitute(
-                date=self._constitute_date(date) )
-        )
-
-    @ensure_type_items(MetapreambleItem)
-    @processing_target
-    def _generate_metapreamble(self, target, metarecord=None):
-        if metarecord is None:
-            metarecord = self.get(target.path)
-
-        style_key, style = self.select_flagged_item(
-            metarecord, '$build$style', target.flags )
-        yield from self._generate_resolved_metapreamble(
-            target, metarecord,
-            style_key=style_key, style=style )
-
-    # pylint: disable=no-self-use,unused-argument,invalid-name
-    def _generate_resolved_metapreamble_skip_check( self, target, *args,
-        style_key=None, **kwargs
-    ):
-        return style_key is not None
-    # pylint: enable=no-self-use,unused-argument,invalid-name
-
-    @checking_target_recursion(
-        skip_check=_generate_resolved_metapreamble_skip_check )
-    @ensure_type_items(MetapreambleItem)
-    @processing_target
-    def _generate_resolved_metapreamble(self, target, metarecord=None,
-        *, style_key=None, style=None,
-        _seen_targets=None
-    ):
-        if metarecord is None:
-            metarecord = self.get(target.path)
-
-        metapreamble_generator = self._generate_style_metapreamble(
-            target, metarecord,
-            style_key=style_key, style=style, )
-        for item in metapreamble_generator:
-            if isinstance(item, self.MetapreambleItem):
-                yield item
-            elif isinstance(item, Target):
-                yield from self._generate_resolved_metapreamble(
-                    item, _seen_targets=_seen_targets )
-            else:
-                raise RuntimeError(type(item))
-
-    del _generate_resolved_metapreamble_skip_check
-
-    @ensure_type_items((MetapreambleItem, Target))
-    @processing_target
-    def _generate_style_metapreamble(self, target, metarecord,
-        *, style_key=None, style=None
-    ):
-        if style is None:
-            style_key, style = self.select_flagged_item(
-                metarecord, '$style', target.flags )
-            if style is None:
-                yield from self._generate_auto_metapreamble(target, metarecord)
-                return
-        with process_target_key(target, style_key):
-            if not isinstance(style, list):
-                raise DriverError(type(style))
-            for item in style:
-                yield from self._generate_style_item_metapreamble(
-                    target, metarecord,
-                    style_key=style_key, style_item=item )
-
-    @ensure_type_items((MetapreambleItem, Target))
-    def _generate_style_item_metapreamble(self, target, metarecord,
-        *, style_key, style_item
-    ):
-        derive_target = partial( target.derive_from_string,
-            origin='style {target}, key {key}'
-                .format(target=target, key=style_key)
-        )
-        if isinstance(style_item, str):
-            yield derive_target(style_item)
-            return
-        if not isinstance(style_item, dict):
-            raise DriverError(
-                "Style item must be a string or a dictionary, not {}"
-                .format(type(style_item).__name__) )
-        style_item = style_item.copy()
-        condition = style_item.pop('condition', True)
-        if not target.flags.check_condition(condition):
-            return
-        if style_item.keys() == {'delegate'}:
-            yield derive_target(style_item['delegate'])
+            return Never
+        elif isinstance(date, (Date, *Date.date_types)):
+            return Date(date)
+        elif isinstance(date, str):
+            return date
         else:
-            yield self._classify_style_item(style_item)
+            raise DriverError(type(date))
 
-    @ensure_type_items((MetapreambleItem, Target))
-    @processing_target
-    def _generate_auto_metapreamble(self, target, metarecord):
-        if target.path.is_root():
-            raise DriverError("Missing toplevel $style")
-        if '$package$able' in metarecord:
-            for package_type in self._package_types:
-                package_type_key = self._get_package_type_key(package_type)
-                if metarecord.get(package_type_key, False):
-                    break
-            else:
-                raise DriverError("Failed to determine package type")
-            # pylint: disable=undefined-loop-variable
-            yield self.LocalPackagePreambleItem(
-                package_path=target.path,
-                package_type=package_type )
-            # pylint: enable=undefined-loop-variable
+    def _get_source_caption(self, target, record):
+        if '$caption' in record:
+            if not isinstance(record['$caption'], str):
+                raise DriverError(type(record['$caption']))
+            return str(record['$caption'])
+        elif '$source$sections' in record:
+            if not isinstance(record['$source$sections'], list):
+                raise DriverError(type(record['$source$sections']))
+            for section in record['$source$sections']:
+                if not isinstance(section, str):
+                    raise DriverError(type(section))
+            return "; ".join(record['$source$sections'])
         else:
-            yield target.path_derive('..')
+            return None
 
-    def _digest_metabody(self, target, metabody,
-        *, sources, figures, metapreamble
-    ):
-        """
-        Yield metabody items. Extend sources, figures, metapreamble.
-        """
-        page_cleared = True
-        for item in metabody:
-            assert isinstance(item, self.MetabodyItem), type(item)
-            if isinstance(item, self.ClearPageBodyItem):
-                if not page_cleared:
-                    yield item
-                    page_cleared = True
-            elif isinstance(item, self.EmptyPageBodyItem):
-                if not page_cleared:
-                    yield self.ClearPageBodyItem()
-                    page_cleared = True
-                yield item
-            elif isinstance(item, self.VerbatimBodyItem):
-                yield item
-                page_cleared = False
-            elif isinstance(item, self.SourceBodyItem):
-                yield from self._digest_metabody_source_item( target, item,
-                    sources=sources, figures=figures,
-                    metapreamble=metapreamble )
-                page_cleared = False
-            elif isinstance(item, self.RequirePreambleBodyItem):
-                metapreamble.append(self.ProvidePreamblePreambleItem(
-                    key=item.key, value=item.value ))
-            elif isinstance(item, self.RequirePackageBodyItem):
-                metapreamble.append(self.ProvidePackagePreambleItem(
-                    package=item.package, options={
-                        'required' : item.options_required,
-                        'suggested' : item.options_suggested }
-                ))
-            elif isinstance(item, self.ProhibitPackageBodyItem):
-                metapreamble.append(self.ProhibitPackagePreambleItem(
-                    package=item.package ))
-            elif isinstance(item, self.ControlBodyItem):
-                # should be handled by superclass
-                yield item
-            else:
-                raise RuntimeError(type(item))
+    def _get_source_authors(self, target, record):
+        authors = record.get('$authors', ())
+        if not isinstance(authors, (list, tuple)):
+            raise DriverError(type(authors))
+        return [self.Author(author) for author in authors]
 
-    def _digest_metabody_source_item(self, target, item,
-        *, sources, figures, metapreamble
-    ):
-        """
-        Yield metabody items. Extend sources, figures.
-        """
-        assert isinstance(item, self.SourceBodyItem)
-        metarecord = self.get(item.metapath)
-        if not metarecord.get('$source$able', False):
-            raise RuntimeError( "Path {path} is not sourceable"
-                .format(path=item.metapath) )
-        item.alias = self._select_alias( item.inpath, suffix=item.file_suffix,
-            ascii_only=True )
-        self._check_and_set(sources, item.alias, item.inpath)
-        item.figure_map = OrderedDict()
-        figure_refs = metarecord.get('$source$figures', ())
+    @ensure_type_items(BodyItem)
+    @processing_target
+    def _generate_body_source_figure_def(self, target, record):
+        figure_refs = record.get('$source$figures', ())
+        if not isinstance(figure_refs, (list, tuple)):
+            raise DriverError(type(figure_refs))
         for figure_ref in figure_refs:
+            if not isinstance(figure_ref, str):
+                raise DriverError(type(figure_ref))
             match = self._figure_ref_regex.fullmatch(figure_ref)
             if match is None:
-                raise RuntimeError(figure_ref)
+                raise DriverError( "Cannot parse figure ref "
+                    f"{figure_ref!r}" )
             figure = match.group('figure')
-            figure_type = match.group('figure_type')
-            figure_path = RecordPath(item.metapath, figure)
-            figure_alias_stem = self._select_alias( figure_path.as_inpath(),
-                ascii_only=True )
-            with process_target_aspect(item.metapath, 'figure_map'):
-                self._check_and_set( item.figure_map,
-                    figure_ref, figure_alias_stem )
-            with process_target_aspect(target, 'figures'):
-                self._check_and_set( figures,
-                    figure_alias_stem, (figure_path, figure_type) )
-        yield item
+            figure_path = RecordPath(target.path, figure)
+            yield self.FigureDefBodyItem(figure_ref, figure_path)
 
     _figure_ref_regex = re.compile(FIGURE_REF_PATTERN)
 
-    def _digest_metapreamble(self, target, metapreamble,
-        *, package_paths, compilers
-    ):
-        """
-        Yield metapreamble items.
-        Extend package_paths.
-        """
-        for item in metapreamble:
-            assert isinstance(item, self.MetapreambleItem), type(item)
-            if isinstance(item, self.LocalPackagePreambleItem):
-                package_path = item.package_path
-                package_type = item.package_type
-                metarecord = self.get(package_path)
-                package_name_key = self._get_package_name_key(package_type)
-                try:
-                    package_name = item.package_name = \
-                        metarecord[package_name_key]
-                except KeyError as error:
-                    raise DriverError( "Package {} of type {} name not found"
-                        .format(package_path, package_type) ) from error
-                self._check_and_set(package_paths, package_name, package_path)
-                yield item
-            elif isinstance(item, self.CompilerItem):
-                compilers.append(item.compiler)
+    @classmethod
+    def _reconcile_packages(cls, preamble):
+        # Resolve all package prohibitions and option
+        # suggestions/prohibitions.
+        assert isinstance(preamble, list)
+        prohibited_packages = set()
+        package_options = {}
+        for item in preamble:
+            if isinstance(item, cls.ProvidePackagePreambleItem):
+                options = package_options.setdefault(
+                    item.package,
+                    { 'required' : list(), 'suggested' : list(),
+                        'prohibited' : list() }
+                )
+                options['required'].extend(item.options_required)
+                options['suggested'].extend(item.options_suggested)
+                options['prohibited'].extend(item.options_prohibited)
+            elif isinstance(item, cls.ProhibitPackagePreambleItem):
+                prohibited_packages.add(item.package)
+        for item in preamble:
+            if isinstance(item, cls.ProvidePackagePreambleItem):
+                if item.package in prohibited_packages:
+                    raise DriverError(
+                       f"Package {item.package} "
+                        "is prohibited and required at the same time" )
+                options = package_options.get(item.package)
+                if options is None:
+                    # package is already processed
+                    continue
+                options_prohibited = set(options['prohibited'])
+                option_list = [
+                    option
+                    for option in unique(options['suggested'])
+                    if option not in options_prohibited ]
+                if not set(option_list) >= set(options['required']):
+                    bad_options = sorted(
+                        set(options['required']) - set(option_list) )
+                    raise DriverError(
+                       f"Package {item.package} "
+                       f"options {', '.join(repr(o) for o in bad_options)} "
+                        "are prohibited and required at the same time" )
+                yield cls.PackagePreambleItem(item.package, option_list)
+            elif isinstance(item, cls.ProhibitPackagePreambleItem):
+                pass
             else:
                 yield item
-
 
     ##########
     # Record-level functions (package_record) {{{2
 
     @processing_package_path
-    def _generate_package_records(self, package_path):
+    def _generate_package_recipe(self, package_path):
         try:
-            metarecord = self.get(package_path)
+            record = self.get(package_path)
         except RecordNotFoundError as error:
             raise DriverError('Package not found') from error
-        if not metarecord.get('$package$able', False):
+        if not record.get('$package$able', False):
             raise DriverError("Package '{}' not found".format(package_path))
 
-        for package_type in self._package_types:
-            package_type_key = self._get_package_type_key(package_type)
-            if not metarecord.get(package_type_key, False):
-                continue
-            suffix = self._get_package_suffix(package_type)
-            inpath = package_path.as_inpath(suffix=suffix)
-            name_key = self._get_package_name_key(package_type)
-            try:
-                package_name = metarecord[name_key]
-            except KeyError as error:
-                raise DriverError( "Package {} of type {} name not found"
-                    .format(package_path, package_type) ) from error
+        package_types = [ package_type
+            for package_type in self._package_types
+            if record.get(self._get_package_type_key(package_type), False) ]
+        if len(package_types) > 1:
+            raise DriverError(package_types)
+        package_type, = package_types
+        suffix = self._get_package_suffix(package_type)
+        source_path = package_path.as_source_path(suffix=suffix)
+        name_key = self._get_package_name_key(package_type)
+        if name_key in record:
+            package_name = record[name_key]
+            if not isinstance(package_name, str):
+                raise DriverError(type(package_name))
+        else:
+            package_name = package_path.name
 
-            package_record = {
-                'type' : package_type,
-                'source' : inpath, 'name' : package_name }
-            yield package_type, package_record
+        return {
+            'source_type' : package_type,
+            'source' : source_path, 'name' : package_name }
 
     _package_types = ('dtx', 'sty',)
 
@@ -1254,32 +1828,48 @@ class RegularDriver(MetaRecords): # {{{1
     # Record-level functions (figure_record) {{{2
 
     @processing_figure_path
-    def _generate_figure_records(self, figure_path):
+    def _generate_figure_recipe(self, figure_path, figure_formats):
         try:
-            metarecord = self.get(figure_path)
+            record = self.get(figure_path)
         except RecordNotFoundError as error:
             raise DriverError('Figure not found') from error
-        if not metarecord.get('$figure$able', False):
+        if not record.get('$figure$able', False):
             raise DriverError("Figure '{}' not found".format(figure_path))
 
-        for figure_type in self._figure_types:
-            figure_type_key = self._get_figure_type_key(figure_type)
-            if not metarecord.get(figure_type_key, False):
-                continue
-            suffix = self._get_figure_suffix(figure_type)
-            inpath = figure_path.as_inpath(suffix=suffix)
+        figure_types = [ figure_type
+            for figure_type in self._figure_types
+            if self._figure_formats[figure_type] & figure_formats
+            if record.get(self._get_figure_type_key(figure_type), False) ]
+        if len(figure_types) > 1:
+            raise DriverError(figure_types)
+        figure_type, = figure_types
+        figure_formats = self._figure_formats[figure_type] & figure_formats
+        if len(figure_formats) > 1:
+            raise DriverError(figure_formats)
+        figure_format, = figure_formats
+        suffix = self._get_figure_suffix(figure_type)
+        source_path = figure_path.as_source_path(suffix=suffix)
 
-            figure_record = {
-                'type' : figure_type,
-                'source' : inpath }
-            if figure_type == 'asy':
-                figure_record['other_sources'] = \
-                    self._find_figure_asy_other_sources(
-                        figure_path, metarecord )
-                assert isinstance(figure_record['other_sources'], dict)
-            yield figure_type, figure_record
+        figure_recipe = {
+            'format' : figure_format,
+            'source_type' : figure_type,
+            'source' : source_path }
+        if figure_type == 'asy':
+            figure_recipe['other_sources'] = \
+                self._find_figure_asy_other_sources(
+                    figure_path, record )
+            assert isinstance(figure_recipe['other_sources'], dict)
+        return figure_recipe
 
     _figure_types = ('asy', 'svg', 'pdf', 'eps', 'png', 'jpg',)
+    _figure_formats = {
+        'asy' : {'pdf', 'eps'},
+        'svg' : {'pdf', 'eps'},
+        'pdf' : {'pdf'},
+        'eps' : {'eps'},
+        'png' : {'png'},
+        'jpg' : {'jpg'},
+    }
 
     @staticmethod
     def _get_figure_type_key(figure_type):
@@ -1290,24 +1880,24 @@ class RegularDriver(MetaRecords): # {{{1
         return '.{}'.format(figure_type)
 
     @processing_figure_path
-    def _find_figure_asy_other_sources(self, figure_path, metarecord):
+    def _find_figure_asy_other_sources(self, figure_path, record):
         other_sources = dict()
-        for accessed_name, inpath in (
-            self._trace_figure_asy_other_sources(figure_path, metarecord)
+        for accessed_name, source_path in (
+            self._trace_figure_asy_other_sources(figure_path, record)
         ):
-            self._check_and_set(other_sources, accessed_name, inpath)
+            self._check_and_set(other_sources, accessed_name, source_path)
         return other_sources
 
     @processing_figure_path
-    def _trace_figure_asy_other_sources(self, figure_path, metarecord=None,
+    def _trace_figure_asy_other_sources(self, figure_path, record=None,
         *, _seen_items=None
     ):
-        """Yield (accessed_name, inpath) pairs."""
+        """Yield (accessed_name, source_path) pairs."""
         if _seen_items is None:
             _seen_items = set()
-        if metarecord is None:
-            metarecord = self.get(figure_path)
-        accessed_paths = metarecord.get('$figure$asy$accessed', {})
+        if record is None:
+            record = self.get(figure_path)
+        accessed_paths = record.get('$figure$asy$accessed', {})
         for accessed_name, accessed_path_s in accessed_paths.items():
             accessed_path = RecordPath(figure_path, accessed_path_s)
             accessed_item = (accessed_name, accessed_path)
@@ -1315,8 +1905,8 @@ class RegularDriver(MetaRecords): # {{{1
                 continue
             else:
                 _seen_items.add(accessed_item)
-            inpath = accessed_path.as_inpath(suffix='.asy')
-            yield accessed_name, inpath
+            source_path = accessed_path.as_source_path(suffix='.asy')
+            yield accessed_name, source_path
             yield from self._trace_figure_asy_other_sources(
                 accessed_path, _seen_items=_seen_items )
 
@@ -1325,101 +1915,73 @@ class RegularDriver(MetaRecords): # {{{1
     # LaTeX-level functions {{{2
 
     @classmethod
-    def _constitute_document(cls, outrecord, metapreamble, metabody):
-        return cls.document_template.substitute(
-            compiler=outrecord['compiler'],
-            preamble=cls._constitute_preamble(outrecord, metapreamble),
-            body=cls._constitute_body(outrecord, metabody)
+    def _constitute_document(cls, document_recipe, preamble, body):
+        document_template = DocumentTemplate()
+        document_template.append_text(
+            cls.document_compiler_template.substitute(
+                compiler=document_recipe['compiler'] )
         )
+        cls._fill_preamble(preamble, document_template)
+        document_template.append_text(
+            cls.document_begin_template.substitute() )
+        cls._fill_body(body, document_template)
+        document_template.append_text(
+            cls.document_end_template.substitute() )
+        return document_template
 
-    document_template = Template(
+    document_compiler_template = Template(
         r'% Auto-generated by jeolm for compiling with $compiler' '\n\n'
-        r'$preamble' '\n\n'
-        r'\begin{document}' '\n\n'
-        r'$body' '\n\n'
-        r'\end{document}' '\n'
     )
+    document_begin_template = Template(
+        '\n' r'\begin{document}' '\n\n' )
+    document_end_template = Template(
+        '\n' r'\end{document}' '\n\n' )
 
     @classmethod
-    def _constitute_preamble(cls, outrecord, metapreamble):
-        assert isinstance(outrecord, dict)
-        preamble_lines = [None] # first line is always documentclass
+    def _constitute_preamble(cls, document_recipe, preamble):
+        preamble_template = DocumentTemplate()
+        cls._fill_preamble(preamble, preamble_template)
+        return preamble_template
+
+    @classmethod
+    def _fill_preamble(cls, preamble, document_template):
         provided_preamble = {}
-        provided_packages = {}
-        for item in metapreamble:
-            if isinstance(item, cls.DocumentClassItem):
-                if preamble_lines[0] is not None:
-                    raise DriverError(
-                        "Document class is specified multiple times" )
-                preamble_lines[0] = cls.documentclass_template.substitute(
-                    document_class=item.document_class,
-                    options=cls._constitute_options(item.options) )
-                continue
-            if isinstance(item, cls.ProvidePreamblePreambleItem):
+        for item in preamble:
+            assert isinstance(item, cls.PreambleItem), type(item)
+            assert not isinstance(item, cls.ProvidePackagePreambleItem)
+            assert not isinstance(item, cls.ProhibitPackagePreambleItem)
+            if isinstance(item, cls.ProvideVerbatimPreambleItem):
                 if not cls._check_and_set( provided_preamble,
                         item.key, item.value ):
                     continue
-            elif isinstance(item, cls.ProvidePackagePreambleItem):
-                if item.package not in provided_packages:
-                    provided_packages[item.package] = item.options_suggested
-                else:
-                    provided_options = provided_packages[item.package]
-                    if provided_options is None:
-                        raise DriverError(
-                            "Package {} was prohibited, cannot provide it"
-                            .format(item.package) )
-                    elif not set(item.options_required).issubset(provided_options):
-                        raise DriverError(
-                            "Package {} was already provided with options {}, "
-                            "incompatible with options {}"
-                            .format(
-                                item.package,
-                                cls._constitute_options(provided_options),
-                                cls._constitute_options(item.options_required) )
-                        )
-                    continue
-            elif isinstance(item, cls.ProhibitPackagePreambleItem):
-                if item.package not in provided_packages:
-                    provided_packages[item.package] = None
-                else:
-                    provided_options = provided_packages[item.package]
-                    if provided_options is not None:
-                        raise DriverError(
-                            "Package {} was provided, cannot prohibit it"
-                            .format(item.package) )
-                    continue
-            preamble_line = cls._constitute_preamble_item(item)
-            if preamble_line is None:
-                continue
-            preamble_lines.append(preamble_line)
-        if preamble_lines[0] is None:
-            raise DriverError(
-                "Document class is not specified")
-        return '\n'.join(preamble_lines)
-
-    documentclass_template = Template(
-        r'\documentclass$options{$document_class}' )
+            cls._fill_preamble_item(item, document_template)
+            document_template.append_text('\n')
 
     @classmethod
-    def _constitute_preamble_item(cls, item):
-        assert isinstance(item, cls.MetapreambleItem), type(item)
+    def _fill_preamble_item(cls, item, document_template):
         if isinstance(item, cls.VerbatimPreambleItem):
-            return item.value
+            document_template.append_text(item.value)
         elif isinstance(item, cls.LocalPackagePreambleItem):
-            return cls.uselocalpackage_template.substitute(
-                package=item.package_name,
-                package_path=item.package_path )
-        elif isinstance(item, cls.ProvidePackagePreambleItem):
-            return cls.usepackage_template.substitute(
-                package=item.package,
-                options=cls._constitute_options(item.options_suggested) )
-        elif isinstance(item, cls.ProhibitPackagePreambleItem):
-            return None
+            document_template.append_text(
+                cls.uselocalpackage_0_template.substitute() )
+            document_template.append_key(('package', item.package_path))
+            document_template.append_text(
+                cls.uselocalpackage_1_template.substitute(
+                    package_path=item.package_path)
+            )
+        elif isinstance(item, cls.PackagePreambleItem):
+            document_template.append_text(
+                cls.usepackage_template.substitute(
+                    package=item.package,
+                    options=cls._constitute_options(item.options) )
+            )
         else:
             raise RuntimeError(type(item))
 
-    uselocalpackage_template = Template(
-        r'\usepackage{$package}% $package_path' )
+    uselocalpackage_0_template = Template(
+        r'\usepackage{' )
+    uselocalpackage_1_template = Template(
+        r'}% $package_path' )
 
     @classmethod
     def _constitute_options(cls, options):
@@ -1430,59 +1992,63 @@ class RegularDriver(MetaRecords): # {{{1
         return '[' + options + ']'
 
     @classmethod
-    def _constitute_body(cls, outrecord, metabody):
-        assert isinstance(outrecord, dict)
-        body_items = []
-        for item in metabody:
-            body_items.append(cls._constitute_body_item(item))
-        return '\n'.join(body_items)
+    def _fill_body(cls, body, document_template):
+        for item in body:
+            assert isinstance(item, cls.BodyItem), type(item)
+            cls._fill_body_item(item, document_template)
+            document_template.append_text('\n')
 
     @classmethod
-    def _constitute_body_item(cls, item):
-        assert isinstance(item, cls.MetabodyItem), item
+    def _fill_body_item(cls, item, document_template):
         if isinstance(item, cls.VerbatimBodyItem):
-            return item.value
+            document_template.append_text(item.value)
         elif isinstance(item, cls.SourceBodyItem):
-            return cls._constitute_body_input(
-                include_command=item.include_command,
-                alias=item.alias,
-                figure_map=item.figure_map,
-                inpath=item.inpath, metapath=item.metapath )
-        elif isinstance(item, cls.ControlBodyItem):
-            raise RuntimeError(
-                "Control body items must be handled somewhere earlier: {}"
-                .format(type(item)) )
+            document_template.append_text(
+                cls.input_0_template.substitute(
+                    include_command=item.include_command )
+            )
+            document_template.append_key(('source', item.source_path))
+            document_template.append_text(
+                cls.input_1_template.substitute(
+                    source_path=item.source_path )
+            )
+        elif isinstance(item, cls.FigureDefBodyItem):
+            figure_index = getattr(document_template, 'figure_index', 0)
+            document_template.append_text(
+                cls.jeolmfiguremap_0_template.substitute(
+                    figure_ref=item.figure_ref )
+            )
+            document_template.append_key(
+                ('figure', item.figure_path, figure_index) )
+            document_template.append_text(
+                cls.jeolmfiguremap_1_template.substitute(
+                    figure_path=item.figure_path )
+            )
+            document_template.append_key(
+                ('figure-size', item.figure_path, figure_index) )
+            document_template.append_text(
+                cls.jeolmfiguremap_2_template.substitute(
+                    figure_path=item.figure_path )
+            )
+            document_template.figure_index = figure_index + 1
         else:
             raise RuntimeError(type(item))
 
-    @classmethod
-    def _constitute_body_input( cls,
-        *, include_command, alias, figure_map, metapath, inpath
-    ):
-        body = cls.input_template.substitute(
-            command=include_command, filename=alias,
-            metapath=metapath, inpath=inpath )
-        if figure_map:
-            body = cls._constitute_figure_map(figure_map) + '\n' + body
-        return body
+    input_0_template = Template(
+        r'$include_command{' )
+    input_1_template = Template(
+        r'}% $source_path' )
 
-    input_template = Template(
-        r'$command{$filename}% $metapath' )
-
-    @classmethod
-    def _constitute_figure_map(cls, figure_map):
-        assert isinstance(figure_map, OrderedDict), type(figure_map)
-        return '\n'.join(
-            cls.jeolmfiguremap_template.substitute(
-                ref=figure_ref, alias=figure_alias )
-            for figure_ref, figure_alias in figure_map.items() )
-
-    jeolmfiguremap_template = Template(
-        r'\jeolmfiguremap{$ref}{$alias}%' )
+    jeolmfiguremap_0_template = Template(
+        r'\jeolmfiguremap{$figure_ref}{' )
+    jeolmfiguremap_1_template = Template(
+        r'}{' )
+    jeolmfiguremap_2_template = Template(
+        r'}% $figure_path' )
 
     @classmethod
     def _constitute_date_def(cls, date):
-        if date is None:
+        if date is None or date is Never:
             raise RuntimeError
         date = cls._constitute_date(date)
         if '%' in date:
@@ -1496,22 +2062,65 @@ class RegularDriver(MetaRecords): # {{{1
 
     @classmethod
     def _constitute_date(cls, date):
-        if not isinstance(date, datetime.date):
+        if not isinstance(date, (Date, *Date.date_types)):
             return str(date)
-        return cls.date_template.substitute(
-            year=date.year,
-            month=cls.ru_monthes[date.month-1],
-            day=date.day )
+        if not isinstance(date, Date):
+            date = Date(date)
+        date_s = cls.date_template.substitute(dateiso=date.date.isoformat())
+        if date.period is not None:
+            date_s += cls.period_template.substitute(period=date.period)
+        return date_s
 
     date_template = Template(
-        r'$day~$month~$year\,г.' )
-    ru_monthes = [
-        'января', 'февраля', 'марта', 'апреля',
-        'мая', 'июня', 'июля', 'августа',
-        'сентября', 'октября', 'ноября', 'декабря' ]
+        r'\DTMDate{$dateiso}' )
+    period_template = Template(
+        r'\jeolmdisplayperiod{$period}')
 
-    selectfont_template = Template(
-        r'\AtBeginDocument{\fontsize{$size}{$skip}\selectfont}' )
+    @classmethod
+    def _constitute_caption_addtoc(cls, caption):
+        return cls.addtoc_template.substitute(caption=caption)
+
+    addtoc_template = Template(
+        r'\phantomsection\addcontentsline{toc}{section}{$caption}' )
+
+    @classmethod
+    def _constitute_authors_def(cls, author_list):
+        authors = cls._constitute_authors(author_list)
+        if '%' in authors:
+            raise DriverError(
+                "'%' symbol is found in the list of authors: {}"
+                .format(authors) )
+        return cls.authors_def_template.substitute(authors=authors)
+
+    @classmethod
+    def _constitute_authors(cls, author_list, *, thin_space=r'\,'):
+        assert isinstance(author_list, list), type(author_list)
+        if not author_list:
+            return ''
+        elif len(author_list) == 1:
+            author, = author_list
+            return str(author)
+        else:
+            abbreviate = partial( cls._abbreviate_author,
+                thin_space=thin_space )
+        return ', '.join(abbreviate(author) for author in author_list)
+
+    @classmethod
+    def _abbreviate_author(cls, author, thin_space=r'\,'):
+        if isinstance(author, cls.Author):
+            if author.abbr is not None:
+                return author.abbr
+            author_name = author.name
+        elif isinstance(author, str):
+            author_name = author
+        else:
+            raise RuntimeError(type(author))
+        *names, last = author_name.split(' ')
+        return thin_space.join([name[0] + '.' for name in names] + [last])
+
+    authors_def_template = Template(
+        r'\def\jeolmauthors{$authors}%' )
+
     usepackage_template = Template(
         r'\usepackage$options{$package}' )
     resetproblem_template = Template(
@@ -1520,47 +2129,80 @@ class RegularDriver(MetaRecords): # {{{1
         r'\begingroup % \jeolmheader' )
     jeolmheader_end_template = Template(
         r'\jeolmheader \endgroup' )
-    datestamp_template = Template(
-        r'\begin{flushright}\small' '\n'
-        r'    $date' '\n'
-        r'\end{flushright}%'
-    )
+    jeolmfigure_template = Template(
+        r'\jeolmfigure$options{$figure_ref}' )
 
     ##########
     # Supplementary finctions {{{2
 
-    @classmethod
-    def _select_alias(cls, *parts, suffix=None, ascii_only=False):
-        path = PurePosixPath(*parts)
-        assert len(path.suffixes) <= 1, path
-        if suffix is not None:
-            path = path.with_suffix(suffix)
-        assert not path.is_absolute(), path
-        alias = '-'.join(path.parts)
-        if ascii_only and not cls._ascii_file_name_pattern.fullmatch(alias):
-            alias = unidecode(alias).replace("'", "")
-            assert cls._ascii_file_name_pattern.fullmatch(alias), alias
-        else:
-            assert cls._file_name_pattern.fullmatch(alias), alias
-        return alias
-
-    _ascii_file_name_pattern = re.compile(
-        '(?:' + NAME_PATTERN + ')' + r'(?:\.\w+)?', re.ASCII)
-    _file_name_pattern = re.compile(
-        '(?:' + NAME_PATTERN + ')' + r'(?:\.\w+)?' )
+#    @classmethod
+#    def _select_alias(cls, *parts, suffix=None, ascii_only=False):
+#        path = PurePosixPath(*parts)
+#        assert len(path.suffixes) <= 1, path
+#        if suffix is not None:
+#            path = path.with_suffix(suffix)
+#        assert not path.is_absolute(), path
+#        alias = '-'.join(path.parts)
+#        if ascii_only and not cls._ascii_file_name_pattern.fullmatch(alias):
+#            alias = unidecode(alias).replace("'", "")
+#            assert cls._ascii_file_name_pattern.fullmatch(alias), alias
+#        else:
+#            assert cls._file_name_pattern.fullmatch(alias), alias
+#        return alias
+#
+#    _ascii_file_name_pattern = re.compile(
+#        '(?:' + NAME_PATTERN + ')' + r'(?:\.\w+)?', re.ASCII)
+#    _file_name_pattern = re.compile(
+#        '(?:' + NAME_PATTERN + ')' + r'(?:\.\w+)?' )
 
     @staticmethod
-    def _min_date(date_set):
-        datetime_date_set = { date
-            for date in date_set
-            if isinstance(date, datetime.date) }
-        if datetime_date_set:
-            return min(datetime_date_set)
-        elif len(date_set) == 1:
-            date, = date_set
+    def _min_date(dates, _date_types=(Date, *Date.date_types)):
+        dates = [ date
+            for date in dates
+            if date is not None
+            if date is not Never ]
+        if not dates:
+            return Never
+        if len(dates) == 1:
+            date, = dates
             return date
-        else:
+        if all(
+            isinstance(date, _date_types)
+            for date in dates
+        ):
+            return min(dates)
+        return None
+
+    @staticmethod
+    def _join_captions(captions):
+        captions = [caption for caption in captions if caption is not None]
+        if not captions:
             return None
+        if len(captions) == 1:
+            caption, = captions
+            return caption
+        assert all(isinstance(caption, str) for caption in captions)
+        return "; ".join(captions)
+
+    @classmethod
+    def _unique_authors(cls, authors):
+        unique_authors = OrderedDict()
+        for author in authors:
+            assert isinstance(author, cls.Author), type(author)
+            if author.name not in unique_authors:
+                unique_authors[author.name] = author
+                continue
+            if author.abbr is None:
+                continue
+            old_abbr = unique_authors[author.name].abbr
+            if old_abbr is None:
+                unique_authors[author.name] = author
+                continue
+            if old_abbr != author.abbr:
+                raise DriverError(unique_authors[author.name], author)
+        if not unique_authors:
+            return None
+        return list(unique_authors.values())
 
     @staticmethod
     def _check_and_set(mapping, key, value):

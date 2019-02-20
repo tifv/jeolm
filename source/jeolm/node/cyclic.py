@@ -1,26 +1,38 @@
 # Imports and logging {{{1
-import abc
-from itertools import chain
-
 import re
 import os
 import os.path
+from pathlib import PosixPath
 
-from . import ( Node, DatedNode, BuildableNode, FilelikeNode,
-    Command, SubprocessCommand )
+from . import ( Node, DatedNode, BuildableNode, BuildableDatedNode,
+    PathNode, FilelikeNode )
 from .text import text_hash, TEXT_HASH_PATTERN
 
-class CyclicNeed(Node, metaclass=abc.ABCMeta): # {{{1
+import logging
+logger = logging.getLogger(__name__)
 
-    async def update_self(self):
-        await super().update_self()
+from typing import ClassVar, Optional, Iterable, List
+
+class CyclicNeed(Node): # {{{1
+
+    # Override
+    async def update_self(self) -> None:
         self.refresh()
+        self.updated = True
 
-    @abc.abstractmethod
-    def refresh(self):
+    def refresh(self) -> None:
         raise NotImplementedError
 
-class AutowrittenNeed(FilelikeNode, CyclicNeed, DatedNode): # {{{1
+class CyclicDatedNeed(CyclicNeed, DatedNode): # {{{1
+
+    # Override
+    async def update_self(self) -> None:
+        self._load_mtime()
+        self.refresh()
+        self.updated = True
+
+
+class AutowrittenNeed(FilelikeNode, CyclicDatedNeed): # {{{1
     """
     This node can be in one of the following states:
     (1) path is non-existing.
@@ -37,11 +49,10 @@ class AutowrittenNeed(FilelikeNode, CyclicNeed, DatedNode): # {{{1
     # as broken (1a).
     _var_name_regex = re.compile(
         r'(?P<name>.+)\.(?P<hash>' + TEXT_HASH_PATTERN + ')' )
-    _empty_hash = text_hash('')
 
-    def refresh(self):
+    def refresh(self) -> None:
         self.modified = False
-        if not os.path.lexists(str(self.path)): # (1)
+        if not os.path.lexists(self.path): # (1)
             return
         if not self.path.is_symlink():
             if self.path.is_file(): # (2a)
@@ -53,8 +64,8 @@ class AutowrittenNeed(FilelikeNode, CyclicNeed, DatedNode): # {{{1
             elif self.path.is_dir():
                 raise IsADirectoryError(str(self.path))
             else:
-                raise OSError( "Expected regular file or symlink: {}"
-                    .format(str(self.path)) )
+                raise OSError(
+                    f"Expected regular file or symlink: {self.path}" )
         # path is a symlink
         target_name = os.readlink(str(self.path))
         match = self._var_name_regex.fullmatch(target_name)
@@ -62,7 +73,7 @@ class AutowrittenNeed(FilelikeNode, CyclicNeed, DatedNode): # {{{1
             self._refresh_clear()
             return
         target_path = self.path.with_name(target_name)
-        if not os.path.lexists(str(target_path)): # (1a)
+        if not os.path.lexists(target_path): # (1a)
             self._refresh_clear()
             return
         if target_path.is_symlink() or not target_path.is_file():
@@ -77,11 +88,13 @@ class AutowrittenNeed(FilelikeNode, CyclicNeed, DatedNode): # {{{1
         self._refresh_move(target_path, content_hash)
 
     @staticmethod
-    def _refresh_hash(path):
+    def _refresh_hash(path: PosixPath) -> str:
         with path.open(encoding='utf-8') as the_file:
             return text_hash(the_file.read())
 
-    def _refresh_move(self, target_path, content_hash=None):
+    def _refresh_move( self, target_path: PosixPath,
+        content_hash: str = None,
+    ) -> None:
         if content_hash is None:
             content_hash = self._refresh_hash(target_path)
         new_name = '{name}.{hash}'.format(
@@ -96,47 +109,82 @@ class AutowrittenNeed(FilelikeNode, CyclicNeed, DatedNode): # {{{1
         self.modified = True
         self._load_mtime()
 
-    def _refresh_clear(self):
+    def _refresh_clear(self) -> None:
         self.path.unlink()
         self.modified = True
         self._load_mtime()
 
 
-class CyclicCommand(Command): # {{{1
-
-    # Override
-    async def call(self):
-        pass
-
-class CyclicSubprocessCommand(SubprocessCommand, CyclicCommand): # {{{1
-    pass
-
 class CyclicNode(BuildableNode): # {{{1
 
-    max_cycles = 7
+    cyclic_needs: List[CyclicNeed]
+    cycle: int
 
-    def __init__(self, *, needs=(), cyclic_needs=(), **kwargs):
-        self.cyclic_needs = list(cyclic_needs)
-        super().__init__(needs=chain(needs, self.cyclic_needs), **kwargs)
+    max_cycles: ClassVar[int] = 7
+
+    def __init__( self,
+        *, name: Optional[str] = None, needs: Iterable[Node] = (),
+    ) -> None:
+        self.cyclic_needs = list()
+        super().__init__(name=name, needs=needs)
         self.cycle = 0
 
-    def _needs_build(self):
-        if self.cycle <= 0:
-            return super()._needs_build()
-        elif self._needs_build_cyclic():
-            return self.cycle < self.max_cycles
+    def _append_needs(self, node: Node) -> None:
+        super()._append_needs(node)
+        if isinstance(node, CyclicNeed):
+            self.cyclic_needs.append(node)
+
+    # Override
+    async def update_self(self) -> None:
+        if self.cycle == 0:
+            if self._needs_build():
+                await self._update_cyclic()
+            else:
+                self.updated = True
         else:
-            return False
+            await self._update_cyclic()
 
-    def _needs_build_cyclic(self):
-        return any( node.modified
-            for node in self.cyclic_needs )
-
-    async def _run_command(self):
-        await super()._run_command()
+    async def _update_cyclic(self) -> None:
+        await self._run_command()
+        assert self.updated
+        self.cycle += 1
         for need in self.cyclic_needs:
             need.refresh()
-        self.cycle += 1
+        if self._needs_build_cyclic():
+            if self.cycle < self.max_cycles:
+                self._update_cyclic_continue()
+            else:
+                self._update_cyclic_halt()
+        else:
+            self._update_cyclic_finish()
+
+    def _update_cyclic_continue(self) -> None:
+        self.updated = False
+
+    def _update_cyclic_halt(self) -> None:
+        pass
+
+    def _update_cyclic_finish(self) -> None:
+        pass
+
+    def _needs_build_cyclic(self) -> bool:
+        return any(need.modified for need in self.cyclic_needs)
+
+class CyclicDatedNode(CyclicNode, BuildableDatedNode): # {{{1
+
+    # Override
+    async def update_self(self) -> None:
+        if self.cycle == 0:
+            self._load_mtime()
+            if self._needs_build():
+                await self._update_cyclic()
+            else:
+                self.updated = True
+        else:
+            await self._update_cyclic()
+
+class CyclicPathNode(PathNode, CyclicDatedNode): # {{{1
+    pass
 
 # }}}1
 # vim: set foldmethod=marker :

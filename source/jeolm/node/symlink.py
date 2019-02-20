@@ -1,16 +1,18 @@
 import os
 import os.path
 
-from pathlib import PurePosixPath
+from pathlib import PurePosixPath, PosixPath
 
-from . import ( ProductNode, FilelikeNode,
+from . import ( Node, PathNode, ProductNode, FilelikeNode,
     Command, MissingTargetError, _mtime_less )
 
 import logging
 logger = logging.getLogger(__name__)
 
+from typing import ClassVar, Type, Optional, Iterable
 
-def _naive_relative_to(path, root):
+
+def _naive_relative_to(path: PosixPath, root: PosixPath) -> PurePosixPath:
     """
     Compute relative PurePosixPath, result may include '..' parts.
 
@@ -23,26 +25,31 @@ def _naive_relative_to(path, root):
         raise ValueError(path)
     if not root.is_absolute():
         raise ValueError(root)
-    if any('..' in p.parts for p in (path, root)):
-        raise ValueError(path, root)
+    if '..' in path.parts:
+        raise ValueError(path)
+    if '..' in root.parts:
+        raise ValueError(root)
     upstairs = 0
     while root not in path.parents:
         parent = root.parent
         assert parent != root
         root = parent
         upstairs += 1
-    return PurePosixPath(*
-        ['..'] * upstairs + [path.relative_to(root)] )
+    return PurePosixPath(
+        * (('..',) * upstairs),
+        path.relative_to(root) )
 
 class SymLinkCommand(Command):
 
-    def __init__(self, node, target):
+    node: 'SymLinkNode'
+
+    def __init__(self, node: 'SymLinkNode', target: str) -> None:
         assert isinstance(node, SymLinkNode), type(node)
         super().__init__(node)
         assert isinstance(target, str), type(target)
         self.target = target
 
-    async def call(self):
+    async def run(self) -> None:
         if os.path.lexists(str(self.node.path)):
             self._clear_path()
         self.logger.debug(
@@ -56,9 +63,9 @@ class SymLinkCommand(Command):
         )
         self.node.path.symlink_to(self.target)
         self.node.modified = True
-        await super().call()
+        self.node.updated = True
 
-    def _clear_path(self):
+    def _clear_path(self) -> None:
         self.node.path.unlink()
 
 class SymLinkNode(ProductNode):
@@ -71,11 +78,15 @@ class SymLinkNode(ProductNode):
             semantics: it is the target of symbolic link.
     """
 
-    _Command = SymLinkCommand
+    _Command: ClassVar[Type[SymLinkCommand]] = SymLinkCommand
 
-    def __init__(self, source, path, *, relative=True,
-        name=None, needs=(), **kwargs
-    ):
+    command: SymLinkCommand
+    current_target: Optional[str]
+
+    def __init__( self, source: PathNode, path: PosixPath,
+        *, relative: bool = True,
+        name: Optional[str] = None, needs: Iterable[Node] = (),
+    ) -> None:
         """
         Initialize SymLinkNode instance.
 
@@ -89,22 +100,16 @@ class SymLinkNode(ProductNode):
             name, needs (optional)
                 passed to the superclass.
         """
-        super().__init__( source=source, path=path,
-            name=name, needs=needs, **kwargs )
-
+        super().__init__( source, path,
+            name=name, needs=needs )
         if not relative:
             target = str(source.path)
         else:
-            target = str(_naive_relative_to(
-                source.path, self.path.parent ))
-
-        self.set_command(self._Command(self, target))
-
+            target = str(_naive_relative_to(source.path, self.path.parent))
+        self.command = self._Command(self, target)
         self.current_target = None
 
-    wants_concurrency = False
-
-    def _load_mtime(self):
+    def _load_mtime(self) -> None:
         """
         Set node.mtime attribute to appropriate value.
 
@@ -139,37 +144,28 @@ class SymLinkNode(ProductNode):
         if source.modified:
             self.modified = True
 
-    def _needs_build(self):
-        """
-        If the node needs to be (re)built.
-
-        Override.
-        SymLinkNode needs to be rebuilt in the following cases:
-          - node.path does not exist as filesystem path;
-          - node.path is not a link;
-          - node.path is a link, but wrong link.
-        Superclasses ignored.
-        """
-        if self.mtime is not None:
-            return False
-        return True
+    def _needs_build(self) -> bool:
+        if self._forced:
+            return True
+        return self.mtime is None
 
 
 class SymLinkedFileNode(SymLinkNode, FilelikeNode):
 
-    def __init__(self, source, path, *, relative=True,
-        name=None, needs=(), **kwargs
-    ):
+    def __init__( self, source: FilelikeNode, path: PosixPath,
+        *, relative: bool = True,
+        name: Optional[str] = None, needs: Iterable[Node] = (),
+    ) -> None:
         if not isinstance(source, FilelikeNode):
             raise TypeError(type(source))
         super().__init__( source, path, relative=relative,
-            name=name, needs=needs, **kwargs )
+            name=name, needs=needs )
 
-class ProxyNode(ProductNode):
+class ProxyNode(PathNode):
     """
     Represents the same path as its source.
 
-    This allows assigning some attributes which sould not belong to the
+    This allows assigning some attributes which should not belong to the
     original node, or adding some post-dependencies.
 
     Attributes (additional to superclasses):
@@ -178,7 +174,9 @@ class ProxyNode(ProductNode):
             semantics: it is the node to be proxy for.
     """
 
-    def __init__(self, source, *, name=None, needs=(), **kwargs):
+    def __init__( self, source: PathNode,
+        *, name: Optional[str] = None, needs: Iterable[Node] = (),
+    ) -> None:
         """
         Initialize ProxyNode instance.
 
@@ -190,31 +188,32 @@ class ProxyNode(ProductNode):
             needs (optional)
                 passed to the superclass.
         """
-        super().__init__( source=source, path=source.path,
-            name=name, needs=needs, **kwargs )
-
-    wants_concurrency = False
+        if not isinstance(source, PathNode):
+            raise TypeError(type(source))
+        self.source = source
+        super().__init__( path=source.path,
+            name=name, needs=(source, *needs) )
 
     # Override
-    async def update_self(self):
+    async def update_self(self) -> None:
         self._load_mtime()
         self.modified = self.source.modified
         self.updated = True
 
-    def _load_mtime(self):
+    def _load_mtime(self) -> None:
         self.mtime = self.source.mtime
 
-    def _needs_build(self):
-        raise RuntimeError("You should not be here.")
-
-    def _append_needs(self, node):
-        if node is not self.source:
-            raise RuntimeError(node)
+    def __repr__(self) -> str:
+        return (
+            f"{self.__class__.__name__}(name={self.name!r}, "
+            f"source={self.source!r})" )
 
 class ProxyFileNode(ProxyNode, FilelikeNode):
 
-    def __init__(self, source, *, name=None, needs=(), **kwargs):
+    def __init__( self, source: FilelikeNode,
+        *, name: Optional[str] = None, needs: Iterable[Node] = (),
+    ) -> None:
         if not isinstance(source, FilelikeNode):
             raise TypeError(type(source))
-        super().__init__(source, name=name, needs=needs, **kwargs)
+        super().__init__(source, name=name, needs=needs)
 

@@ -16,9 +16,8 @@ import jeolm.metadata
 
 from jeolm.commands.diffprint import log_metadata_diff
 
-from jeolm.record_path import RecordPath
 from jeolm.target import Target, TargetError
-from jeolm.records import RecordNotFoundError
+from jeolm.records import RecordPath, RecordNotFoundError
 
 from jeolm.node import NodeErrorReported
 
@@ -200,14 +199,14 @@ class NotifiedMetadata(jeolm.metadata.Metadata):
 
     def _create_record(self, path, parent_record):
         if path.suffix == '':
-            source_path = str(self.project.source_dir/path.as_inpath())
+            source_path = str(self.project.source_dir/path.as_source_path())
             self.descriptors.add(self.watch.add_watch(
                 source_path, self.mask, rec=False ))
         return super()._create_record(path, parent_record)
 
     def _delete_record(self, path, *args, **kwargs):
         if path.suffix == '':
-            source_path = str(self.project.source_dir/path.as_inpath())
+            source_path = str(self.project.source_dir/path.as_source_path())
             self.watch.rm_watch(self.descriptors.pop(path=source_path))
         return super()._delete_record(path, *args, **kwargs)
 
@@ -291,7 +290,7 @@ class Completer:
         self._saved_completion = None
 
     def _is_target(self, path):
-        return path in self.driver and self.driver.metapath_is_targetable(path)
+        return path in self.driver and self.driver.path_is_targetable(path)
 
     def _list_subtargets(self, path):
         with suppress(RecordNotFoundError):

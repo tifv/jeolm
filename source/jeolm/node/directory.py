@@ -1,6 +1,7 @@
 import os
 import os.path
 from stat import S_ISDIR
+from pathlib import PurePosixPath, PosixPath
 
 from . import (
     Node, BuildableNode, PathNode, BuildablePathNode,
@@ -10,6 +11,7 @@ from . import (
 import logging
 logger = logging.getLogger(__name__)
 
+from typing import ClassVar, Type, Optional, Iterable, Sequence, Set
 
 class MakeDirCommand(Command):
     """
@@ -20,12 +22,14 @@ class MakeDirCommand(Command):
             True if the parents of directory will be created if needed.
     """
 
-    def __init__(self, node, *, parents):
+    node: 'DirectoryNode'
+
+    def __init__(self, node: 'DirectoryNode', *, parents: bool) -> None:
         assert isinstance(node, DirectoryNode), type(node)
         super().__init__(node)
         self.parents = parents
 
-    async def call(self):
+    async def run(self) -> None:
         path = self.node.path
         if os.path.lexists(str(path)):
             path.unlink()
@@ -38,19 +42,21 @@ class MakeDirCommand(Command):
         # rwxr-xr-x
         path.mkdir(mode=0b111101101, parents=self.parents)
         self.node.modified = True
-        await super().call()
+        self.node.updated = True
 
 class DirectoryNode(BuildablePathNode):
     """
     Represents a directory.
     """
 
-    _Command = MakeDirCommand
+    _Command: ClassVar[Type[MakeDirCommand]] = MakeDirCommand
 
-    def __init__(self, path,
-        *, parents=False,
-        name=None, needs=(), **kwargs
-    ):
+    command: MakeDirCommand
+
+    def __init__( self, path: PosixPath,
+        *, parents: bool = False,
+        name: Optional[str] = None, needs: Iterable[Node] = (),
+    ) -> None:
         """
         Initialize DirectoryNode instance.
 
@@ -63,22 +69,15 @@ class DirectoryNode(BuildablePathNode):
             name, needs (optional)
                 passed to the superclass.
         """
-        super().__init__(path=path, name=name, needs=needs, **kwargs)
-        self.set_command(self._Command(self, parents=parents))
+        super().__init__(path, name=name, needs=needs)
+        self.command = self._Command(self, parents=parents)
 
-    wants_concurrency = False
-
-    def _load_mtime(self):
+    def _load_mtime(self) -> None:
         """
         Set node.mtime attribute to appropriate value.
 
         Set node.mtime to None if node.path does not exist.
         Otherwise, set self.mtime to 0.
-
-        This method overrides normal behavior. It reflects the fact that
-        directories cannot be modified: they either exist (mtime=0) or
-        not (mtime=None). Directory real mtime changes with every new file
-        in it, so using it would cause unnecessary updates.
         """
         try:
             stat = self.stat()
@@ -92,42 +91,49 @@ class DirectoryNode(BuildablePathNode):
                 "Found something where a directory should be: {}"
                 .format(self.relative_path) )
 
-    def _needs_build(self):
-        """
-        Return True if the node needs to be (re)built.
-
-        Override.
-        DirectoryNode needs to be rebuilt in the following cases:
-          - path does not exist;
-          - path is not a directory.
-        Superclasses ignored.
-        """
-        if self.mtime is None:
+    def _needs_build(self) -> bool:
+        if self._forced:
             return True
-        return False
+        return self.mtime is None
 
 
 class _CheckDirectoryNode(Node):
 
-    def __init__(self, dir_node, approved_names, *, name, needs=()):
+    dir_node: 'BuildDirectoryNode'
+
+    _rogue_names: Optional[Sequence[str]]
+
+    def __init__( self, dir_node: 'BuildDirectoryNode',
+        *, name: Optional[str] = None, needs: Iterable[Node] = (),
+    ) -> None:
         super().__init__(name=name, needs=needs)
         self.dir_node = dir_node
         self.path = dir_node.path
-        self.approved_names = approved_names
+        self._rogue_names = None
 
-    def _find_rogue_names(self):
-        return set(os.listdir(str(self.path))) - self.approved_names
+    def _find_rogue_names(self) -> Sequence[str]:
+        if os.path.lexists(self.path):
+            return sorted(
+                set(os.listdir(self.path)) - self.dir_node.approved_names
+            )
+        else:
+            return []
 
-    def root_relative(self, path):
+    @property
+    def rogue_names(self) -> Sequence[str]:
+        if self._rogue_names is not None:
+            return self._rogue_names
+        rogue_names = self._rogue_names = tuple(self._find_rogue_names())
+        return rogue_names
+
+    def root_relative(self, path: PosixPath) -> PurePosixPath:
         return self.dir_node.root_relative(path)
 
 class _CleanupCommand(Command):
 
-    def __init__(self, node):
-        assert isinstance(node, _PreCleanupNode), type(node)
-        super().__init__(node)
+    node: '_PreCleanupNode'
 
-    async def call(self):
+    async def run(self) -> None:
         for rogue_name in self.node.rogue_names:
             rogue_path = self.node.path / rogue_name
             if rogue_path.is_dir():
@@ -140,25 +146,28 @@ class _CleanupCommand(Command):
                 dict(path=self.node.root_relative(rogue_path)) )
             rogue_path.unlink()
         self.node.modified = True
-        await super().call()
+        self.node.updated = True
 
 class _PreCleanupNode(_CheckDirectoryNode, BuildableNode):
 
-    def __init__(self, dir_node, approved_names, *, name, needs=()):
-        super().__init__(dir_node, approved_names, name=name, needs=needs)
-        self.set_command(_CleanupCommand(self))
-        self.rogue_names = None
+    command: '_CleanupCommand'
 
-    wants_concurrency = False
+    def __init__( self, dir_node: 'BuildDirectoryNode',
+        *, name: Optional[str] = None, needs: Iterable[Node] = (),
+    ) -> None:
+        super().__init__(dir_node, name=name, needs=needs)
+        self.command = _CleanupCommand(self)
 
-    def _needs_build(self):
-        rogue_names = self.rogue_names = self._find_rogue_names()
-        return bool(rogue_names)
+    def _needs_build(self) -> bool:
+        if self._forced:
+            return True
+        return len(self.rogue_names) > 0
 
 class _PostCheckNode(_CheckDirectoryNode):
 
-    async def update_self(self):
-        for rogue_name in self._find_rogue_names():
+    # Override
+    async def update_self(self) -> None:
+        for rogue_name in self.rogue_names:
             self.logger.warning(
                 "Detected rogue path <YELLOW>%(path)s<NOCOLOUR>",
                 dict(path=self.path / rogue_name) )
@@ -172,23 +181,25 @@ class BuildDirectoryNode(DirectoryNode):
     files will not interfere with the build process.
     """
 
-    def __init__(self, path,
-        *, parents=False,
-        name=None, needs=(), **kwargs
-    ):
-        super().__init__( path=path, parents=parents,
-            name=name, needs=needs, **kwargs )
-        approved_names = self.approved_names = set()
-        self.pre_cleanup_node = _PreCleanupNode(
-            self, approved_names,
+    approved_names: Set[str]
+    pre_cleanup_node: _PreCleanupNode
+    post_check_node: _PostCheckNode
+
+    def __init__( self, path: PosixPath,
+        *, parents: bool = False,
+        name: Optional[str] = None, needs: Iterable[Node] = (),
+    ) -> None:
+        super().__init__( path, parents=parents,
+            name=name, needs=needs )
+        self.approved_names = set()
+        self.pre_cleanup_node = _PreCleanupNode( self,
             name='{}:pre-cleanup'.format(name), needs=(self,) )
-        self.post_check_node = _PostCheckNode(
-            self, approved_names,
+        self.post_check_node = _PostCheckNode( self,
             name='{}:post-check'.format(name),
             needs=(self, self.pre_cleanup_node),
         )
 
-    def register_node(self, node):
+    def register_node(self, node: PathNode) -> None:
         if not isinstance(node, PathNode):
             raise TypeError(type(node))
         path = node.path
@@ -196,4 +207,7 @@ class BuildDirectoryNode(DirectoryNode):
             raise ValueError(path)
         self.approved_names.add(path.name)
         self.pre_cleanup_node.append_needs(node)
+        if isinstance(node, BuildDirectoryNode):
+            self.pre_cleanup_node.append_needs(node.pre_cleanup_node)
+            self.post_check_node.append_needs(node.post_check_node)
 

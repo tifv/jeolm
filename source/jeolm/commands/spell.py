@@ -9,7 +9,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-def check_spelling(targets, *, project, driver, colour=True):
+def check_spelling(targets, *, project, colour=True):
     if colour:
         from jeolm.fancify import fancifying_print as fprint
     else:
@@ -18,8 +18,8 @@ def check_spelling(targets, *, project, driver, colour=True):
     indicator = Indicator()
     formatter = Formatter(fprint=fprint)
 
-    path_generator = list_sources(targets,
-        project=project, driver=driver, source_type='tex' )
+    path_generator = list_sources( targets,
+        project=project, suffixes={'tex'} )
     for path in path_generator:
         indicator.show(str(path.relative_to(project.source_dir)))
         formatter.reset()
@@ -280,8 +280,8 @@ class Slicer:
         ('text_end',                r'\Z'),
         ('tex_begin',               r'\{'),
         ('tex_end',                 r'\}'),
-        ('tex_begingroup',          r'\begingroup'),
-        ('tex_endgroup',            r'\endgroup'),
+        ('tex_begingroup',          r'\\begingroup'),
+        ('tex_endgroup',            r'\\endgroup'),
         ('latex_begin',
             r'\\begin\{(?P<begin_environment>[^\\%{}\[\]\n]+)\}' +
                 r'(?:' + _latex_possible_args + r')' ),

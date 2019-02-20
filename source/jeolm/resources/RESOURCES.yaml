@@ -5,18 +5,10 @@ style:
 
 style-lualatex:
   source/_style/lualatex.yaml: style-lualatex.yaml
-style-cambria:
-  source/_style/cambria.yaml: style-cambria.yaml
-style-serbian:
-  source/_style/serbian.yaml: style-serbian.yaml
 
 style-groups:
   source/_style/jeolm-groups.sty: jeolm-groups.sty
   source/_style/jeolm-groups.yaml: jeolm-groups.yaml
-
-style-tourn:
-  source/_style/jeolm-tourn.sty: jeolm-tourn.sty
-  source/_style/jeolm-tourn.yaml: jeolm-tourn.yaml
 
 gitignore:
   .gitignore: gitignore

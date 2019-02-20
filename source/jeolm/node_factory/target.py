@@ -3,6 +3,7 @@ from pathlib import Path, PurePosixPath
 import jeolm.node
 import jeolm.node.directory
 import jeolm.node.symlink
+from jeolm.utils.unique import unique
 
 from .source import SourceNodeFactory
 from .figure import FigureNodeFactory
@@ -54,12 +55,11 @@ class TargetNodeFactory:
             targets = [
                 delegated_target.flags_clean_copy(origin='target')
                 for delegated_target
-                in self.driver.list_delegated_targets(
-                    *targets, recursively=True )
+                in self.driver.list_delegated_targets(*targets)
             ]
 
         target_node = TargetNode(name=name)
-        for target in targets:
+        for target in unique(targets):
             document_node = self.document_node_factory(target)
             outname = document_node.outname
             assert '/' not in outname
@@ -71,29 +71,32 @@ class TargetNodeFactory:
             )
             target_node.append_needs(exposed_node)
             if archive is not None:
-                archive_node = self._get_archive_node( target,
-                    document_node, archive_type=archive )
-                target_node.append_needs(archive_node)
+                raise RuntimeError("XXX") # XXX
+#                archive_node = self._get_archive_node( target,
+#                    document_node, archive_type=archive )
+#                target_node.append_needs(archive_node)
         return target_node
 
-    def _get_archive_node(self, target, document_node, archive_type):
-        if archive_type == 'zip':
-            from jeolm.node.archive import ZipArchiveNode as ArchiveNode
-        elif archive_type == 'tgz':
-            from jeolm.node.archive import TgzArchiveNode as ArchiveNode
-        else:
-            raise RuntimeError(archive_type)
-        archive_node = ArchiveNode(
-            name="document:{}:archive".format(target),
-            path=(self.project.root/document_node.outname).with_suffix(
-                ArchiveNode.default_suffix )
-        )
-        source_dir = self.project.source_dir
-        style_dir = source_dir / '_style'
-        archive_node.archive_add_dir( PurePosixPath('.'),
-            document_node, source_dir,
-            node_filter=lambda node: style_dir not in node.path.parents,
-            path_namer=lambda node: '-'.join(node.path.relative_to(source_dir).parts),
-        )
-        return archive_node
+#    def _get_archive_node(self, target, document_node, archive_type):
+#        if archive_type == 'zip':
+#            from jeolm.node.archive import ZipArchiveNode as ArchiveNode
+#        elif archive_type == 'tgz':
+#            from jeolm.node.archive import TgzArchiveNode as ArchiveNode
+#        else:
+#            raise RuntimeError(archive_type)
+#        # XXX maybe we should just pack source/ and figures/ directories
+#        # from builddir
+#        archive_node = ArchiveNode(
+#            name="document:{}:archive".format(target),
+#            path=(self.project.root/document_node.outname).with_suffix(
+#                ArchiveNode.default_suffix )
+#        )
+#        source_dir = self.project.source_dir
+#        style_dir = source_dir / '_style'
+#        archive_node.archive_add_dir( PurePosixPath('.'),
+#            document_node, source_dir,
+#            node_filter=lambda node: style_dir not in node.path.parents,
+#            path_namer=lambda node: '-'.join(node.path.relative_to(source_dir).parts),
+#        )
+#        return archive_node
 

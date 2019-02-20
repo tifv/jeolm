@@ -1,13 +1,91 @@
 from inspect import isgeneratorfunction
 from functools import wraps
+from collections import namedtuple
 from contextlib import contextmanager
+import re
 
-from jeolm.flags import FlagError
-from jeolm.target import TargetError
-from jeolm.records import RecordError
+from jeolm.records import ( Records, RecordError,
+    NAME_PATTERN )
+from jeolm.target import ( FlagContainer,
+    FlagError, TargetError,
+    RELATIVE_FLAGS_PATTERN_TIGHT )
 
 import logging
 logger = logging.getLogger(__name__)
+
+ATTRIBUTE_KEY_PATTERN = (
+    r'(?P<stem>'
+        r'(?:\$\w+(?:-\w+)*)+'
+    r')'
+    r'(?:\['
+        r'(?P<flags>' + RELATIVE_FLAGS_PATTERN_TIGHT + r')'
+    r'\])?'
+)
+
+class DriverRecords(Records):
+
+    name_regex = re.compile(NAME_PATTERN)
+
+    _attribute_key_regex = re.compile(ATTRIBUTE_KEY_PATTERN)
+
+    dropped_keys = {
+    }
+
+    # pylint: disable=unused-argument,no-self-use
+
+    def _absorb_attribute_into( self,
+        key, value, path, record, *,
+        overwrite=True
+    ):
+        match = self._attribute_key_regex.fullmatch(key)
+        if match is None:
+            raise RecordError(
+                "Nonconforming attribute key {key} (path {path})"
+                .format(key=key, path=path)
+            )
+        key_stem = match.group('stem')
+        if key_stem in self.dropped_keys:
+            logger.warning(
+                "Dropped key <RED>%(key)s<NOCOLOUR> "
+                "detected in <YELLOW>%(path)s<NOCOLOUR> "
+                "(replace it with %(modern_key)s)",
+                dict(
+                    key=key_stem, path=path,
+                    modern_key=self.dropped_keys[key_stem], )
+            )
+        super()._absorb_attribute_into(
+            key, value, path, record,
+            overwrite=overwrite )
+
+    # pylint: enable=unused-argument,no-self-use
+
+    @classmethod
+    def select_flagged_item( cls, mapping, key_stem, flags,
+        *, required_flags=frozenset()
+    ):
+        """Return (key, value) from mapping."""
+        if not isinstance(key_stem, str):
+            raise TypeError(type(key_stem))
+        if not key_stem.startswith('$'):
+            raise ValueError(key_stem)
+        if not isinstance(flags, FlagContainer):
+            raise TypeError(type(flags))
+
+        flag_set_map = dict()
+        for key, value in mapping.items():
+            match = cls._attribute_key_regex.fullmatch(key)
+            if match is None or match.group('stem') != key_stem:
+                continue
+            flags_string = match.group('flags')
+            flag_set = frozenset(flags.split_flags_string(flags_string))
+            if not flag_set.issuperset(required_flags):
+                continue
+            if flag_set in flag_set_map:
+                raise RecordError("Clashing keys '{}' and '{}'"
+                    .format(key, flag_set_map[flag_set][0]) )
+            flag_set_map[flag_set] = (key, value)
+        flag_set_map.setdefault(frozenset(), (None, None))
+        return flags.select_matching_value(flag_set_map)
 
 class DriverError(Exception):
     pass
@@ -121,7 +199,7 @@ def processing_target(method):
 
 def processing_package_path(method):
     """Decorator."""
-    aspect = method.__name__
+    aspect = method.__qualname__
     if not isgeneratorfunction(method):
         @wraps(method)
         def wrapper(self, package_path, *args, **kwargs):
@@ -138,7 +216,7 @@ def processing_package_path(method):
 
 def processing_figure_path(method):
     """Decorator."""
-    aspect = method.__name__
+    aspect = method.__qualname__
     if not isgeneratorfunction(method):
         @wraps(method)
         def wrapper(self, figure_path, *args, **kwargs):
@@ -167,4 +245,48 @@ def ensure_type_items(typespec):
                         .format(method=method.__qualname__, type=type(item)) )
         return wrapper
     return decorator
+
+
+class DocumentTemplate:
+
+    def __init__(self):
+        self._items = []
+        self._key_set = set()
+        self._keys = list()
+        self._frozen = False
+
+    def append_text(self, string):
+        if self._frozen:
+            raise RuntimeError
+        self._items.append(str(string))
+
+    def extend_text(self, strings):
+        if self._frozen:
+            raise RuntimeError
+        self._items.extend(str(string) for string in strings)
+
+    def append_key(self, key):
+        if self._frozen:
+            raise RuntimeError
+        if key not in self._key_set:
+            self._key_set.add(key)
+            self._keys.append(key)
+        self._items.append({'key' : key})
+
+    def freeze(self):
+        self._frozen = True
+        self._key_set = frozenset(self._key_set)
+        self._keys = tuple(self._keys)
+
+    def keys(self):
+        return tuple(self._keys)
+
+    def substitute(self, mapping):
+        if not self._key_set >= mapping.keys():
+            raise ValueError
+        return ''.join(
+            mapping[item['key']]
+                if isinstance(item, dict) else
+            item
+            for item in self._items )
 

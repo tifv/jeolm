@@ -1,127 +1,171 @@
 import io
 import datetime
 import time
+from pathlib import PurePosixPath, PosixPath
 
-from contextlib import contextmanager
 from stat import S_ISREG as stat_is_regular_file
 
 import tarfile
 import zipfile
 
-from jeolm.node import FilelikeNode, FileNode
+from jeolm.node import Node, FilelikeNode, FileNode
 from jeolm.node.text import TextNode, VarTextNode
 from jeolm.node.cyclic import AutowrittenNeed
 
 from . import Command
 
+from typing import ( cast, ClassVar, Type, Any, Union, Optional,
+    Callable, Iterable,
+    Dict,
+    BinaryIO )
+# pylint: disable=invalid-name
+ArchiveMTime = Union[int, float]
+# pylint: enable=invalid-name
+
+
 class _ArchiveCommand(Command):
 
-    _file_mode = 0o000644
+    node: '_ArchiveNode'
 
-    def __init__(self, node):
+    def __init__(self, node: '_ArchiveNode') -> None:
         assert isinstance(node, _ArchiveNode), type(node)
         super().__init__(node)
-        self._archive = None
 
-    async def call(self):
+    async def run(self) -> None:
         self.logger.debug(
             "create archive <ITALIC>%(path)s<UPRIGHT>",
             dict(path=self.node.relative_path)
         )
-        with self.node.open('wb') as archive_file:
-            with self.open_archive(archive_file) as self._archive:
+        with self.node.path.open('wb') as archive_file:
+            with self.Archiver(cast(BinaryIO, archive_file)) \
+                    as archiver:
                 for path, node in self.node.archive_content.items():
-                    self.add_member_node(path, node)
-        await super().call()
+                    archiver.add_member_node(path, node)
+        self.node.updated = True
 
-    @classmethod
-    @contextmanager
-    def open_archive(self, fileobj):
-        raise NotImplementedError
-        yield None
+    class Archiver:
 
-    def add_member_bytes(self, path, mtime, content: bytes):
-        raise NotImplementedError
+        _file_mode = 0o000644
 
-    def add_member_str(self, path, mtime, content):
-        return self.add_member_bytes(path, mtime, content.encode('utf-8'))
+        def __init__(self, archive_stream: BinaryIO) -> None:
+            pass
 
-    def add_member_stream(self, path, mtime, content_stream):
-        content = content_stream.read()
-        assert isinstance(content, bytes), type(content)
-        return self.add_member_bytes(path, mtime, content)
+        def __enter__(self) -> '_ArchiveCommand.Archiver':
+            return self
 
-    def add_member_node(self, path, node):
+        def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> bool:
+            return False # do not suppress exceptions
 
-        if not isinstance(node, FilelikeNode):
-            raise RuntimeError(node)
+        def add_member_bytes( self, path: PurePosixPath,
+            mtime: ArchiveMTime, content: bytes,
+        ) -> None:
+            raise NotImplementedError
 
-        if isinstance(node, TextNode):
-            return self.add_member_str(path, time.time(), node.text)
+        def add_member_str( self, path: PurePosixPath,
+            mtime: ArchiveMTime, content: str,
+        ) -> None:
+            return self.add_member_bytes(path, mtime, content.encode('utf-8'))
 
-        assert node.updated
-        node_stat = node.stat(follow_symlinks=True)
-        assert stat_is_regular_file(node_stat.st_mode)
-        with node.open(mode='rb') as content_stream:
-            self.add_member_stream(
-                path=path,
-                mtime=node_stat.st_mtime,
-                content_stream=content_stream,
-            )
+        def add_member_stream( self,
+            path: PurePosixPath, mtime: ArchiveMTime,
+            content_stream: BinaryIO,
+        ) -> None:
+            content = content_stream.read()
+            assert isinstance(content, bytes), type(content)
+            return self.add_member_bytes(path, mtime, content)
+
+        def add_member_node( self,
+            path: PurePosixPath, node: FilelikeNode,
+        ) -> None:
+
+            if not isinstance(node, FilelikeNode):
+                raise RuntimeError(node)
+
+            if isinstance(node, TextNode):
+                self.add_member_str(path, time.time(), node.text)
+                return
+
+            assert node.updated
+            node_stat = node.stat(follow_symlinks=True)
+            assert stat_is_regular_file(node_stat.st_mode)
+            with node.path.open(mode='rb') as content_stream:
+                self.add_member_stream(
+                    path=path,
+                    mtime=node_stat.st_mtime,
+                    content_stream=cast(BinaryIO, content_stream),
+                )
+
 
 class _ZipArchiveCommand(_ArchiveCommand):
 
-    _file_type = 0o100000
+    class ZipArchiver(_ArchiveCommand.Archiver):
 
-    def add_member_bytes(self, path, mtime, content):
-        if not isinstance(content, bytes):
-            raise TypeError(type(content))
-        info = zipfile.ZipInfo( str(path),
-            datetime.datetime.fromtimestamp(mtime).timetuple()[:6] )
-        info.external_attr = (self._file_mode | self._file_type) << 16
-        self._archive.writestr(info, content)
+        _file_type = 0o100000
 
-    @classmethod
-    @contextmanager
-    def open_archive(cls, fileobj):
-        archive = zipfile.ZipFile(fileobj, mode='w')
-        try:
-            yield archive
-        finally:
-            archive.close()
+        _archive: zipfile.ZipFile
+
+        def __init__(self, archive_stream: BinaryIO) -> None:
+            super().__init__(archive_stream)
+            self._archive = zipfile.ZipFile(archive_stream, mode='w')
+
+        def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> bool:
+            self._archive.close()
+            return super().__exit__(exc_type, exc_val, exc_tb)
+
+        def add_member_bytes( self,
+            path: PurePosixPath, mtime: ArchiveMTime, content: bytes,
+        ) -> None:
+            if not isinstance(content, bytes):
+                raise TypeError(type(content))
+            info = zipfile.ZipInfo()
+            info.filename = str(path)
+            info.date_time = \
+                datetime.datetime.fromtimestamp(mtime).timetuple()[:6]
+            info.external_attr = (self._file_mode | self._file_type) << 16
+            self._archive.writestr(info, content)
+
 
 class _TgzArchiveCommand(_ArchiveCommand):
 
-    def add_member_bytes(self, path, mtime, content):
-        if not isinstance(content, bytes):
-            raise TypeError(type(content))
-        info = tarfile.TarInfo(str(path))
-        info.size = len(content)
-        info.mtime = mtime
-        info.mode = self._file_mode
-        info.type = tarfile.REGTYPE
-        self._archive.addfile(info, io.BytesIO(content))
+    class Archiver(_ArchiveCommand.Archiver):
 
-    @classmethod
-    @contextmanager
-    def open_archive(cls, fileobj):
-        archive = tarfile.open(fileobj=fileobj, mode='w:gz')
-        try:
-            yield archive
-        finally:
-            archive.close()
+        _archive: tarfile.TarFile
+
+        def __init__(self, archive_stream: BinaryIO) -> None:
+            super().__init__(archive_stream)
+            self._archive = tarfile.open(fileobj=archive_stream, mode='w:gz')
+
+        def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> bool:
+            self._archive.close()
+            return super().__exit__(exc_type, exc_val, exc_tb)
+
+        def add_member_bytes( self,
+            path: PurePosixPath, mtime: ArchiveMTime, content: bytes,
+        ) -> None:
+            info = tarfile.TarInfo(str(path))
+            info.size = len(content)
+            info.mtime = mtime # type: ignore
+            info.mode = self._file_mode
+            info.type = tarfile.REGTYPE
+            self._archive.addfile(info, io.BytesIO(content))
+
 
 class _ArchiveNode(FileNode):
 
-    _Command = _ArchiveCommand
-    default_suffix = None
+    _Command: ClassVar[Type[_ArchiveCommand]] = _ArchiveCommand
+    default_suffix: ClassVar[Optional[str]] = None
 
-    def __init__(self, path, name=None, **kwargs):
-        super().__init__(path, name=name, **kwargs)
+    command: _ArchiveCommand
+    archive_content: Dict[PurePosixPath, FilelikeNode]
+
+    def __init__( self, path: PosixPath,
+        *, name: Optional[str] = None, needs: Iterable[Node] = (),
+    ) -> None:
+        super().__init__(path, name=name, needs=needs)
         self.archive_content = {}
-        self.set_command(self._Command(self))
+        self.command = self._Command(self)
 
-    def archive_add(self, path, node):
+    def archive_add(self, path: PurePosixPath, node: FilelikeNode) -> None:
         if not isinstance(node, FilelikeNode):
             raise TypeError(type(node))
         if path in self.archive_content:
@@ -129,23 +173,44 @@ class _ArchiveNode(FileNode):
         self.append_needs(node)
         self.archive_content[path] = node
 
-    def archive_add_dir( self, path_prefix, root_node, node_dir, *,
-        node_filter=None, path_namer=None
-    ):
+    _skipped_nodes = (AutowrittenNeed, VarTextNode)
+
+    def archive_add_tree( self, root_node: Node,
+        *,
+        node_filter: Callable[[FilelikeNode], bool],
+        path_namer: Callable[[FilelikeNode], PurePosixPath],
+    ) -> None:
         for node in root_node.iter_needs():
             if not isinstance(node, FilelikeNode):
                 continue
-            if isinstance(node, (AutowrittenNeed, VarTextNode)):
+            self._archive_add_tree_item(node, node_filter, path_namer)
+            if isinstance(node, self._skipped_nodes):
                 continue
-            if not node_dir in node.path.parents:
+            if not node_filter(node):
                 continue
-            if node_filter is not None and not node_filter(node):
-                continue
-            if path_namer is None:
-                path = path_prefix / node.path.relative_to(node_dir)
-            else:
-                path = path_namer(node)
+            path = path_namer(node)
             self.archive_add(path, node)
+
+    def _archive_add_tree_item( self, node: FilelikeNode,
+        node_filter: Callable[[FilelikeNode], bool],
+        path_namer: Callable[[FilelikeNode], PurePosixPath],
+    ) -> None:
+        if isinstance(node, self._skipped_nodes):
+            return
+        if not node_filter(node):
+            return
+        path = path_namer(node)
+        self.archive_add(path, node)
+
+    def archive_add_dir( self, root_node: Node,
+        base_dir: PosixPath, path_prefix: PurePosixPath
+    ) -> None:
+        def node_filter(node: FilelikeNode) -> bool:
+            return base_dir in node.path.parents
+        def path_namer(node: FilelikeNode) -> PurePosixPath:
+            return path_prefix / node.path.relative_to(base_dir)
+        self.archive_add_tree( root_node,
+            node_filter=node_filter, path_namer=path_namer )
 
 class ZipArchiveNode(_ArchiveNode):
     _Command = _ZipArchiveCommand

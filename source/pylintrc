@@ -1,5 +1,5 @@
 [MESSAGES CONTROL]
-disable=locally-disabled,locally-enabled,bad-whitespace,bad-continuation,missing-docstring,unbalanced-tuple-unpacking,star-args,too-few-public-methods,too-many-ancestors,wrong-import-order,trailing-newlines,no-else-return
+disable=locally-disabled,locally-enabled,bad-whitespace,bad-continuation,missing-docstring,unbalanced-tuple-unpacking,star-args,too-few-public-methods,too-many-ancestors,wrong-import-order,trailing-newlines,no-else-return,wrong-import-position,abstract-method
 good-names=logger
 [REPORTS]
 reports=no

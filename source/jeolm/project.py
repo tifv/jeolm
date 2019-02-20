@@ -1,7 +1,5 @@
 """
 This module manages filesystem-related properties of a jeolm project.
-
-The module relies heavily on standard pathlib.Path class.
 """
 
 import shutil
@@ -250,15 +248,17 @@ class InitProject(Project):
                 '..' in destination_subpath.parts
             ):
                 raise RuntimeError(destination)
-            destination_path = self.root / destination_subpath
+            destination_path: PosixPath = self.root / destination_subpath
             if not destination_path.parent.exists():
                 destination_path.parent.mkdir(parents=True)
             if destination_path.is_dir():
                 raise IsADirectoryError(str(destination))
+            if destination_path.is_symlink():
+                destination_path.unlink()
             shutil.copyfile(str(source_path), str(destination_path))
 
-    _resource_dir_path = _get_jeolm_package_path() / 'resources'
-    _resource_manifest_path = _resource_dir_path / 'RESOURCES.yaml'
+    _resource_dir_path = Path(_get_jeolm_package_path(), 'resources')
+    _resource_manifest_path = Path(_resource_dir_path, 'RESOURCES.yaml')
 
     @property
     def _resource_tables(self):

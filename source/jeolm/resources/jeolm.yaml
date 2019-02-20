@@ -1,12 +1,14 @@
 jeolm:
-  $target$able: on
+  $delegate$able: on
+  $content$able: on
 
-  $build$outname: jeolm
+  $document$outname: jeolm
 
-  $build$style:
+  $document$style:
     # generic setup
     - compiler: pdflatex
-    - document class: ltxdoc
+    - verbatim: \documentclass{ltxdoc}
+      provide: documentclass
     - package: inputenc
       options: [utf8]
     - package: fontenc
@@ -14,16 +16,14 @@ jeolm:
     - package: babel
       options: [russian, english]
     # documentation setup
-    - package: colordoc
-      options: [braces]
     - verbatim: \DisableCrossrefs
     - verbatim: \OnlyDescription
       condition: -complete
     - verbatim: \CodelineNumbered
       condition: complete
     # jeolm
-    - delegate: .
+    - package-source: .
 
-  $build$matter:
-    - delegate: .[no-header]
+  $document$content:
+    - source: .
 

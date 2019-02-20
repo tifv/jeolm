@@ -1,4 +1,0 @@
-jeolm:
-  $style[-no-jeolm-tourn]:
-  - .[no-jeolm-tourn]
-  - ../jeolm-tourn
