@@ -118,7 +118,7 @@ Record keys recognized by the driver:
             * nested content items are prohibited.
           header:
             * a dict or false, optional.
-            date: <Date>
+            date: <Period>
               * may be null to remove date from the header;
               * default is the minimal date of the items in content.
             caption: <string>
@@ -238,7 +238,7 @@ Record keys recognized by the driver:
         - otherwise true.
 
 * $date:
-    - datetime.date or jeolm.utils.Date instance
+    - datetime.date or jeolm.date.Period instance
 * $authors:
     - a list of items:
         - <name (string)>
@@ -267,7 +267,7 @@ from jeolm.records import RecordPath, RecordNotFoundError
 from jeolm.target import Target, OUTNAME_PATTERN
 from jeolm.metadata import NAME_PATTERN, FIGURE_REF_PATTERN
 
-from jeolm.date import Date, Never
+from jeolm.date import Period, Never
 from jeolm.utils.check_and_set import check_and_set, ClashingValueError
 from jeolm.utils.unique import unique
 
@@ -1014,8 +1014,8 @@ class RegularDriver(DriverRecords): # {{{1
         outname_base = '-'.join(target.path.parts)
         outname_flags = target.flags.__format__('optional')
         outname = outname_base + outname_flags
-        if isinstance(date, (Date, *Date.date_types)):
-            outname = str(Date(date)) + '-' + outname
+        if isinstance(date, (Period, *Period.date_types)):
+            outname = str(Period(date)) + '-' + outname
         return outname
 
     def _get_attuned_target(self, target, record):
@@ -1479,7 +1479,7 @@ class RegularDriver(DriverRecords): # {{{1
         if 'date' not in header:
             header['date'] = self._min_date(header_info['dates'])
         if header['date'] is not None and header['date'] is not Never:
-            if not isinstance(header['date'], (Date, *Date.date_types, str)):
+            if not isinstance(header['date'], (Period, *Period.date_types, str)):
                 raise DriverError(type(header['date']))
             super_header_info['dates'].append(header['date'])
         if 'caption' not in header:
@@ -1683,8 +1683,8 @@ class RegularDriver(DriverRecords): # {{{1
         date = record.get('$date', None)
         if date is None:
             return Never
-        elif isinstance(date, (Date, *Date.date_types)):
-            return Date(date)
+        elif isinstance(date, (Period, *Period.date_types)):
+            return Period(date)
         elif isinstance(date, str):
             return date
         else:
@@ -2062,10 +2062,10 @@ class RegularDriver(DriverRecords): # {{{1
 
     @classmethod
     def _constitute_date(cls, date):
-        if not isinstance(date, (Date, *Date.date_types)):
+        if not isinstance(date, (Period, *Period.date_types)):
             return str(date)
-        if not isinstance(date, Date):
-            date = Date(date)
+        if not isinstance(date, Period):
+            date = Period(date)
         date_s = cls.date_template.substitute(dateiso=date.date.isoformat())
         if date.period is not None:
             date_s += cls.period_template.substitute(period=date.period)
@@ -2156,7 +2156,7 @@ class RegularDriver(DriverRecords): # {{{1
 #        '(?:' + NAME_PATTERN + ')' + r'(?:\.\w+)?' )
 
     @staticmethod
-    def _min_date(dates, _date_types=(Date, *Date.date_types)):
+    def _min_date(dates, _date_types=(Period, *Period.date_types)):
         dates = [ date
             for date in dates
             if date is not None

@@ -6,6 +6,7 @@ from typing import Any, Union, Optional
 class _NeverType:
 
     def __new__(cls) -> '_NeverType':
+        global Never
         try:
             return Never
         except NameError:
@@ -42,7 +43,7 @@ class _NeverType:
 
 Never = _NeverType()
 
-class Date:
+class Period:
 
     date_types = (datetime.date,)
 
@@ -50,10 +51,10 @@ class Date:
     _period: Optional[int]
 
     def __init__( self,
-        date: Union['Date', datetime.date],
+        date: Union['Period', datetime.date],
         period: Optional[int] = None
     ) -> None:
-        if isinstance(date, Date):
+        if isinstance(date, Period):
             if period is not None:
                 raise ValueError
             self._date = date.date
@@ -79,7 +80,7 @@ class Date:
         r'p(?P<period>[0-9]+)' )
 
     @classmethod
-    def from_string(cls, string: str) -> 'Date':
+    def from_string(cls, string: str) -> 'Period':
         match = cls._regex.fullmatch(string)
         if match is None:
             raise ValueError(string)
@@ -91,7 +92,7 @@ class Date:
         less_than: bool, equal: bool, greater_than: bool
     ) -> bool:
         """Return lt, eq, gt if self <=, ==, >= other."""
-        if isinstance(other, Date):
+        if isinstance(other, Period):
             if self._date > other.date:
                 return greater_than
             if self._date < other.date:

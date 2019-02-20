@@ -19,7 +19,7 @@ import yaml
 from yaml.nodes import SequenceNode, MappingNode
 
 from jeolm.records import RecordPath
-from jeolm.date import Date
+from jeolm.date import Period
 
 import logging
 logger = logging.getLogger(__name__)
@@ -61,7 +61,7 @@ class JeolmLoader(yaml.loader.SafeLoader):
         return RecordPath(self.construct_scalar(node))
 
     def construct_date(self, node):
-        return Date.from_string(self.construct_scalar(node))
+        return Period.from_string(self.construct_scalar(node))
 
 JeolmLoader.add_constructor(
     'tag:yaml.org,2002:omap',
@@ -72,11 +72,11 @@ JeolmLoader.add_constructor(
     JeolmLoader.construct_path )
 
 JeolmLoader.add_constructor(
-    '!date',
+    '!period',
     JeolmLoader.construct_date )
 
 JeolmLoader.add_implicit_resolver(
-    '!date',
+    '!period',
     re.compile(r'^(?:[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9][ \-]p[0-9]+)$'),
     list('0123456789') )
 
@@ -88,8 +88,8 @@ class JeolmDumper(yaml.dumper.SafeDumper):
     def represent_RecordPath(self, data):
         return self.represent_scalar('!path', str(data))
 
-    def represent_Date(self, data):
-        return self.represent_scalar('!date', str(data))
+    def represent_Period(self, data):
+        return self.represent_scalar('!period', str(data))
 
     def ignore_aliases(self, data):
         return True
@@ -100,8 +100,8 @@ JeolmDumper.add_representer( OrderedDict,
 JeolmDumper.add_representer( RecordPath,
         JeolmDumper.represent_RecordPath )
 
-JeolmDumper.add_representer( Date,
-        JeolmDumper.represent_Date )
+JeolmDumper.add_representer( Period,
+        JeolmDumper.represent_Period )
 
 def load(stream, Loader=JeolmLoader):
     return yaml.load(stream, Loader=Loader)
