@@ -13,7 +13,7 @@ import jeolm.yaml
 from jeolm.utils.ordering import filename_keyfunc
 from jeolm.records import ( RecordPath, Records,
     NAME_PATTERN, RELATIVE_NAME_PATTERN )
-from jeolm.driver import ATTRIBUTE_KEY_PATTERN
+from jeolm.driver import ATTRIBUTE_KEY_PATTERN, FIGURE_REF_PATTERN
 
 import logging
 logger = logging.getLogger(__name__)
@@ -21,17 +21,6 @@ logger = logging.getLogger(__name__)
 
 DIR_NAME_PATTERN = NAME_PATTERN
 FILE_NAME_PATTERN = '(?:' + NAME_PATTERN + ')' + r'\.\w+'
-
-FIGURE_REF_PATTERN = (
-    r'(?P<figure>'
-        '/?'
-        '(?:(?:' + RELATIVE_NAME_PATTERN + ')/)*'
-        '(?:' + NAME_PATTERN + ')'
-    r')'
-    r'(?::(?P<figure_code>'
-        + NAME_PATTERN +
-    r'))?'
-)
 
 ASY_ACCESSED_PATH_PATTERN = (
     r'/?'

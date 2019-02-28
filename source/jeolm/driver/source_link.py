@@ -17,25 +17,34 @@ from . import DriverError, processing_target, ensure_type_items
 import logging
 logger = logging.getLogger(__name__)
 
+from typing import Optional
+
 
 class SourceLinkDriver(RegularDriver):
 
+    _source_link_root: Optional[str]
+
     def __init__(self):
         super().__init__()
-        self._cache.update(source_link_root=list())
+        self._source_link_root = None
+
+    def _clear_cache(self) -> None:
+        self._source_link_root = None
+        super()._clear_cache()
 
     @property
-    def _source_link_root(self):
-        if self._cache['source_link_root']:
-            source_link_root, = self._cache['source_link_root']
+    def _source_link_root(self) -> str:
+        if self._source_link_root is not None:
+            return self._source_link_root
         else:
             source_link_root = self.get(RecordPath())['$source-link$root']
             if not isinstance(source_link_root, str):
                 raise DriverError
             if not source_link_root.endswith('/'):
                 raise DriverError
-            self._cache['source_link_root'].append(source_link_root)
-        return source_link_root
+            self._source_link_root = source_link_root
+            self._cache_is_clear = False
+            return source_link_root
 
     class SourceLinkBodyItem(RegularDriver.VerbatimBodyItem):
         _template = Template(

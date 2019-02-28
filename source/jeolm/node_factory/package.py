@@ -44,7 +44,7 @@ class PackageNodeFactory:
     @_cache_node(_package_node_key)
     def _get_package_node(self, package_path):
         package_recipe = self.driver.produce_package_recipe(package_path)
-        package_type = package_recipe['source_type']
+        package_type = package_recipe.source_type
 
         if package_type == 'dtx':
             get_package_node_method = self._get_package_node_dtx
@@ -58,11 +58,11 @@ class PackageNodeFactory:
         if not hasattr(node, 'package_path'):
             node.package_path = package_path
         if not hasattr(node, 'package_name'):
-            node.package_name = package_recipe['name']
+            node.package_name = package_recipe.name
         return node
 
     def _get_package_node_proxy(self, package_path, *, package_recipe):
-        source_node = self.source_node_factory(package_recipe['source'])
+        source_node = self.source_node_factory(package_recipe.source)
         node = jeolm.node.symlink.ProxyFileNode(
             name='package:{}:sty'.format(package_path),
             source=source_node )
@@ -126,8 +126,8 @@ class PackageNodeFactory:
             package_type='dtx' )
         output_dir = output_dir_node.path
         source_dtx_node = self.source_node_factory(
-            package_recipe['source'] )
-        package_name = package_recipe['name']
+            package_recipe.source )
+        package_name = package_recipe.name
         dtx_node = jeolm.node.symlink.SymLinkedFileNode(
             name='package:{}:source:dtx'.format(package_path),
             source=source_dtx_node,

@@ -221,20 +221,24 @@ def _add_list_arg_subparser(subparsers):
         nargs='*', metavar='TARGET', type=jeolm.target.Target.from_string )
     parser.add_argument( '--type',
         help="searched-for infiles type",
-        choices=['tex', 'asy', 'figure'], default='tex',
+        choices=['all', 'tex', 'asy', 'figure'], default='all',
         dest='source_type', metavar='SOURCE_TYPE' )
     parser.set_defaults(command_func=main_list)
+
+_FIGURE_SUFFIXES = frozenset({'.asy', '.svg', '.pdf', '.eps', '.png', '.jpg'})
 
 def main_list(args, *, project):
     from jeolm.commands.list_sources import list_sources
     if not args.targets:
         logger.warning("No-op: no targets for source listing")
+    if args.source_type == 'all':
+        suffixes = {'.tex'}.union(_FIGURE_SUFFIXES)
     if args.source_type == 'tex':
         suffixes = {'.tex'}
     elif args.source_type == 'asy':
         suffixes = {'.asy'}
     elif args.source_type == 'figure':
-        suffixes = {'.asy', '.svg', '.pdf', '.eps', '.png', '.jpg'}
+        suffixes = _FIGURE_SUFFIXES
     else:
         raise RuntimeError
     paths = [ path.relative_to(Path.cwd())

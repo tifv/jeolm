@@ -440,7 +440,7 @@ class PathNode(DatedNode): # {{{1
 
     def __repr__(self) -> str:
         return ( f"{self.__class__.__name__}(name={self.name!r}, "
-            f"path={node.relative_path!r})" )
+            f"path={self.relative_path!r})" )
 
     @property
     def relative_path(self) -> PurePosixPath:

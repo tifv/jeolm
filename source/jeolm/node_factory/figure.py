@@ -8,6 +8,8 @@ import jeolm.node.symlink
 import jeolm.node.cyclic
 from jeolm.node.text import text_hash
 
+from jeolm.driver import FigureRecipe
+
 from . import _cache_node
 
 import logging
@@ -16,13 +18,13 @@ logger = logging.getLogger(__name__)
 
 class FigureNodeFactory: #{{{1
 
-    figure_formats = frozenset((
+    figure_types = frozenset((
         '<latex>', '<pdflatex>', '<xelatex>', '<lualatex>',
         'pdf', 'eps', 'png', 'jpg', ))
-    figure_types = frozenset((
+    figure_source_types = frozenset((
         None,
         'asy', 'svg', 'pdf', 'eps', 'png', 'jpg', ))
-    flexible_figure_types = frozenset(('asy', 'svg',))
+    flexible_figure_source_types = frozenset(('asy', 'svg',))
 
     def __init__(self, *, project, driver,
         build_dir_node,
@@ -39,70 +41,72 @@ class FigureNodeFactory: #{{{1
     def build_dir(self):
         return self.build_dir_node.path
 
-    def __call__(self, figure_path, *, figure_formats):
+    def __call__(self, figure_path, *, figure_types):
         assert isinstance(figure_path, RecordPath)
-        assert isinstance(figure_formats, frozenset)
+        assert isinstance(figure_types, frozenset)
         return self._get_figure_node( figure_path,
-            figure_formats=figure_formats )
+            figure_types=figure_types )
 
-    def _figure_node_key(self, figure_path, *, figure_formats):
-        return figure_path, figure_formats
+    def _figure_node_key(self, figure_path, *, figure_types):
+        return figure_path, figure_types
 
     @_cache_node(_figure_node_key)
-    def _get_figure_node(self, figure_path, *, figure_formats):
-        figure_recipe = self.driver.produce_figure_recipe(figure_path)
-        figure_type = figure_recipe['source_type']
-        figure_format = figure_recipe['format']
+    def _get_figure_node(self, figure_path, *, figure_types):
+        figure_recipe: FigureRecipe = \
+            self.driver.produce_figure_recipe(
+                figure_path, figure_types=figure_types )
+        source_type = figure_recipe.source_type
+        figure_type = figure_recipe.figure_type
 
-        if figure_format not in {'pdf', 'eps', 'png', 'jpg'}:
+        if figure_type not in {'pdf', 'eps', 'png', 'jpg'}:
             raise RuntimeError
 
-        if not self._check_figure_type(figure_type, figure_format):
-            raise ValueError( "Incompatible figure type and format "
-                "for figure {}, given type {} and format {}"
-                .format(figure_path, figure_type, figure_format) )
+        if not self._check_figure_type(source_type, figure_type):
+            raise ValueError( "Incompatible figure source type and type "
+                f"for figure {figure_path}, "
+                f"given source type {source_type} and type {figure_type}" )
 
-        if   figure_type == 'asy':
+        if   source_type == 'asy':
             get_figure_node_method = self._get_figure_path_asy_factory
-        elif figure_type == 'svg':
+        elif source_type == 'svg':
             get_figure_node_method = self._get_figure_node_svg
-        elif figure_type in {'pdf', 'eps', 'png', 'jpg'}:
+        elif source_type in {'pdf', 'eps', 'png', 'jpg'}:
             get_figure_node_method = self._get_figure_node_proxy
         else:
             raise RuntimeError
 
         node = get_figure_node_method( figure_path,
-            figure_format=figure_format,
+            figure_type=figure_type,
             figure_recipe=figure_recipe )
         if not hasattr(node, 'figure_path'):
             node.figure_path = figure_path
         return node
 
     @staticmethod
-    def _check_figure_type(figure_type, figure_format):
-        if figure_type in {'asy', 'svg'}:
-            if figure_format in {'pdf', 'eps'}:
+    def _check_figure_type(source_type, figure_type):
+        if source_type in {'asy', 'svg'}:
+            if figure_type in {'pdf', 'eps'}:
                 return True
             else:
                 return False
-        elif figure_type in {'pdf', 'eps', 'png', 'jpg'}:
-            if figure_format == figure_type:
+        elif source_type in {'pdf', 'eps', 'png', 'jpg'}:
+            if figure_type == source_type:
                 return True
             else:
                 return False
         else:
             raise RuntimeError
 
-    def _figure_node_proxy_key(self, figure_path, *, figure_format, **kwargs):
-        return figure_path, figure_format
+    def _figure_node_proxy_key(self, figure_path, *, figure_type, **kwargs):
+        return figure_path, figure_type
 
     @_cache_node(_figure_node_proxy_key)
     def _get_figure_node_proxy( self, figure_path,
-        *, figure_format, figure_recipe
+        *, figure_type, figure_recipe: FigureRecipe,
     ):
-        source_node = self.source_node_factory(figure_recipe['source'])
+        source_node = self.source_node_factory(figure_recipe.source)
         node = jeolm.node.symlink.ProxyFileNode(
-            name='figure:{}:{}'.format(figure_path, figure_format),
+            name='figure:{}:{}'.format(figure_path, figure_type),
             source=source_node )
         return node
 
@@ -145,7 +149,7 @@ class FigureNodeFactory: #{{{1
         return output_dir_node
 
     def _get_figure_node_svg( self, figure_path,
-        *, figure_format, figure_recipe
+        *, figure_type, figure_recipe
     ):
         build_dir_node = self._get_build_dir_svg(figure_path)
         output_dir_node = self._get_output_dir_svg(figure_path)
@@ -153,14 +157,14 @@ class FigureNodeFactory: #{{{1
             figure_recipe=figure_recipe )
         assert svg_node.path.parent == build_dir_node.path
         figure_node = jeolm.node.ProductFileNode(
-            name=f'figure:{figure_path}:svg:{figure_format}',
+            name=f'figure:{figure_path}:svg:{figure_type}',
             source=svg_node,
-            path=output_dir_node.path/f'Main.{figure_format}',
+            path=output_dir_node.path/f'Main.{figure_type}',
             needs=(build_dir_node.pre_cleanup_node, output_dir_node)
         )
         figure_node.command = jeolm.node.SubprocessCommand( figure_node,
             ( 'inkscape', '--without-gui',
-                f'--export-{figure_format}=' +
+                f'--export-{figure_type}=' +
                     figure_node.path.relative_to(build_dir_node.path),
                 svg_node.path.name
             ),
@@ -179,7 +183,7 @@ class FigureNodeFactory: #{{{1
         build_dir_node = self._get_build_dir_svg(figure_path)
         source_svg_node = jeolm.node.symlink.SymLinkedFileNode(
             name=f'figure:{figure_path}:svg:source',
-            source=self.source_node_factory(figure_recipe['source']),
+            source=self.source_node_factory(figure_recipe.source),
             path=build_dir_node.path/'Main.svg',
             needs=(build_dir_node,) )
         build_dir_node.register_node(source_svg_node)
@@ -198,27 +202,27 @@ class FigureNodeFactory: #{{{1
             path=parent_dir_node.path/'asy',
             needs=(parent_dir_node,) )
 
-    def _figure_path_asy_key(self, figure_path, *, figure_format, **kwargs):
-        return figure_path, 'asy', figure_format
+    def _figure_path_asy_key(self, figure_path, *, figure_type, **kwargs):
+        return figure_path, 'asy', figure_type
 
     @_cache_node(_figure_path_asy_key)
     def _get_figure_path_asy_factory( self, figure_path,
-        *, figure_format, figure_recipe,
+        *, figure_type, figure_recipe,
     ):
         build_dir_node = self._get_figure_path_build_dir_asy(figure_path)
         asy_source_nodes = self._get_figure_path_asy_sources( figure_path,
             figure_recipe=figure_recipe )
         return self.AsymptoteNode( self,
-            name=f'figure:{figure_path}:asy:{figure_format}',
-            figure_path=figure_path, figure_format=figure_format,
+            name=f'figure:{figure_path}:asy:{figure_type}',
+            figure_path=figure_path, figure_type=figure_type,
             build_dir_node=build_dir_node,
             asy_source_nodes=asy_source_nodes, )
 
     def _get_figure_path_asy_sources(self, figure_path, *, figure_recipe):
         asy_source_nodes = {}
         asy_source_nodes['Main.asy'] = \
-            self.source_node_factory(figure_recipe['source'])
-        for accessed_name, inpath in figure_recipe['other_sources'].items():
+            self.source_node_factory(figure_recipe.source)
+        for accessed_name, inpath in figure_recipe.other_sources.items():
             if accessed_name in {'Main.asy', 'Run.asy'}:
                 raise ValueError(accessed_name)
             asy_source_nodes[accessed_name] = self.source_node_factory(inpath)
@@ -230,7 +234,7 @@ class FigureNodeFactory: #{{{1
     class AsymptoteNode(jeolm.node.Node):
 
         def __init__( self, factory,
-            *, figure_path, figure_format,
+            *, figure_path, figure_type,
             build_dir_node, asy_source_nodes,
             needs=(),
             **kwargs
@@ -240,14 +244,14 @@ class FigureNodeFactory: #{{{1
                 **kwargs )
             self.factory = factory
             self.figure_path = figure_path
-            self.figure_format = figure_format
+            self.figure_type = figure_type
             self.build_dir_node = build_dir_node
             self.asy_source_nodes = asy_source_nodes
 
         def __call__(self, asy_context):
             assert isinstance(asy_context, self.factory.AsymptoteContext)
             return self.factory._get_figure_node_asy( self.figure_path,
-                figure_format=self.figure_format,
+                figure_type=self.figure_type,
                 asy_context=asy_context,
                 parent_build_dir_node=self.build_dir_node,
                 asy_source_nodes=self.asy_source_nodes,
@@ -280,12 +284,12 @@ class FigureNodeFactory: #{{{1
         return output_dir_node
 
     def _figure_node_asy_key(self, figure_path,
-            *, figure_format, asy_context, **kwargs):
-        return figure_path, 'asy', asy_context, figure_format
+            *, figure_type, asy_context, **kwargs):
+        return figure_path, 'asy', asy_context, figure_type
 
     @_cache_node(_figure_node_asy_key)
     def _get_figure_node_asy( self, figure_path,
-        *, figure_format, asy_context,
+        *, figure_type, asy_context,
         parent_build_dir_node, asy_source_nodes,
     ):
         run_asy_content = self._generate_run_asy(asy_context)
@@ -304,16 +308,16 @@ class FigureNodeFactory: #{{{1
             figure_path, asy_context,
             asy_source_nodes=asy_source_nodes,
             run_hash=run_hash, build_dir_node=build_dir_node )
-        assert figure_format in {'eps', 'pdf'}
+        assert figure_type in {'eps', 'pdf'}
         figure_node = jeolm.node.ProductFileNode(
-            name=f'figure:{figure_path}:asy:{run_hash[:10]}:{figure_format}',
+            name=f'figure:{figure_path}:asy:{run_hash[:10]}:{figure_type}',
             source=run_asy_node,
-            path=output_dir_node.path/f'Main.{figure_format}',
+            path=output_dir_node.path/f'Main.{figure_type}',
             needs=( build_dir_node.pre_cleanup_node, output_dir_node,
                 *asy_nodes ),
         )
         figure_node.command = jeolm.node.SubprocessCommand( figure_node,
-            ( 'asy', f'-outformat={figure_format}', '-offscreen',
+            ( 'asy', f'-outformat={figure_type}', '-offscreen',
                 run_asy_node.path.name,
                 '-outname=' +
                     str(figure_node.path.relative_to(build_dir_node.path)),
@@ -327,6 +331,9 @@ class FigureNodeFactory: #{{{1
 
     @classmethod
     def _generate_run_asy(cls, asy_context):
+        assert asy_context.latex_compiler in \
+            {"latex", "pdflatex", "xelatex", "lualatex"}
+        assert isinstance(asy_context.latex_preamble, str)
         if '"' in asy_context.latex_preamble:
             raise ValueError
         return (

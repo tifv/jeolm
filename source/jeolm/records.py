@@ -11,9 +11,10 @@ from jeolm.utils.ordering import ( natural_keyfunc, KeyFunc,
 import logging
 logger = logging.getLogger(__name__)
 
-from typing import ( NewType, Any, Union, Optional, cast,
-    Iterable, Container, Sequence,
-    Tuple, List, Dict )
+from typing import ( NewType, Type, ClassVar, Any, Union, Optional, cast,
+    Callable, Iterable, Container, Sequence, Mapping,
+    Tuple, List, Dict,
+    Pattern )
 
 NAME_PATTERN = r'\w+(?:-\w+)*'
 RELATIVE_NAME_PATTERN = (
@@ -185,12 +186,12 @@ class Records:
 
     _records: Record
     _records_cache: Dict[Tuple[RecordPath, bool], Record]
-    _cache: Dict[str, Union[Dict, List]]
+    _cache_is_clear: bool
 
-    _Dict = OrderedDict
-    _Path = RecordPath
-    name_regex = re.compile(r'(?!\$).+')
-    ordering_keyfunc = partial(natural_keyfunc)
+    _Dict: ClassVar[Type[Dict]] = OrderedDict
+    _Path: ClassVar[Type[RecordPath]] = RecordPath
+    name_regex: ClassVar[Pattern] = re.compile(r'(?!\$).+')
+    ordering_keyfunc: ClassVar[KeyFunc] = natural_keyfunc
 
     @classmethod
     def _check_name( cls, name: Name, path: Optional[RecordPath] = None
@@ -205,11 +206,11 @@ class Records:
     def __init__(self) -> None:
         self._records = self._Dict()
         self._records_cache = {}
-        self._cache = {'records' : self._records_cache}
+        self._cache_is_clear = True
 
     def _clear_cache(self) -> None:
-        for cache_piece in self._cache.values():
-            cache_piece.clear()
+        self._records_cache.clear()
+        self._cache_is_clear = True
 
     def absorb( self, data: Record, path: RecordPath = None,
         *, overwrite: bool = True
@@ -223,7 +224,8 @@ class Records:
             data = {part : data}
         self._absorb_into( data, self._Path(), self._records,
             overwrite=overwrite )
-        self._clear_cache()
+        if not self._cache_is_clear:
+            self._clear_cache()
 
     def _absorb_into( self, data: Record,
         path: RecordPath, record: Record, *, overwrite: bool = True
@@ -234,7 +236,7 @@ class Records:
             raise TypeError("Only able to absorb a dict, found {!r}"
                 .format(type(data)) )
         for key, value in mapping_ordered_items( data,
-                keyfunc=self.ordering_keyfunc ):
+                keyfunc=type(self).ordering_keyfunc ):
             self._absorb_item_into(
                 key, value, path, record, overwrite=overwrite )
 
@@ -260,8 +262,6 @@ class Records:
         self._absorb_into(
             value, path/key, child_record, overwrite=overwrite )
 
-    # pylint: disable=unused-argument,no-self-use
-
     def _absorb_attribute_into( self,
         key: str, value: Any, path: RecordPath, record: Record, *,
         overwrite: bool = True,
@@ -270,8 +270,6 @@ class Records:
             record[key] = value
         else:
             pass # discard value
-
-    # pylint: enable=unused-argument,no-self-use
 
     def _create_record( self, path: RecordPath,
         parent_record: Record,
@@ -287,7 +285,8 @@ class Records:
         if not isinstance(path, self._Path):
             raise TypeError(type(path))
         self._clear_record(path)
-        self._clear_cache()
+        if not self._cache_is_clear:
+            self._clear_cache()
 
     def delete(self, path: RecordPath) -> None:
         if not isinstance(path, self._Path):
@@ -295,7 +294,8 @@ class Records:
         if path.is_root():
             raise RuntimeError("Deleting root is impossible")
         self._delete_record(path)
-        self._clear_cache()
+        if not self._cache_is_clear:
+            self._clear_cache()
 
     def _clear_record( self, path: RecordPath,
         record: Optional[Record]=None
@@ -342,6 +342,7 @@ class Records:
                 raise
 
         self._records_cache[path, original] = record
+        self._cache_is_clear = False
         return record
 
     def _get_root(self, original: bool = False) -> Record:
@@ -368,7 +369,7 @@ class Records:
 
     # pylint: disable=unused-argument
     def _derive_record( self,
-        parent_record: Record, child_record: Record, path: RecordPath
+        parent_record: Record, child_record: Record, path: RecordPath,
     ) -> None:
         pass
     # pylint: enable=unused-argument
@@ -382,7 +383,7 @@ class Records:
         yield path, record
         assert all(isinstance(key, str) for key in record)
         for key in mapping_ordered_keys( record,
-                keyfunc=self.ordering_keyfunc ):
+                keyfunc=type(self).ordering_keyfunc ):
             if key.startswith('$'):
                 continue
             yield from self.items(path=path/key)
@@ -432,7 +433,7 @@ class Records:
                 keys = ()
             else:
                 keys = mapping_ordered_keys( record,
-                        keyfunc=records.ordering_keyfunc )
+                    keyfunc=type(records).ordering_keyfunc )
             return record, keys
 
         record1, keys1 = maybe_get_record_and_keys(records1)

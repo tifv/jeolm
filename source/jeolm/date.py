@@ -1,3 +1,4 @@
+import abc
 import re
 import datetime
 
@@ -45,13 +46,11 @@ Never = _NeverType()
 
 class Period:
 
-    date_types = (datetime.date,)
-
     _date: datetime.date
     _period: Optional[int]
 
     def __init__( self,
-        date: Union['Period', datetime.date],
+        date: Union['Period', datetime.date, 'DatePeriod'],
         period: Optional[int] = None
     ) -> None:
         if isinstance(date, Period):
@@ -146,4 +145,11 @@ class Period:
     @property
     def period(self) -> Optional[int]:
         return self._period
+
+class DatePeriod(metaclass=abc.ABCMeta):
+    def __new__(cls) -> 'DatePeriod':
+        raise NotImplementedError
+
+DatePeriod.register(datetime.date)
+DatePeriod.register(Period)
 

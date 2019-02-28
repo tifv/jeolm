@@ -4,7 +4,7 @@ from collections import OrderedDict
 
 from jeolm.utils.ordering import natural_keyfunc
 from jeolm.records import RecordPath
-from jeolm.target import FlagContainer, Target
+from jeolm.target import Flag, FlagContainer, Target
 
 from . import ( DriverError,
     process_target_aspect, process_target_key, processing_target,
@@ -14,22 +14,30 @@ from .regular import RegularDriver
 import logging
 logger = logging.getLogger(__name__)
 
+from typing import Optional, Any, Dict
+
 
 class GroupsDriver(RegularDriver):
+
+    _groups: Optional[Dict[Flag, Dict[str, Any]]]
 
     # extension
     def __init__(self):
         super().__init__()
-        self._cache.update(groups=list())
+        self._groups = None
+
+    def _clear_cache(self) -> None:
+        self._groups = None
+        super()._clear_cache()
 
     @property
     def groups(self):
-        if self._cache['groups']:
-            groups, = self._cache['groups']
+        if self._groups:
+            return self._groups
         else:
-            groups = self._get_groups()
-            self._cache['groups'].append(groups)
-        return groups
+            groups = self._groups = self._get_groups()
+            self._cache_is_clear = False
+            return groups
 
     def _get_groups(self):
         groups = OrderedDict()
@@ -42,7 +50,7 @@ class GroupsDriver(RegularDriver):
             if len(group_flags) > 1:
                 raise RuntimeError(
                     "Incorrect group definition: {}".format(key) )
-            group_flag, = group_flags
+            group_flag: Flag = group_flags[0]
             if (
                 not isinstance(value, dict) or
                 not (value.keys() >= {'name'})

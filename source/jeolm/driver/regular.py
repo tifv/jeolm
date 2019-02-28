@@ -263,63 +263,56 @@ from string import Template
 import re
 from pathlib import PurePosixPath
 
-from jeolm.records import RecordPath, RecordNotFoundError
+from jeolm.records import ( RecordPath, Record, RecordNotFoundError,
+    NAME_PATTERN )
 from jeolm.target import Target, OUTNAME_PATTERN
-from jeolm.metadata import NAME_PATTERN, FIGURE_REF_PATTERN
 
-from jeolm.date import Period, Never
+from jeolm.date import Period, Never, DatePeriod
 from jeolm.utils.check_and_set import check_and_set, ClashingValueError
 from jeolm.utils.unique import unique
 
-from . import ( DriverRecords, DocumentTemplate,
+from . import ( Driver,
+    DocumentTemplate, Compiler, DocumentRecipe,
+    PackageRecipe, FigureRecipe,
     DriverError, folding_driver_errors, checking_target_recursion,
     process_target_aspect, process_target_key,
     processing_target, processing_package_path, processing_figure_path,
     ensure_type_items,
+    FIGURE_REF_PATTERN,
 )
 
 import logging
 logger = logging.getLogger(__name__)
 
+from typing import ( ClassVar, Any, Union, Optional,
+    Iterable,
+    Tuple, List, Set, FrozenSet, Dict,
+    Generator, Pattern )
 
-class RegularDriver(DriverRecords): # {{{1
 
-    def __init__(self):
-        super().__init__()
-        self._cache.update(
-            document_recipes=dict(),
-            package_recipes=dict(), figure_recipes=dict(),
-            delegated_targets=dict() )
-
+class RegularDriver(Driver): # {{{1
 
     ##########
     # Interface methods and attributes {{{2
 
-    class NoDelegators(Exception):
-        pass
-
     @folding_driver_errors
-    def list_delegated_targets(self, *targets):
+    def list_delegated_targets(self, *targets: Target) -> Iterable[Target]:
         for target in targets:
-            try:
-                delegated_targets = self._cache['delegated_targets'][target]
-            except KeyError:
-                delegated_targets = list(self._generate_targets(target))
-                self._cache['delegated_targets'][target] = delegated_targets
-            yield from delegated_targets
+            yield from self._generate_targets(target)
 
     @folding_driver_errors
-    def list_targetable_paths(self):
+    def list_targetable_paths(self) -> Iterable[RecordPath]:
         # Caching is not necessary since no use-case involves calling this
         # method several times.
         yield from self._generate_targetable_paths()
 
     @folding_driver_errors
-    def path_is_targetable(self, record_path):
+    def path_is_targetable(self, record_path: RecordPath) -> bool:
         return self.get(record_path)['$delegate$able']
 
     @folding_driver_errors
-    def list_targetable_children(self, record_path):
+    def list_targetable_children( self, record_path: RecordPath,
+    ) -> Iterable[RecordPath]:
         for name in self.get(record_path):
             if name.startswith('$'):
                 continue
@@ -329,191 +322,55 @@ class RegularDriver(DriverRecords): # {{{1
                 yield child_path
 
     @folding_driver_errors
-    def produce_document_recipe(self, target):
-        """
-        Return document recipe.
-
-        Recipe must contain the following fields:
-        'outname'
-            string
-        'type'
-            must be 'regular'
-        'compiler'
-            one of 'latex', 'pdflatex', 'xelatex', 'lualatex'
-
-        'regular' recipe must also contain field:
-        'document'
-            LaTeX document as a driver.DocumentTemplate
-            keys should include
-            ('source', source_path) for each source,
-            ('package', package_path) for each package,
-            ('figure', figure_path, figure_index)
-                for each figure.
-        'asy_latex_compiler'
-            one of 'latex', 'pdflatex', 'xelatex', 'lualatex'
-        'asy_latex_preamble'
-            a string
-        """
-        # XXX will also provide asy_preamble
-        # (a version of preamble for asymptote figures)
-        with suppress(KeyError):
-            return self._cache['document_recipes'][target]
-        document_recipe = self._cache['document_recipes'][target] = \
-            self._generate_document_recipe(target)
-        if not document_recipe.keys() >= {'outname', 'type', 'compiler'}:
-            raise RuntimeError
-        if '/' in document_recipe['outname']:
-            raise RuntimeError
-        if document_recipe['type'] not in {'regular'}:
-            raise RuntimeError
-        if document_recipe['compiler'] not in {
-                'latex', 'pdflatex', 'xelatex', 'lualatex' }:
-            raise RuntimeError
-        if not document_recipe.keys() >= {'document'}:
-            raise RuntimeError
-        for key in document_recipe['document'].keys():
-            if not isinstance(key, tuple):
-                raise RuntimeError
-            key_type, *key_value = key
-            if key_type == 'source':
-                source_path, = key_value
-                if not isinstance(source_path, PurePosixPath):
-                    raise RuntimeError
-            elif key_type in {'figure', 'figure-size'}:
-                figure_path, figure_index, = key_value
-                if not isinstance(figure_path, RecordPath):
-                    raise RuntimeError
-                if not isinstance(figure_index, int):
-                    raise RuntimeError
-            elif key_type == 'package':
-                package_path, = key_value
-                if not isinstance(package_path, RecordPath):
-                    raise RuntimeError
-            else:
-                raise RuntimeError
-        return document_recipe
+    def produce_document_recipe( self, target: Target,
+    ) -> DocumentRecipe:
+        return self._generate_document_recipe(target)
 
     @folding_driver_errors
-    def produce_package_recipe(self, package_path):
-        """
-        Return package recipe.
+    def produce_document_asy_context( self, target: Target,
+    ) -> Tuple[Compiler, str]:
+        """Return (latex_compiler, latex_preamble)."""
+        record = self.get(target.path)
+        document_target = self._get_attuned_target(target, record)
+        asy_latex_compilers: List[Compiler] = []
+        asy_latex_preamble = list(self._generate_preamble_document(
+            document_target.flags_union({'asy'}), record,
+            compilers=asy_latex_compilers ))
+        asy_latex_preamble = list(self._reconcile_packages(
+            asy_latex_preamble ))
+        asy_latex_preamble_dt: DocumentTemplate = self._constitute_preamble(
+            preamble=asy_latex_preamble )
+        if len(asy_latex_compilers) != 1:
+            raise DriverError
+        # pylint: disable=unbalanced-tuple-unpacking
+        asy_latex_compiler, = asy_latex_compilers
+        # pylint: enable=unbalanced-tuple-unpacking
+        if asy_latex_preamble_dt.keys() != ():
+            raise DriverError
+        asy_latex_preamble_s = asy_latex_preamble_dt.substitute({})
+        return asy_latex_compiler, asy_latex_preamble_s
 
-        Recipe must contain the following fields:
-        'source_type'
-            one of 'dtx', 'sty'
-        'source'
-            source_path
-        'name'
-            package name, as in ProvidesPackage.
-        """
+    @folding_driver_errors
+    def produce_package_recipe( self, package_path: RecordPath,
+    ) -> PackageRecipe:
         assert isinstance(package_path, RecordPath), type(package_path)
-        with suppress(KeyError):
-            return self._cache['package_recipes'][package_path]
-        package_recipe = self._cache['package_recipes'][package_path] = \
-            self._generate_package_recipe(package_path)
-        # QA
-        if not package_recipe.keys() >= {'source_type', 'source', 'name'}:
-            raise RuntimeError
-        if package_recipe['source_type'] not in {'dtx', 'sty'}:
-            raise RuntimeError
-        if not isinstance(package_recipe['source'], PurePosixPath):
-            raise RuntimeError
-        if not isinstance(package_recipe['name'], str):
-            raise RuntimeError
-        return package_recipe
+        return self._generate_package_recipe(package_path)
 
     @folding_driver_errors
-    def produce_figure_recipe( self, figure_path,
-        figure_formats=frozenset(('pdf', 'png', 'jpg'))
-    ):
-        """
-        Return figure recipe.
-
-        Recipe must contain the following fields:
-        'format'
-            one of 'pdf', 'eps', 'png', 'jpg'
-        'source_type'
-            one of 'asy', 'svg', 'pdf', 'eps', 'png', 'jpg'
-        'source'
-            source_path
-
-        In case of Asymptote file ('asy' source type), figure_record must
-        also contain:
-        'other_sources'
-            {accessed_name : source_path for each accessed source_path}
-            where accessed_name is a filename with '.asy' extension,
-            and source_path has '.asy' extension
-        """
+    def produce_figure_recipe( self, figure_path: RecordPath,
+        *, figure_types: FrozenSet[str] = frozenset(('pdf', 'png', 'jpg')),
+    ) -> FigureRecipe:
         assert isinstance(figure_path, RecordPath), type(figure_path)
-        if not isinstance(figure_formats, frozenset):
-            figure_formats = frozenset(figure_formats)
-        with suppress(KeyError):
-            return self._cache['figure_recipes'][figure_path, figure_formats]
-        figure_recipe = \
-            self._cache['figure_recipes'][figure_path, figure_formats] = \
-            self._generate_figure_recipe(figure_path, figure_formats)
-        # QA
-        if not figure_recipe.keys() >= {'format', 'source_type', 'source'}:
-            raise RuntimeError
-        if figure_recipe['format'] not in {'pdf', 'eps', 'png', 'jpg'}:
-            raise RuntimeError
-        if figure_recipe['format'] not in figure_formats:
-            raise RuntimeError
-        if figure_recipe['source_type'] not in \
-                {'asy', 'svg', 'pdf', 'eps', 'png', 'jpg'}:
-            raise RuntimeError
-        if figure_recipe['source_type'] == 'asy':
-            if 'other_sources' not in figure_recipe:
-                raise RuntimeError
-            other_sources = figure_recipe['other_sources']
-            if not isinstance(other_sources, dict):
-                raise RuntimeError
-            for accessed_name, accessed_path in other_sources.items():
-                if not isinstance(accessed_name, str):
-                    raise RuntimeError
-                if not isinstance(accessed_path, RecordPath):
-                    raise RuntimeError
-        return figure_recipe
-
-#    # XXX this belongs to node_factory
-#    # Driver has not much to do with inpaths
-#    @folding_driver_errors
-#    def list_inpaths(self, *targets, inpath_type='tex'):
-#        if inpath_type not in {'tex', 'asy'}:
-#            raise RuntimeError(inpath_type)
-#        for target in targets:
-#            outrecord = self.produce_outrecord(target)
-#            if outrecord['type'] not in {'regular'}:
-#                raise DriverError(
-#                    "Can only list inpaths for regular documents: {target}"
-#                    .format(target=target) )
-#            if inpath_type == 'tex':
-#                for inpath in outrecord['sources'].values():
-#                    if inpath.suffix == '.tex':
-#                        yield inpath
-#            elif inpath_type == 'asy':
-#                yield from self._list_inpaths_asy(target, outrecord)
-#
-#    # XXX this belongs to node_factory
-#    def _list_inpaths_asy(self, target, outrecord):
-#        for figure_path, figure_type in outrecord['figures'].values():
-#            if figure_type != 'asy':
-#                continue
-#            for figure_record in self.produce_figure_records(figure_path):
-#                if figure_record['type'] != 'asy':
-#                    continue
-#                yield figure_record['source']
-#                break
-#            else:
-#                raise DriverError(
-#                    "No 'asy' type figure found for {path} in {target}"
-#                    .format(path=figure_path, target=target) )
+        assert isinstance(figure_types, frozenset), type(figure_types)
+        return self._generate_figure_recipe(figure_path, figure_types)
 
 
     ##########
     # Record extension {{{2
 
-    def _derive_record(self, parent_record, child_record, path):
+    def _derive_record( self,
+        parent_record: Record, child_record: Record, path: RecordPath,
+    ) -> None:
         super()._derive_record(parent_record, child_record, path)
 
         child_record.setdefault( '$delegate$able',
@@ -535,7 +392,8 @@ class RegularDriver(DriverRecords): # {{{1
         child_record.setdefault('$style$auto',
             parent_record.get('$style$auto', True) )
 
-    def _generate_targetable_paths(self, path=None):
+    def _generate_targetable_paths( self, path: RecordPath = None,
+    ) -> Iterable[RecordPath]:
         """Yield targetable paths."""
         if path is None:
             path = RecordPath()
@@ -548,8 +406,8 @@ class RegularDriver(DriverRecords): # {{{1
             assert '/' not in key
             yield from self._generate_targetable_paths(path=path/key)
 
-    dropped_keys = dict()
-    dropped_keys.update(DriverRecords.dropped_keys)
+    dropped_keys: ClassVar[Dict[str, str]] = dict()
+    dropped_keys.update(Driver.dropped_keys)
     dropped_keys.update({
         '$manner' : '$build$matter',
         '$rigid'  : '$build$matter',
@@ -578,8 +436,9 @@ class RegularDriver(DriverRecords): # {{{1
     @checking_target_recursion()
     @ensure_type_items(Target)
     @processing_target
-    def _generate_targets( self, target, record=None,
-        *, _seen_targets=None
+    def _generate_targets( self, target: Target,
+        record: Optional[Record] = None,
+        *, _seen_targets: Optional[Set[Target]] = None
     ):
         if record is None:
             record = self.get(target.path)
@@ -907,7 +766,8 @@ class RegularDriver(DriverRecords): # {{{1
     # Record-level functions (document_recipe) {{{2
 
     @processing_target
-    def _generate_document_recipe(self, target, record=None):
+    def _generate_document_recipe( self, target: Target, record=None,
+    ) -> DocumentRecipe:
         if record is None:
             record = self.get(target.path)
         if not record['$delegate$able'] or \
@@ -917,20 +777,10 @@ class RegularDriver(DriverRecords): # {{{1
         if target.path.is_root():
             raise DriverError("Direct building of '/' is prohibited." )
 
-        return self._generate_regular_document_recipe(target, record=record)
+        document_recipe = DocumentRecipe()
 
-    @processing_target
-    def _generate_regular_document_recipe(self, target, record=None):
-        """
-        Return document recipe.
-        """
-        if record is None:
-            record = self.get(target.path)
-
-        document_recipe = {'type' : 'regular'}
-
-        compilers = []
-        header_info = {'dates' : [], 'captions' : [], 'authors' : []}
+        compilers: List[Compiler] = []
+        header_info: Dict[str, List[Any]] = {'dates' : [], 'captions' : [], 'authors' : []}
 
         document_target = self._get_attuned_target(target, record)
         # We must exhaust _generate_body() to fill header_info
@@ -944,7 +794,7 @@ class RegularDriver(DriverRecords): # {{{1
         target.check_unutilized_flags()
         target.abandon_children() # clear references
 
-        document_recipe['outname'] = self._select_outname(
+        document_recipe.outname = self._select_outname(
             target, record,
             date=self._min_date(header_info['dates']) )
 
@@ -953,33 +803,14 @@ class RegularDriver(DriverRecords): # {{{1
         if len(compilers) > 1:
             raise DriverError("Compiler is specified multiple times")
         # pylint: disable=unbalanced-tuple-unpacking
-        document_recipe['compiler'], = compilers
+        document_recipe.compiler, = compilers
         # pylint: enable=unbalanced-tuple-unpacking
 
         preamble = list(self._reconcile_packages(preamble))
         with process_target_aspect(target, 'document'):
-            document_recipe['document'] = \
+            document_recipe.document = \
                 self._constitute_document(
                     document_recipe, preamble=preamble, body=body, )
-            document_recipe['document'].freeze()
-
-        asy_latex_compilers = []
-        asy_latex_preamble = list(self._generate_preamble_document(
-            document_target.flags_union({'asy'}), record,
-            compilers=asy_latex_compilers ))
-        asy_latex_preamble = list(self._reconcile_packages(
-            asy_latex_preamble ))
-        asy_latex_preamble = self._constitute_preamble(
-            document_recipe,
-            preamble=asy_latex_preamble )
-        if len(asy_latex_compilers) != 1:
-            raise DriverError
-        # pylint: disable=unbalanced-tuple-unpacking
-        document_recipe['asy_latex_compiler'], = asy_latex_compilers
-        # pylint: enable=unbalanced-tuple-unpacking
-        if asy_latex_preamble.keys() != ():
-            raise DriverError
-        document_recipe['asy_latex_preamble'] = asy_latex_preamble.substitute({})
 
         return document_recipe
 
@@ -1014,7 +845,7 @@ class RegularDriver(DriverRecords): # {{{1
         outname_base = '-'.join(target.path.parts)
         outname_flags = target.flags.__format__('optional')
         outname = outname_base + outname_flags
-        if isinstance(date, (Period, *Period.date_types)):
+        if isinstance(date, DatePeriod):
             outname = str(Period(date)) + '-' + outname
         return outname
 
@@ -1479,7 +1310,7 @@ class RegularDriver(DriverRecords): # {{{1
         if 'date' not in header:
             header['date'] = self._min_date(header_info['dates'])
         if header['date'] is not None and header['date'] is not Never:
-            if not isinstance(header['date'], (Period, *Period.date_types, str)):
+            if not isinstance(header['date'], (DatePeriod, str)):
                 raise DriverError(type(header['date']))
             super_header_info['dates'].append(header['date'])
         if 'caption' not in header:
@@ -1683,7 +1514,7 @@ class RegularDriver(DriverRecords): # {{{1
         date = record.get('$date', None)
         if date is None:
             return Never
-        elif isinstance(date, (Period, *Period.date_types)):
+        elif isinstance(date, DatePeriod):
             return Period(date)
         elif isinstance(date, str):
             return date
@@ -1805,9 +1636,7 @@ class RegularDriver(DriverRecords): # {{{1
         else:
             package_name = package_path.name
 
-        return {
-            'source_type' : package_type,
-            'source' : source_path, 'name' : package_name }
+        return PackageRecipe(package_type, source_path, package_name)
 
     _package_types = ('dtx', 'sty',)
 
@@ -1828,7 +1657,7 @@ class RegularDriver(DriverRecords): # {{{1
     # Record-level functions (figure_record) {{{2
 
     @processing_figure_path
-    def _generate_figure_recipe(self, figure_path, figure_formats):
+    def _generate_figure_recipe(self, figure_path, figure_types):
         try:
             record = self.get(figure_path)
         except RecordNotFoundError as error:
@@ -1836,33 +1665,30 @@ class RegularDriver(DriverRecords): # {{{1
         if not record.get('$figure$able', False):
             raise DriverError("Figure '{}' not found".format(figure_path))
 
-        figure_types = [ figure_type
-            for figure_type in self._figure_types
-            if self._figure_formats[figure_type] & figure_formats
-            if record.get(self._get_figure_type_key(figure_type), False) ]
+        source_types = [ source_type
+            for source_type in self._figure_source_types
+            if self._figure_types[source_type] & figure_types
+            if record.get(self._get_figure_type_key(source_type), False) ]
+        if len(source_types) > 1:
+            raise DriverError(source_types)
+        source_type, = source_types
+        figure_types = self._figure_types[source_type] & figure_types
         if len(figure_types) > 1:
             raise DriverError(figure_types)
         figure_type, = figure_types
-        figure_formats = self._figure_formats[figure_type] & figure_formats
-        if len(figure_formats) > 1:
-            raise DriverError(figure_formats)
-        figure_format, = figure_formats
-        suffix = self._get_figure_suffix(figure_type)
+        suffix = self._get_figure_suffix(source_type)
         source_path = figure_path.as_source_path(suffix=suffix)
 
-        figure_recipe = {
-            'format' : figure_format,
-            'source_type' : figure_type,
-            'source' : source_path }
-        if figure_type == 'asy':
-            figure_recipe['other_sources'] = \
+        figure_recipe = FigureRecipe(figure_type, source_type, source_path)
+        if source_type == 'asy':
+            figure_recipe.other_sources = \
                 self._find_figure_asy_other_sources(
                     figure_path, record )
-            assert isinstance(figure_recipe['other_sources'], dict)
+            assert isinstance(figure_recipe.other_sources, dict)
         return figure_recipe
 
-    _figure_types = ('asy', 'svg', 'pdf', 'eps', 'png', 'jpg',)
-    _figure_formats = {
+    _figure_source_types = ('asy', 'svg', 'pdf', 'eps', 'png', 'jpg',)
+    _figure_types = {
         'asy' : {'pdf', 'eps'},
         'svg' : {'pdf', 'eps'},
         'pdf' : {'pdf'},
@@ -1876,8 +1702,8 @@ class RegularDriver(DriverRecords): # {{{1
         return '$figure$type${}'.format(figure_type)
 
     @staticmethod
-    def _get_figure_suffix(figure_type):
-        return '.{}'.format(figure_type)
+    def _get_figure_suffix(source_type):
+        return '.{}'.format(source_type)
 
     @processing_figure_path
     def _find_figure_asy_other_sources(self, figure_path, record):
@@ -1919,7 +1745,7 @@ class RegularDriver(DriverRecords): # {{{1
         document_template = DocumentTemplate()
         document_template.append_text(
             cls.document_compiler_template.substitute(
-                compiler=document_recipe['compiler'] )
+                compiler=document_recipe.compiler )
         )
         cls._fill_preamble(preamble, document_template)
         document_template.append_text(
@@ -1938,7 +1764,7 @@ class RegularDriver(DriverRecords): # {{{1
         '\n' r'\end{document}' '\n\n' )
 
     @classmethod
-    def _constitute_preamble(cls, document_recipe, preamble):
+    def _constitute_preamble(cls, preamble):
         preamble_template = DocumentTemplate()
         cls._fill_preamble(preamble, preamble_template)
         return preamble_template
@@ -1964,7 +1790,8 @@ class RegularDriver(DriverRecords): # {{{1
         elif isinstance(item, cls.LocalPackagePreambleItem):
             document_template.append_text(
                 cls.uselocalpackage_0_template.substitute() )
-            document_template.append_key(('package', item.package_path))
+            document_template.append_key(
+                DocumentRecipe.PackageKey(item.package_path) )
             document_template.append_text(
                 cls.uselocalpackage_1_template.substitute(
                     package_path=item.package_path)
@@ -1993,13 +1820,15 @@ class RegularDriver(DriverRecords): # {{{1
 
     @classmethod
     def _fill_body(cls, body, document_template):
+        figure_counter = {}
         for item in body:
             assert isinstance(item, cls.BodyItem), type(item)
-            cls._fill_body_item(item, document_template)
+            cls._fill_body_item( item, document_template,
+                figure_counter=figure_counter )
             document_template.append_text('\n')
 
     @classmethod
-    def _fill_body_item(cls, item, document_template):
+    def _fill_body_item(cls, item, document_template, *, figure_counter):
         if isinstance(item, cls.VerbatimBodyItem):
             document_template.append_text(item.value)
         elif isinstance(item, cls.SourceBodyItem):
@@ -2007,30 +1836,31 @@ class RegularDriver(DriverRecords): # {{{1
                 cls.input_0_template.substitute(
                     include_command=item.include_command )
             )
-            document_template.append_key(('source', item.source_path))
+            document_template.append_key(
+                DocumentRecipe.SourceKey(item.source_path) )
             document_template.append_text(
                 cls.input_1_template.substitute(
                     source_path=item.source_path )
             )
         elif isinstance(item, cls.FigureDefBodyItem):
-            figure_index = getattr(document_template, 'figure_index', 0)
+            figure_index = figure_counter.setdefault(item.figure_path, 0)
             document_template.append_text(
                 cls.jeolmfiguremap_0_template.substitute(
                     figure_ref=item.figure_ref )
             )
             document_template.append_key(
-                ('figure', item.figure_path, figure_index) )
+                DocumentRecipe.FigureKey(item.figure_path, figure_index) )
             document_template.append_text(
                 cls.jeolmfiguremap_1_template.substitute(
                     figure_path=item.figure_path )
             )
             document_template.append_key(
-                ('figure-size', item.figure_path, figure_index) )
+                DocumentRecipe.FigureSizeKey(item.figure_path, figure_index) )
             document_template.append_text(
                 cls.jeolmfiguremap_2_template.substitute(
                     figure_path=item.figure_path )
             )
-            document_template.figure_index = figure_index + 1
+            figure_counter[item.figure_path] = figure_index + 1
         else:
             raise RuntimeError(type(item))
 
@@ -2062,7 +1892,7 @@ class RegularDriver(DriverRecords): # {{{1
 
     @classmethod
     def _constitute_date(cls, date):
-        if not isinstance(date, (Period, *Period.date_types)):
+        if not isinstance(date, DatePeriod):
             return str(date)
         if not isinstance(date, Period):
             date = Period(date)
@@ -2156,7 +1986,7 @@ class RegularDriver(DriverRecords): # {{{1
 #        '(?:' + NAME_PATTERN + ')' + r'(?:\.\w+)?' )
 
     @staticmethod
-    def _min_date(dates, _date_types=(Period, *Period.date_types)):
+    def _min_date(dates, _date_types=DatePeriod):
         dates = [ date
             for date in dates
             if date is not None

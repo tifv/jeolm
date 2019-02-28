@@ -11,6 +11,7 @@ import jeolm.node.latex
 
 from jeolm.records import RecordPath
 from jeolm.target import Target
+from jeolm.driver import DocumentRecipe
 
 from . import _cache_node
 from .figure import FigureNodeFactory
@@ -95,13 +96,8 @@ class DocumentNodeFactory:
             path=build_dir_node.path/'figures',
             needs=(build_dir_node,) )
         build_dir_node.register_node(figure_dir_node)
-        document_type = recipe['type']
-        if document_type == 'regular':
-            prebuild_method = self._prebuild_regular
-        else:
-            raise RuntimeError
         main_source_node, source_nodes, package_nodes, figure_nodes = \
-            prebuild_method( target, recipe,
+            self._prebuild_regular( target, recipe,
                 build_dir_node=build_dir_node,
                 output_dir_node=output_dir_node,
                 source_dir_node=source_dir_node,
@@ -109,7 +105,7 @@ class DocumentNodeFactory:
         cyclic_figure_nodes = [ figure_node
             for figure_node in figure_nodes
             if isinstance(figure_node, jeolm.node.cyclic.CyclicNeed) ]
-        document_node_class = self._document_node_classes[recipe['compiler']]
+        document_node_class = self._document_node_classes[recipe.compiler]
         document_node = document_node_class(
             name='document:{}:output'.format(target),
             source=main_source_node, jobname='Main',
@@ -126,7 +122,7 @@ class DocumentNodeFactory:
         # pylint: disable=attribute-defined-outside-init
         document_node.figure_nodes = figure_nodes
         document_node.build_dir_node = build_dir_node
-        document_node.outname = recipe['outname']
+        document_node.outname = recipe.outname
         # pylint: enable=attribute-defined-outside-init
         return document_node
 
@@ -174,7 +170,7 @@ class DocumentNodeFactory:
     def _get_build_dir(self, target, recipe):
         assert isinstance(target, Target)
         parent_dir_node = self._get_target_build_dir(target)
-        buildname = recipe['compiler']
+        buildname = recipe.compiler
         assert '.' not in buildname
         return jeolm.node.directory.BuildDirectoryNode(
             name='document:{}:dir'.format(target),
@@ -200,26 +196,30 @@ class DocumentNodeFactory:
             figure_dir_node=figure_dir_node, output_dir_node=output_dir_node )
 
         templatefill = dict()
+        SourceKey = DocumentRecipe.SourceKey
         for source_path, source_node in source_nodes.items():
-            templatefill['source', source_path] = \
+            templatefill[SourceKey(source_path)] = \
                 str(source_node.path.relative_to(build_dir_node.path))
+        FigureKey = DocumentRecipe.FigureKey
+        FigureSizeKey = DocumentRecipe.FigureSizeKey
         for (figure_path, figure_index), figure_node in figure_nodes.items():
-            templatefill['figure', figure_path, figure_index] = \
+            templatefill[FigureKey(figure_path, figure_index)] = \
                 str( figure_node.path.relative_to(build_dir_node.path)
                         .with_suffix('') )
             if hasattr(figure_node, 'sizefile_node'):
-                templatefill['figure-size', figure_path, figure_index] = \
+                templatefill[FigureSizeKey(figure_path, figure_index)] = \
                     str( figure_node.sizefile_node.path
                             .relative_to(output_dir_node.path) )
             else:
-                templatefill['figure-size', figure_path, figure_index] = ''
+                templatefill[FigureSizeKey(figure_path, figure_index)] = ''
+        PackageKey = DocumentRecipe.PackageKey
         for package_path, package_node in package_nodes.items():
-            templatefill['package', package_path] = \
+            templatefill[PackageKey(package_path)] = \
                 str(package_node.path.with_suffix('').name)
         main_source_node = jeolm.node.text.TextNode(
             name='document:{}:source:main'.format(target),
             path=build_dir_node.path/'Main.tex',
-            text=recipe['document'].substitute(templatefill),
+            text=recipe.document.substitute(templatefill),
             build_dir_node=build_dir_node )
         build_dir_node.register_node(main_source_node)
 
@@ -237,12 +237,11 @@ class DocumentNodeFactory:
     ):
         "Return {source_path : source_node}."
         source_paths = list()
-        for key in recipe['document'].keys():
-            assert isinstance(key, tuple)
-            key_type, *key_value = key
-            if key_type == 'source':
-                source_path, = key_value
-                source_paths.append(source_path)
+        for key in recipe.document.keys():
+            #assert isinstance(key, tuple)
+            #key_type, *key_value = key
+            if isinstance(key, DocumentRecipe.SourceKey):
+                source_paths.append(key.source_path)
         source_path_aliases = {
             source_path : '-'.join(source_path.with_suffix('').parts)
             for source_path in source_paths }
@@ -268,12 +267,11 @@ class DocumentNodeFactory:
         *, build_dir_node,
     ):
         package_paths = list()
-        for key in recipe['document'].keys():
-            assert isinstance(key, tuple)
-            key_type, *key_value = key
-            if key_type == 'package':
-                package_path, = key_value
-                package_paths.append(package_path)
+        for key in recipe.document.keys():
+            #assert isinstance(key, tuple)
+            #key_type, *key_value = key
+            if isinstance(key, DocumentRecipe.PackageKey):
+                package_paths.append(key.package_path)
         package_nodes = dict()
         package_names = set()
         for package_path in package_paths:
@@ -296,19 +294,18 @@ class DocumentNodeFactory:
     def _prebuild_regular_figures( self, target, recipe,
         *, figure_dir_node, output_dir_node
     ):
-        if recipe['compiler'] in {'latex'}:
-            figure_formats = frozenset(('eps',))
-        elif recipe['compiler'] in {'pdflatex', 'xelatex', 'lualatex'}:
-            figure_formats = frozenset(('pdf', 'png', 'jpg'))
+        if recipe.compiler in {'latex'}:
+            figure_types = frozenset(('eps',))
+        elif recipe.compiler in {'pdflatex', 'xelatex', 'lualatex'}:
+            figure_types = frozenset(('pdf', 'png', 'jpg'))
         else:
             raise RuntimeError
         figure_paths = list()
-        for key in recipe['document'].keys():
-            assert isinstance(key, tuple)
-            key_type, *key_value = key
-            if key_type == 'figure':
-                figure_path, figure_index = key_value
-                figure_paths.append((figure_path, figure_index))
+        for key in recipe.document.keys():
+            #assert isinstance(key, tuple)
+            #key_type, *key_value = key
+            if isinstance(key, DocumentRecipe.FigureKey):
+                figure_paths.append((key.figure_path, key.figure_index))
         figure_path_aliases = {
             (figure_path, figure_index) : '-'.join(figure_path.parts)
             for (figure_path, figure_index) in figure_paths }
@@ -317,13 +314,19 @@ class DocumentNodeFactory:
                 self._name_hash(':'.join(str(item) for item in items))
         )
         figure_nodes = dict()
+        asy_latex_compiler = None
+        asy_latex_preamble = None
         for (figure_path, figure_index), alias_stem \
                 in figure_path_aliases.items():
             orig_figure_node = self.figure_node_factory( figure_path,
-                figure_formats=figure_formats )
+                figure_types=figure_types )
             if isinstance(orig_figure_node, FigureNodeFactory.AsymptoteNode):
+                if asy_latex_compiler is None:
+                    asy_latex_compiler, asy_latex_preamble = \
+                        self.driver.produce_document_asy_context(target)
                 figure_node = figure_nodes[figure_path, figure_index] = \
-                    self._prebuild_asy_figure( target, recipe,
+                    self._prebuild_asy_figure( target,
+                        asy_latex_compiler, asy_latex_preamble,
                         orig_figure_node, figure_dir_node, alias_stem,
                         output_dir_node=output_dir_node )
             else:
@@ -340,20 +343,21 @@ class DocumentNodeFactory:
             figure_dir_node.register_node(figure_node)
         return figure_nodes
 
-    def _prebuild_asy_figure( self, target, recipe,
+    def _prebuild_asy_figure( self, target,
+        asy_latex_compiler, asy_latex_preamble,
         figure_node_subfactory, figure_dir_node, alias_stem,
         *, output_dir_node
     ):
         sizefile_path = output_dir_node.path/(alias_stem + '.figsize')
-        alias = alias_stem + '.' + figure_node_subfactory.figure_format
+        alias = alias_stem + '.' + figure_node_subfactory.figure_type
         return AsymptoteFigureNode(
             name=f'document:{target}:figure:{alias}',
             figure_dir_node=figure_dir_node,
             alias=alias,
             node_subfactory=figure_node_subfactory,
             sizefile_path=sizefile_path,
-            latex_compiler=recipe['asy_latex_compiler'],
-            latex_preamble=recipe['asy_latex_preamble'],
+            latex_compiler=asy_latex_compiler,
+            latex_preamble=asy_latex_preamble,
         )
 
     @staticmethod
