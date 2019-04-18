@@ -265,7 +265,7 @@ from pathlib import PurePosixPath
 
 from jeolm.records import ( RecordPath, Record, RecordNotFoundError,
     NAME_PATTERN )
-from jeolm.target import Target, OUTNAME_PATTERN
+from jeolm.target import Flag, Target, OUTNAME_PATTERN
 
 from jeolm.date import Period, Never, DatePeriod
 from jeolm.utils.check_and_set import check_and_set, ClashingValueError
@@ -285,7 +285,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 from typing import ( ClassVar, Any, Union, Optional,
-    Iterable,
+    Iterable, Collection, Sequence,
     Tuple, List, Set, FrozenSet, Dict,
     Generator, Pattern )
 
@@ -334,7 +334,7 @@ class RegularDriver(Driver): # {{{1
         document_target = self._get_attuned_target(target, record)
         asy_latex_compilers: List[Compiler] = []
         asy_latex_preamble = list(self._generate_preamble_document(
-            document_target.flags_union({'asy'}), record,
+            document_target.flags_union({Flag('asy')}), record,
             compilers=asy_latex_compilers ))
         asy_latex_preamble = list(self._reconcile_packages(
             asy_latex_preamble ))
@@ -434,12 +434,11 @@ class RegularDriver(Driver): # {{{1
     # Record-level functions (delegate) {{{2
 
     @checking_target_recursion()
-    @ensure_type_items(Target)
     @processing_target
-    def _generate_targets( self, target: Target,
-        record: Optional[Record] = None,
+    def _generate_targets( self,
+        target: Target, record: Optional[Record] = None,
         *, _seen_targets: Optional[Set[Target]] = None
-    ):
+    ) -> Iterable[Target]:
         if record is None:
             record = self.get(target.path)
         if not record.get('$delegate$able', True):
@@ -454,12 +453,12 @@ class RegularDriver(Driver): # {{{1
             delegate_key=delegate_key, delegate=delegate,
             _seen_targets=_seen_targets )
 
-    @ensure_type_items(Target)
     @processing_target
-    def _generate_targets_delegate( self, target, record,
-        *, delegate_key, delegate, _recursed=False,
-        _seen_targets,
-    ):
+    def _generate_targets_delegate( self,
+        target: Target, record: Record,
+        *, delegate_key: str, delegate: Any, _recursed: bool = False,
+        _seen_targets: Optional[Set[Target]],
+    ) -> Iterable[Target]:
         with process_target_key(target, delegate_key):
             if not isinstance(delegate, list):
                 raise DriverError(
@@ -472,11 +471,11 @@ class RegularDriver(Driver): # {{{1
                     _recursed=_recursed,
                     _seen_targets=_seen_targets )
 
-    @ensure_type_items(Target)
-    def _generate_targets_delegate_item( self, target, record,
-        *, delegate_key, delegate_item, _recursed,
-        _seen_targets,
-    ):
+    def _generate_targets_delegate_item( self,
+        target: Target, record: Record,
+        *, delegate_key: str, delegate_item: Any, _recursed: bool,
+        _seen_targets: Optional[Set[Target]],
+    ) -> Iterable[Target]:
         if isinstance(delegate_item, str):
             yield from self._generate_targets(
                 target.derive_from_string( delegate_item,
@@ -512,11 +511,11 @@ class RegularDriver(Driver): # {{{1
         else:
             raise DriverError(delegate_item)
 
-    @ensure_type_items(Target)
-    def _generate_targets_delegate_children( self, target, record,
-        *, delegate_item,
-        _seen_targets,
-    ):
+    def _generate_targets_delegate_children( self,
+        target: Target, record: Record,
+        *, delegate_item: Dict,
+        _seen_targets: Optional[Set[Target]],
+    ) -> Iterable[Target]:
         if not delegate_item.keys() <= {'children', 'exclude'}:
             raise DriverError(delegate_item.keys())
         if delegate_item['children'] is not None:
@@ -539,12 +538,12 @@ class RegularDriver(Driver): # {{{1
 
     _child_pattern = re.compile(NAME_PATTERN)
 
-    @ensure_type_items(Target)
     @processing_target
-    def _generate_targets_children( self, target, record,
-        *, exclude=frozenset(),
-        _seen_targets,
-    ):
+    def _generate_targets_children( self,
+        target: Target, record: Record,
+        *, exclude: Collection[str] = frozenset(),
+        _seen_targets: Optional[Set[Target]],
+    ) -> Iterable[Target]:
         exclude = frozenset(exclude)
         for key in record:
             if key.startswith('$'):
@@ -558,11 +557,11 @@ class RegularDriver(Driver): # {{{1
             yield from self._generate_targets( child_target, child_record,
                 _seen_targets=_seen_targets )
 
-    @ensure_type_items(Target)
     @processing_target
-    def _generate_targets_auto( self, target, record,
-        *, _seen_targets,
-    ):
+    def _generate_targets_auto( self,
+        target: Target, record: Record,
+        *, _seen_targets: Optional[Set[Target]],
+    ) -> Iterable[Target]:
         if not record.get('$delegate$auto', False):
             yield target
             return
@@ -573,11 +572,11 @@ class RegularDriver(Driver): # {{{1
         yield from self._generate_targets_children( target, record,
             _seen_targets=_seen_targets )
 
-    @ensure_type_items(Target)
     @processing_target
-    def _generate_targets_auto_source( self, target, record,
-        *, _seen_targets,
-    ):
+    def _generate_targets_auto_source( self,
+        target: Target, record: Record,
+        *, _seen_targets: Optional[Set[Target]],
+    ) -> Iterable[Target]:
         yield target
         return
 
@@ -586,41 +585,47 @@ class RegularDriver(Driver): # {{{1
     # Document body and preamble items {{{2
 
     class BodyItem:
-        __slots__ = []
+        __slots__ = ()
 
     class VerbatimBodyItem(BodyItem):
         """These items represent a piece of LaTeX code."""
         __slots__ = ['value']
+        value: str
 
-        def __init__(self, value):
+        def __init__(self, value: str) -> None:
             super().__init__()
-            self.value = str(value)
+            if not isinstance(value, str):
+                raise RuntimeError(type(value))
+            self.value = value
 
     class SourceBodyItem(BodyItem):
         """These items represent inclusion of a source file."""
         __slots__ = ['record_path']
-        include_command = r'\input'
-        file_suffix = '.tex'
+        record_path: RecordPath
+        include_command: ClassVar[str] = r'\input'
+        file_suffix: ClassVar[str] = '.tex'
 
-        def __init__(self, record_path):
+        def __init__(self, record_path: RecordPath) -> None:
             super().__init__()
             if not isinstance(record_path, RecordPath):
                 raise RuntimeError(type(record_path))
             self.record_path = record_path
 
         @property
-        def source_path(self):
+        def source_path(self) -> PurePosixPath:
             return self.record_path.as_source_path(suffix=self.file_suffix)
 
     class DocSourceBodyItem(SourceBodyItem):
-        __slots__ = []
+        __slots__ = ()
         include_command = r'\DocInput'
         file_suffix = '.dtx'
 
     class FigureDefBodyItem(BodyItem):
         __slots__ = ['figure_ref', 'figure_path']
+        figure_ref: str
+        figure_path: RecordPath
 
-        def __init__(self, figure_ref, figure_path):
+        def __init__(self, figure_ref: str, figure_path: RecordPath) -> None:
             if not isinstance(figure_ref, str):
                 raise DriverError(type(figure_ref))
             self.figure_ref = figure_ref
@@ -629,38 +634,30 @@ class RegularDriver(Driver): # {{{1
             self.figure_path = figure_path
 
     class NewPageBodyItem(VerbatimBodyItem):
-        __slots__ = []
-        _value = r'\clearpage' '\n'
+        __slots__ = ()
+        _value: ClassVar[str] = r'\clearpage' '\n'
 
-        def __init__(self):
+        def __init__(self) -> None:
             super().__init__(value=self._value)
 
     class PreambleItem:
-        __slots__ = []
-
-        def __init__(self):
-            super().__init__()
+        __slots__ = ()
 
     class VerbatimPreambleItem(PreambleItem):
         __slots__ = ['value']
+        value: str
 
-        def __init__(self, value):
+        def __init__(self, value: str) -> None:
             super().__init__()
-            if value is not None and not isinstance(value, str):
+            if not isinstance(value, str):
                 raise DriverError(type(value))
             self.value = value
 
-    class CompilerItem(PreambleItem):
-        __slots__ = ['compiler']
-
-        def __init__(self, compiler):
-            super().__init__()
-            self.compiler = str(compiler)
-
     class LocalPackagePreambleItem(PreambleItem):
         __slots__ = ['package_path']
+        package_path: RecordPath
 
-        def __init__(self, package_path):
+        def __init__(self, package_path: RecordPath):
             super().__init__()
             if not isinstance(package_path, RecordPath):
                 raise RuntimeError(type(package_path))
@@ -668,8 +665,9 @@ class RegularDriver(Driver): # {{{1
 
     class ProvideVerbatimPreambleItem(VerbatimPreambleItem):
         __slots__ = ['key']
+        key: str
 
-        def __init__(self, key, value):
+        def __init__(self, key: str, value: str):
             super().__init__(value=value)
             if not isinstance(key, str):
                 raise DriverError(type(key))
@@ -678,8 +676,15 @@ class RegularDriver(Driver): # {{{1
     class ProvidePackagePreambleItem(PreambleItem):
         __slots__ = [ 'package',
             'options_required', 'options_suggested', 'options_prohibited']
+        package: str
+        options_required: Sequence[str]
+        options_suggested: Sequence[str]
+        options_prohibited: Sequence[str]
 
-        def __init__(self, package, options=None):
+        def __init__(self,
+            package: str,
+            options: Any = None,
+        ) -> None:
             super().__init__()
             if not isinstance(package, str):
                 raise DriverError(type(package))
@@ -701,10 +706,10 @@ class RegularDriver(Driver): # {{{1
                 options.get('prohibited', ()) )
 
         @staticmethod
-        def _list_of_strings(what):
+        def _list_of_strings(what: Any) -> Sequence[str]:
             if not isinstance(what, (list, tuple)):
                 raise DriverError(type(what))
-            result = []
+            result: List[str] = []
             for item in what:
                 if not isinstance(item, str):
                     raise DriverError(type(item))
@@ -714,15 +719,19 @@ class RegularDriver(Driver): # {{{1
     class ProhibitPackagePreambleItem(PreambleItem):
         __slots__ = ['package']
 
-        def __init__(self, package):
-            self.package = str(package)
+        def __init__(self, package: str):
+            if not isinstance(package, str):
+                raise DriverError(type(package))
+            self.package = package
             super().__init__()
 
     class PackagePreambleItem(PreambleItem):
         # Only produced by reconciling package options.
         __slots__ = ['package', 'options']
+        package: str
+        options: Sequence[str]
 
-        def __init__(self, package, options):
+        def __init__(self, package: str, options: Sequence[str]):
             super().__init__()
             assert isinstance(package, str)
             self.package = package
@@ -732,8 +741,10 @@ class RegularDriver(Driver): # {{{1
 
     class Author:
         __slots__ = ['name', 'abbr']
+        name: str
+        abbr: Optional[str]
 
-        def __init__(self, author_item):
+        def __init__(self, author_item: Any) -> None:
             if isinstance(author_item, RegularDriver.Author):
                 self.name = author_item.name
                 self.abbr = author_item.abbr
@@ -753,10 +764,10 @@ class RegularDriver(Driver): # {{{1
             else:
                 raise DriverError(type(author_item))
 
-        def __str__(self):
+        def __str__(self) -> str:
             return self.name
 
-        def __repr__(self):
+        def __repr__(self) -> str:
             if self.abbr is None:
                 return f'Author({self.name})'
             else:
@@ -766,7 +777,8 @@ class RegularDriver(Driver): # {{{1
     # Record-level functions (document_recipe) {{{2
 
     @processing_target
-    def _generate_document_recipe( self, target: Target, record=None,
+    def _generate_document_recipe( self,
+        target: Target, record: Optional[Record] = None,
     ) -> DocumentRecipe:
         if record is None:
             record = self.get(target.path)
@@ -780,7 +792,8 @@ class RegularDriver(Driver): # {{{1
         document_recipe = DocumentRecipe()
 
         compilers: List[Compiler] = []
-        header_info: Dict[str, List[Any]] = {'dates' : [], 'captions' : [], 'authors' : []}
+        header_info: Dict[str, List[Any]] = \
+            {'dates' : [], 'captions' : [], 'authors' : []}
 
         document_target = self._get_attuned_target(target, record)
         # We must exhaust _generate_body() to fill header_info
@@ -816,7 +829,7 @@ class RegularDriver(Driver): # {{{1
 
     _outname_regex = re.compile(OUTNAME_PATTERN)
 
-    def _select_outname(self, target, record, date=None):
+    def _select_outname(self, target: Target, record, date=None) -> str:
         """Return outname, except for date part."""
         outname_key, outname = self.select_flagged_item(
             record, '$document$outname', target.flags )
@@ -824,7 +837,11 @@ class RegularDriver(Driver): # {{{1
             if not isinstance(outname, str):
                 raise DriverError("Outname must be a string.")
             key_match = self._attribute_key_regex.fullmatch(outname_key)
+            if key_match is None:
+                raise DriverError(repr(outname_key))
             outname_match = self._outname_regex.fullmatch(outname)
+            if outname_match is None:
+                raise DriverError(repr(outname))
             omitted_flag_set = frozenset(target.flags.split_flags_string(
                 key_match.group('flags'),
                 relative_flags=False ))
@@ -840,7 +857,9 @@ class RegularDriver(Driver): # {{{1
         else:
             return self._select_outname_auto(target, record, date)
 
-    def _select_outname_auto(self, target, record, date=None):
+    def _select_outname_auto( self,
+        target: Target, record: Record, date=None,
+    ) -> str:
         """Return outname."""
         outname_base = '-'.join(target.path.parts)
         outname_flags = target.flags.__format__('optional')
@@ -849,7 +868,9 @@ class RegularDriver(Driver): # {{{1
             outname = str(Period(date)) + '-' + outname
         return outname
 
-    def _get_attuned_target(self, target, record):
+    def _get_attuned_target( self,
+        target: Target, record: Record,
+    ) -> Target:
         flags_key, flags = self.select_flagged_item(
             record, '$document$flags', target.flags )
         if flags_key is None:
@@ -867,16 +888,14 @@ class RegularDriver(Driver): # {{{1
 
     @ensure_type_items(PreambleItem)
     @processing_target
-    def _generate_preamble_document( self, target, record=None,
+    def _generate_preamble_document( self, target: Target, record=None,
         *, compilers,
     ):
         if record is None:
             record = self.get(target.path)
         style_key, style = self.select_flagged_item(
             record, '$document$style', target.flags,
-            required_flags={'asy'}
-                    if 'asy' in target.flags
-                else (),
+            required_flags=target.flags.intersection({Flag('asy')}),
         )
         if style_key is None:
             yield from self._generate_preamble( target, record,
@@ -891,7 +910,7 @@ class RegularDriver(Driver): # {{{1
     @checking_target_recursion()
     @ensure_type_items(PreambleItem)
     @processing_target
-    def _generate_preamble( self, target, record=None,
+    def _generate_preamble( self, target: Target, record=None,
         *, compilers,
         _seen_targets,
     ):
@@ -899,9 +918,7 @@ class RegularDriver(Driver): # {{{1
             record = self.get(target.path)
         style_key, style = self.select_flagged_item(
             record, '$style', target.flags,
-            required_flags={'asy'}
-                    if 'asy' in target.flags
-                else (),
+            required_flags=target.flags.intersection({Flag('asy')}),
         )
         if style_key is None:
             yield from self._generate_preamble_auto( target, record,
@@ -915,7 +932,7 @@ class RegularDriver(Driver): # {{{1
 
     @ensure_type_items(PreambleItem)
     @processing_target
-    def _generate_preamble_style( self, target, record,
+    def _generate_preamble_style( self, target: Target, record,
         *, style_key, style, _recursed=False,
         compilers,
         _seen_targets,
@@ -934,7 +951,7 @@ class RegularDriver(Driver): # {{{1
                     _seen_targets=_seen_targets )
 
     @ensure_type_items(PreambleItem)
-    def _generate_preamble_style_item( self, target, record,
+    def _generate_preamble_style_item( self, target: Target, record,
         *, style_key, style_item, _recursed,
         compilers,
         _seen_targets,
@@ -1009,7 +1026,7 @@ class RegularDriver(Driver): # {{{1
         if style_item.keys() == {'verbatim'}:
             if not isinstance(style_item['verbatim'], str):
                 raise DriverError(type(style_item['verbatim']))
-            yield self.VerbatimPreambleItem(value=style_item['verbatim'])
+            yield self.VerbatimPreambleItem(style_item['verbatim'])
         elif style_item.keys() == {'verbatim', 'provide'}:
             if style_item['verbatim'] is not None and \
                     not isinstance(style_item['verbatim'], str):
@@ -1039,7 +1056,7 @@ class RegularDriver(Driver): # {{{1
 
     @ensure_type_items(PreambleItem)
     @processing_target
-    def _generate_preamble_auto( self, target, record,
+    def _generate_preamble_auto( self, target: Target, record,
         compilers,
         _seen_targets,
     ):
@@ -1062,7 +1079,7 @@ class RegularDriver(Driver): # {{{1
 
     @processing_target
     @ensure_type_items(BodyItem)
-    def _generate_body_document(self, target, record=None,
+    def _generate_body_document(self, target: Target, record=None,
         *, preamble, header_info,
     ):
         if record is None:
@@ -1084,7 +1101,7 @@ class RegularDriver(Driver): # {{{1
     @checking_target_recursion()
     @processing_target
     @ensure_type_items(BodyItem)
-    def _generate_body( self, target, record=None,
+    def _generate_body( self, target: Target, record=None,
         *, preamble, header_info,
         _seen_targets,
     ):
@@ -1104,7 +1121,7 @@ class RegularDriver(Driver): # {{{1
 
     @processing_target
     @ensure_type_items(BodyItem)
-    def _generate_body_content(self, target, record,
+    def _generate_body_content(self, target: Target, record,
         *, content_key=None, content=None, _recursed=False,
         preamble, header_info,
         _seen_targets,
@@ -1123,7 +1140,7 @@ class RegularDriver(Driver): # {{{1
                     _seen_targets=_seen_targets )
 
     @ensure_type_items(BodyItem)
-    def _generate_body_content_item( self, target, record,
+    def _generate_body_content_item( self, target: Target, record,
         *, content_key, content_item, _recursed,
         preamble, header_info,
         _seen_targets,
@@ -1159,7 +1176,7 @@ class RegularDriver(Driver): # {{{1
         elif 'verbatim' in content_item.keys():
             if content_item.keys() != {'verbatim'}:
                 raise DriverError(content_item.keys())
-            yield self.VerbatimBodyItem(value=content_item['verbatim'])
+            yield self.VerbatimBodyItem(content_item['verbatim'])
         elif 'source' in content_item.keys():
             if content_item.keys() != {'source'}:
                 raise DriverError(content_item.keys())
@@ -1199,7 +1216,7 @@ class RegularDriver(Driver): # {{{1
             raise DriverError(content_item.keys())
 
     @ensure_type_items(BodyItem)
-    def _generate_body_content_content( self, target, record,
+    def _generate_body_content_content( self, target: Target, record,
         *, content_key, content_item,
         preamble, header_info,
         _seen_targets,
@@ -1219,7 +1236,7 @@ class RegularDriver(Driver): # {{{1
                 "the value of 'content' must be a list, "
                f"not {type(content)}" )
 
-        header = None
+        header: Union[None, bool, Dict] = None
         if 'header' in content_item:
             if content_item['header'] is False:
                 header = False
@@ -1242,7 +1259,7 @@ class RegularDriver(Driver): # {{{1
             _seen_targets=_seen_targets )
 
     @ensure_type_items(BodyItem)
-    def _generate_body_content_figure(self, target, record,
+    def _generate_body_content_figure(self, target: Target, record,
         *, content_item,
     ):
         if not isinstance(content_item['figure'], str):
@@ -1253,7 +1270,7 @@ class RegularDriver(Driver): # {{{1
             for option in content_item['options']:
                 if not isinstance(option, str):
                     raise DriverError(type(option))
-            options = content_item['options']
+            options: Optional[List[str]] = content_item['options']
         else:
             options = None
         figure_path = RecordPath(target.path, content_item['figure'])
@@ -1266,7 +1283,7 @@ class RegularDriver(Driver): # {{{1
         )
 
     @ensure_type_items(BodyItem)
-    def _generate_body_headered_content( self, target, record,
+    def _generate_body_headered_content( self, target: Target, record,
         *, content_key, content=None, header, newpage=True,
         preamble, header_info,
         _seen_targets,
@@ -1285,11 +1302,11 @@ class RegularDriver(Driver): # {{{1
         if header is None:
             yield from generate_body()
         elif header is False:
-            target = target.flags_union({'contained'})
+            target = target.flags_union({Flag('contained')})
             yield from generate_body()
         else:
-            target = target.flags_union({'contained'})
-            content_header_info = \
+            target = target.flags_union({Flag('contained')})
+            content_header_info: Dict[str, List[Any]] = \
                 {'dates' : [], 'captions' : [], 'authors' : []}
             body = list(generate_body(header_info=content_header_info))
             self._prepare_body_header( target, record, header,
@@ -1304,7 +1321,7 @@ class RegularDriver(Driver): # {{{1
                 yield self.VerbatimBodyItem(r'\null')
             yield self.NewPageBodyItem()
 
-    def _prepare_body_header( self, target, record, header,
+    def _prepare_body_header( self, target: Target, record, header,
         *, super_header_info, header_info,
     ):
         if 'date' not in header:
@@ -1328,7 +1345,7 @@ class RegularDriver(Driver): # {{{1
             super_header_info['authors'].extend(header['authors'])
 
     @ensure_type_items(BodyItem)
-    def _generate_body_header( self, target, record,
+    def _generate_body_header( self, target: Target, record,
         *, header,
     ):
         yield self.VerbatimBodyItem(
@@ -1355,7 +1372,7 @@ class RegularDriver(Driver): # {{{1
                 self._constitute_authors_def(author_list=header['authors']) )
 
     @ensure_type_items(BodyItem)
-    def _generate_body_content_children( self, target, record,
+    def _generate_body_content_children( self, target: Target, record,
         *, content_item,
         preamble, header_info,
         _seen_targets,
@@ -1393,7 +1410,7 @@ class RegularDriver(Driver): # {{{1
 
     @processing_target
     @ensure_type_items(BodyItem)
-    def _generate_body_children( self, target, record,
+    def _generate_body_children( self, target: Target, record,
         *, exclude=frozenset(), order=None,
         preamble, header_info,
         _seen_targets,
@@ -1409,8 +1426,8 @@ class RegularDriver(Driver): # {{{1
             child_record = self.get(child_target.path)
             if not child_record.get('$content$child'):
                 continue
-            child_preamble = []
-            child_header_info = \
+            child_preamble: List['RegularDriver.BodyItem'] = []
+            child_header_info: Dict[str, List[Any]] = \
                 {'dates' : [], 'captions' : [], 'authors' : []}
             child_bodies.append((
                 list(self._generate_body( child_target, child_record,
@@ -1445,7 +1462,7 @@ class RegularDriver(Driver): # {{{1
 
     @processing_target
     @ensure_type_items(BodyItem)
-    def _generate_body_auto( self, target, record,
+    def _generate_body_auto( self, target: Target, record,
         *, preamble, header_info,
         _seen_targets,
     ):
@@ -1462,7 +1479,7 @@ class RegularDriver(Driver): # {{{1
 
     @processing_target
     @ensure_type_items(BodyItem)
-    def _generate_body_auto_source( self, target, record,
+    def _generate_body_auto_source( self, target: Target, record,
         *, preamble, header_info,
         _seen_targets,
     ):
@@ -1480,7 +1497,7 @@ class RegularDriver(Driver): # {{{1
 
     @processing_target
     @ensure_type_items(BodyItem)
-    def _generate_body_source( self, target, record=None,
+    def _generate_body_source( self, target: Target, record=None,
         *, preamble, header_info,
         _seen_targets,
     ):
@@ -1510,7 +1527,7 @@ class RegularDriver(Driver): # {{{1
     def _get_source_type_key(source_type):
         return '$source$type${}'.format(source_type)
 
-    def _get_source_date(self, target, record):
+    def _get_source_date(self, target: Target, record):
         date = record.get('$date', None)
         if date is None:
             return Never
@@ -1521,7 +1538,7 @@ class RegularDriver(Driver): # {{{1
         else:
             raise DriverError(type(date))
 
-    def _get_source_caption(self, target, record):
+    def _get_source_caption(self, target: Target, record):
         if '$caption' in record:
             if not isinstance(record['$caption'], str):
                 raise DriverError(type(record['$caption']))
@@ -1536,7 +1553,7 @@ class RegularDriver(Driver): # {{{1
         else:
             return None
 
-    def _get_source_authors(self, target, record):
+    def _get_source_authors(self, target: Target, record):
         authors = record.get('$authors', ())
         if not isinstance(authors, (list, tuple)):
             raise DriverError(type(authors))
@@ -1544,7 +1561,7 @@ class RegularDriver(Driver): # {{{1
 
     @ensure_type_items(BodyItem)
     @processing_target
-    def _generate_body_source_figure_def(self, target, record):
+    def _generate_body_source_figure_def(self, target: Target, record):
         figure_refs = record.get('$source$figures', ())
         if not isinstance(figure_refs, (list, tuple)):
             raise DriverError(type(figure_refs))

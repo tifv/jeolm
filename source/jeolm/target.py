@@ -584,8 +584,8 @@ class Target:
         )
 
     def flags_delta_mixed( self,
-        *, flags: Iterable[str],
-        origin: Optional[str] = None,
+        flags: Iterable[str],
+        *, origin: Optional[str] = None,
     ) -> 'Target':
         return self.__class__( self.path,
             self.flags.delta_mixed(flags=flags, origin=origin) )
