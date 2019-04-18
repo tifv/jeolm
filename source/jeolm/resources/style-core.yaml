@@ -15,9 +15,6 @@ $style:
     condition: {or: [latex, pdflatex]}
   - package: multicol
   - package: graphicx
-  - package: datetime2
-    options:
-      suggested: [useregional]
 
   - jeolm
 
@@ -30,20 +27,23 @@ $style:
 $style[-compiler-selection-guard]:
   - compiler-selection[compiler-selection-guard]
 
+$style$asy:
+  - style:
+    - .[asy]
+
 $style[asy]:
-  - .[-asy,asy-guard]
 
-$style[asy-guard,compiler-selection-guard]:
+  - style:
 
-  - compiler
+    - compiler
 
-  - package: inputenc
-    options: [utf8]
-    condition: {or: [latex, pdflatex]}
+    - package: inputenc
+      options: [utf8]
+      condition: {or: [latex, pdflatex]}
 
-  - text-config
+    - text-config[no-jeolm-macro,no-parskip]
 
-$style[-compiler-selection-guard,asy-guard]:
+$style[asy,-compiler-selection-guard]:
   - compiler-selection[compiler-selection-guard]
 
 # Compiler selection {{{1
@@ -98,20 +98,6 @@ text-config:
     - font-selection[font-selection-guard]
 
   $style[-language-selection-guard,font-selection-guard]:
-    - language-selection[language-selection-guard]
-
-  $style[asy-guard]:
-  - style: [font-config]
-    condition: {not: no-font-config}
-  - style: [math-font-config]
-    condition: {not: no-font-config}
-  - style: [language-config]
-    condition: {not: no-language-config}
-
-  $style[-font-selection-guard,asy-guard]:
-    - font-selection[font-selection-guard]
-
-  $style[-language-selection-guard,font-selection-guard,asy-guard]:
     - language-selection[language-selection-guard]
 
   font-selection: # {{{
@@ -413,7 +399,6 @@ text-config:
       - style:
         - swap-vargreek/default
         - swap-vargreek/upgreek
-        condition: {not: asy-guard}
       - style: [ineq-slanted]
         condition: russian
     $style[pdflatex]:
@@ -431,7 +416,6 @@ text-config:
       - style:
         - swap-vargreek/default
         - swap-vargreek/mupgreek
-        condition: {not: asy-guard}
       - style: [ineq-slanted]
         condition: russian
     $style[xelatex]:
@@ -442,14 +426,17 @@ text-config:
         $style:
         - verbatim: |-
             \AtBeginDocument{\swapvar{phi}\swapvar{epsilon}}
+          condition: {not: no-jeolm-macro}
       upgreek:
         $style:
         - verbatim: |-
             \AtBeginDocument{\swapvar[up]{phi}\swapvar[up]{epsilon}}
+          condition: {not: no-jeolm-macro}
       mupgreek:
         $style:
         - verbatim: |-
             \AtBeginDocument{\swapvar[mup]{phi}\swapvar[mup]{epsilon}}
+          condition: {not: no-jeolm-macro}
     # }}}
 
     ineq-slanted:
@@ -586,17 +573,23 @@ text-config:
     datetime: # {{{
 
       $style:
-      - error: core misconfiguration
+      - package: datetime2
+        options:
+          suggested: [useregional]
+      - setlanguage
 
-      $style[asy-guard]: []
+      setlanguage: # {{{
 
-      $style[russian,-asy-guard]:
-      - verbatim: \DTMusemodule{russian}{russian}
-        provide: DTMusemodule:russian
+        $style:
+        - error: core misconfiguration
 
-      $style[english,-asy-guard]:
-      - verbatim: \DTMusemodule{english}{en-GB}
-        provide: DTMusemodule:english
+        $style[russian]:
+        - verbatim: \DTMusemodule{russian}{russian}
+          provide: DTMusemodule:russian
+
+        $style[english]:
+        - verbatim: \DTMusemodule{english}{en-GB}
+          provide: DTMusemodule:english
 
       # }}}
 

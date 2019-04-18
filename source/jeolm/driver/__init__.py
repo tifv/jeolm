@@ -200,6 +200,8 @@ class DocumentRecipe:
                 self.package_path == other.package_path )
         def __hash__(self) -> Any:
             return hash((self.__class__.__name__, self.package_path))
+        def __repr__(self) -> str:
+            return f"{self.__class__.__qualname__}({self.package_path!r})"
 
     class BaseFigureKey(DocumentTemplate.Key):
         __slots__ = ['figure_path', 'figure_index']
