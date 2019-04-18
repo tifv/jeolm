@@ -1,6 +1,7 @@
-"""
-Keys recognized in metarecords:
-  $source-link$root
+r"""
+Record keys recognized by the driver:
+* $source-link$root
+
 """
 
 from string import Template
@@ -17,12 +18,20 @@ from . import DriverError, processing_target, ensure_type_items
 import logging
 logger = logging.getLogger(__name__)
 
-from typing import Optional
+from typing import Optional, Dict
 
 
 class SourceLinkDriver(RegularDriver):
 
     _source_link_root: Optional[str]
+
+    @classmethod
+    def get_dropped_keys(cls) -> Dict[str, str]:
+        dropped_keys = super().get_dropped_keys()
+        dropped_keys.update({
+            '$source-root-link' : '$source-link$root',
+        })
+        return dropped_keys
 
     def __init__(self):
         super().__init__()
@@ -33,7 +42,7 @@ class SourceLinkDriver(RegularDriver):
         super()._clear_cache()
 
     @property
-    def _source_link_root(self) -> str:
+    def source_link_root(self) -> str:
         if self._source_link_root is not None:
             return self._source_link_root
         else:
@@ -86,11 +95,11 @@ class SourceLinkDriver(RegularDriver):
             if isinstance(item, self.SourceBodyItem):
                 yield self.SourceLinkBodyItem(
                     source_path=item.source_path,
-                    root=self._source_link_root )
+                    root=self.source_link_root )
             elif isinstance(item, self.FigureDefBodyItem):
                 figure_parents.append(item.figure_path.parent)
         for figure_parent in unique(figure_parents):
             yield self.FigureDirLinkBodyItem(
                 source_path=figure_parent.as_source_path(),
-                root=self._source_link_root )
+                root=self.source_link_root )
 

@@ -51,8 +51,9 @@ class DriverRecords(Records):
     _attribute_key_regex: ClassVar[Pattern] = \
         re.compile(ATTRIBUTE_KEY_PATTERN)
 
-    dropped_keys: ClassVar[Dict[str, str]] = {
-    }
+    @classmethod
+    def get_dropped_keys(cls) -> Dict[str, str]:
+        return {}
 
     def _absorb_attribute_into( self,
         key: str, value: Any, path: RecordPath, record: Record, *,
@@ -65,14 +66,15 @@ class DriverRecords(Records):
                 .format(key=key, path=path)
             )
         key_stem = match.group('stem')
-        if key_stem in self.dropped_keys:
+        dropped_keys = self.get_dropped_keys()
+        if key_stem in dropped_keys:
             logger.warning(
                 "Dropped key <RED>%(key)s<NOCOLOUR> "
                 "detected in <YELLOW>%(path)s<NOCOLOUR> "
                 "(replace it with %(modern_key)s)",
                 dict(
                     key=key_stem, path=path,
-                    modern_key=self.dropped_keys[key_stem], )
+                    modern_key=dropped_keys[key_stem], )
             )
         super()._absorb_attribute_into(
             key, value, path, record,

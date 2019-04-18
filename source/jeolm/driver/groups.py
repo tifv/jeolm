@@ -1,3 +1,12 @@
+r"""
+Record keys recognized by the driver:
+* $groups
+* $delegate$auto$groups
+* $content$auto$groups
+* $date$groups
+
+"""
+
 from functools import partial
 from string import Template
 from collections import OrderedDict
@@ -20,6 +29,19 @@ from typing import Optional, Any, Dict
 class GroupsDriver(RegularDriver):
 
     _groups: Optional[Dict[Flag, Dict[str, Any]]]
+
+    @classmethod
+    def get_dropped_keys(cls) -> Dict[str, str]:
+        dropped_keys = super().get_dropped_keys()
+        dropped_keys.update({
+            '$timetable' : '$date$groups',
+            '$groups$delegate' : '$delegate$auto',
+            '$groups$delegate$into' : '$delegate$child',
+            '$groups$matter' : '$content$auto',
+            '$groups$matter$into' : '$content$child',
+            '$groups$matter$order' : '$content$order',
+        })
+        return dropped_keys
 
     # extension
     def __init__(self):

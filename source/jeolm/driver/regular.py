@@ -225,14 +225,29 @@ Record keys recognized by the driver:
         - error: <string>
             * raises error
         * dictionary items may also contain 'condition' key.
+* $style$asy[*]:
+    - a list of items:
+        - <delegator (string)>
+        - style-asy:
+            * a list of items, same as in $style$asy;
+            * nested style-asy items are prohibited.
+        - style:
+            * a list of items, same as in $style;
+            * nested style items are prohibited.
+        * all other items that can appear in $style are permitted,
+          except for 'package-source'
+        * dictionary items may also contain 'condition' key.
 - $style$auto
     - boolean or condition;
     - if true then imply
         - (unless applicable $style key is found)
         - if $package$able is not true
-            $content: [{style: ..}]
+            $style: [..]
         - if $package$able is true
-            $content: [{source_package: .}]
+            $style: [{source_package: .}]
+    - if true then imply
+        - (unless applicable $style$asy key is found)
+        $style$asy: [..]
     * default is:
         - inherited from parent;
         - otherwise true.
@@ -406,28 +421,37 @@ class RegularDriver(Driver): # {{{1
             assert '/' not in key
             yield from self._generate_targetable_paths(path=path/key)
 
-    dropped_keys: ClassVar[Dict[str, str]] = dict()
-    dropped_keys.update(Driver.dropped_keys)
-    dropped_keys.update({
-        '$manner' : '$build$matter',
-        '$rigid'  : '$build$matter',
-        '$fluid'  : '$matter',
-        '$manner$style'   : '$build$style',
-        '$manner$options' : '$build$style',
-        '$out$options'    : '$build$style',
-        '$fluid$opt'      : '$build$style',
-        '$rigid$opt'      : '$build$style',
-        '$manner$opt'     : '$build$style',
-        '$build$special'  : '$build$style',
-        '$build$options'  : '$build$outname',
-        '$required$packages' : '$matter: preamble package',
-        '$latex$packages'    : '$matter: preamble package',
-        '$tex$packages'      : '$matter: preamble package',
-        '$target$delegate' : '$delegate',
-        '$targetable' : '$target$able',
-        '$delegate$stop' : '$delegate',
-        # XXX
-    })
+    @classmethod
+    def get_dropped_keys(cls) -> Dict[str, str]:
+        dropped_keys = super().get_dropped_keys()
+        dropped_keys.update({
+            '$manner' : '$document$content',
+            '$rigid'  : '$document$content',
+            '$fluid'  : '$content',
+            '$manner$style'   : '$document$style',
+            '$manner$options' : '$document$style',
+            '$out$options'    : '$document$style',
+            '$fluid$opt'      : '$document$style',
+            '$rigid$opt'      : '$document$style',
+            '$manner$opt'     : '$document$style',
+            '$build$special'  : '$document$style',
+            '$build$options'  : '$document$outname',
+            '$required$packages' : '$content: [{style: [{package: …}]}]',
+            '$latex$packages'    : '$content: [{style: [{package: …}]}]',
+            '$tex$packages'      : '$content: [{style: [{package: …}]}]',
+            '$target$delegate' : '$delegate',
+            '$targetable' : '$delegate$able',
+            '$delegate$stop' : '$delegate',
+            '$target$able' : '$delegate$able',
+            '$build$able' : '$content$able',
+            '$build$outname' : '$document$outname',
+            '$build$matter' : '$document$content',
+            '$build$style' : '$document$style',
+            '$matter' : '$content',
+            '$training$matter$combine' : '$content',
+            '$training$matter$chapter' : '$content: [{special: …}]',
+        })
+        return dropped_keys
 
 
     ##########
@@ -1082,16 +1106,16 @@ class RegularDriver(Driver): # {{{1
     ):
         if record is None:
             record = self.get(target.path)
-        asystyle_key, asystyle = self.select_flagged_item(
+        style_asy_key, style_asy = self.select_flagged_item(
             record, '$document$style$asy', target.flags,
         )
-        if asystyle_key is None:
+        if style_asy_key is None:
             yield from self._generate_asy_preamble( target, record,
                 compilers=compilers,
                 _seen_targets=None )
         else:
-            yield from self._generate_asy_preamble_asystyle( target, record,
-                asystyle_key=asystyle_key, asystyle=asystyle,
+            yield from self._generate_asy_preamble_style_asy( target, record,
+                style_asy_key=style_asy_key, style_asy=style_asy,
                 compilers=compilers,
                 _seen_targets=None )
 
@@ -1104,92 +1128,92 @@ class RegularDriver(Driver): # {{{1
     ):
         if record is None:
             record = self.get(target.path)
-        asystyle_key, asystyle = self.select_flagged_item(
+        style_asy_key, style_asy = self.select_flagged_item(
             record, '$style$asy', target.flags,
         )
-        if asystyle_key is None:
+        if style_asy_key is None:
             yield from self._generate_asy_preamble_auto( target, record,
                 compilers=compilers,
                 _seen_targets=_seen_targets )
         else:
-            yield from self._generate_asy_preamble_asystyle( target, record,
-                asystyle_key=asystyle_key, asystyle=asystyle,
+            yield from self._generate_asy_preamble_style_asy( target, record,
+                style_asy_key=style_asy_key, style_asy=style_asy,
                 compilers=compilers,
                 _seen_targets=_seen_targets )
 
     @ensure_type_items(PreambleItem)
     @processing_target
-    def _generate_asy_preamble_asystyle( self, target: Target, record,
-        *, asystyle_key, asystyle, _recursed=False,
+    def _generate_asy_preamble_style_asy( self, target: Target, record,
+        *, style_asy_key, style_asy, _recursed=False,
         compilers,
         _seen_targets,
     ):
-        with process_target_key(target, asystyle_key):
-            if not isinstance(asystyle, list):
+        with process_target_key(target, style_asy_key):
+            if not isinstance(style_asy, list):
                 raise DriverError(
                      "$style$asy must be a list, "
-                    f"not {type(asystyle)}" )
-            for item in asystyle:
-                yield from self._generate_asy_preamble_asystyle_item(
+                    f"not {type(style_asy)}" )
+            for item in style_asy:
+                yield from self._generate_asy_preamble_style_asy_item(
                     target, record,
-                    asystyle_key=asystyle_key, asystyle_item=item,
+                    style_asy_key=style_asy_key, style_asy_item=item,
                     _recursed=_recursed,
                     compilers=compilers,
                     _seen_targets=_seen_targets )
 
     @ensure_type_items(PreambleItem)
-    def _generate_asy_preamble_asystyle_item( self, target: Target, record,
-        *, asystyle_key, asystyle_item, _recursed,
+    def _generate_asy_preamble_style_asy_item( self, target: Target, record,
+        *, style_asy_key, style_asy_item, _recursed,
         compilers,
         _seen_targets,
     ):
-        if isinstance(asystyle_item, str):
+        if isinstance(style_asy_item, str):
             yield from self._generate_asy_preamble(
-                target.derive_from_string( asystyle_item,
-                    origin=f'asy-style {target}, key {asystyle_key}' ),
+                target.derive_from_string( style_asy_item,
+                    origin=f'asy-style {target}, key {style_asy_key}' ),
                 compilers=compilers,
                 _seen_targets=_seen_targets )
             return
 
-        if not isinstance(asystyle_item, dict):
+        if not isinstance(style_asy_item, dict):
             raise DriverError(
                  "$style item must be a string or a dictionary, "
-                f"not {type(asystyle_item)}" )
-        asystyle_item = asystyle_item.copy()
-        condition = asystyle_item.pop('condition', True)
+                f"not {type(style_asy_item)}" )
+        style_asy_item = style_asy_item.copy()
+        condition = style_asy_item.pop('condition', True)
         if not target.flags.check_condition(condition):
             return
-        if 'style-asy' in asystyle_item.keys():
-            if asystyle_item.keys() != {'style-asy'}:
-                raise DriverError(asystyle_item.keys())
+        if 'style-asy' in style_asy_item.keys():
+            if style_asy_item.keys() != {'style-asy'}:
+                raise DriverError(style_asy_item.keys())
             if _recursed:
                 raise DriverError("Nested 'style-asy' items are not allowed.")
-            yield from self._generate_asy_preamble_asystyle( target, record,
-                asystyle_key=asystyle_key+"/style-asy",
-                asystyle=asystyle_item['style-asy'],
+            yield from self._generate_asy_preamble_style_asy( target, record,
+                style_asy_key=style_asy_key+"/style-asy",
+                style_asy=style_asy_item['style-asy'],
                 _recursed=True,
                 compilers=compilers,
                 _seen_targets=_seen_targets )
-        if 'style' in asystyle_item.keys():
-            if asystyle_item.keys() != {'style'}:
-                raise DriverError(asystyle_item.keys())
+        if 'style' in style_asy_item.keys():
+            if style_asy_item.keys() != {'style'}:
+                raise DriverError(style_asy_item.keys())
             yield from self._generate_preamble_style( target, record,
-                style_key=asystyle_key+"/style",
-                style=asystyle_item['style'],
+                style_key=style_asy_key+"/style",
+                style=style_asy_item['style'],
                 _recursed=True,
                 compilers=compilers,
                 _seen_targets=_seen_targets )
-        elif 'compiler' in asystyle_item.keys():
-            if asystyle_item.keys() != {'compiler'}:
-                raise DriverError(asystyle_item.keys())
-            compiler = asystyle_item['compiler']
+        elif 'compiler' in style_asy_item.keys():
+            if style_asy_item.keys() != {'compiler'}:
+                raise DriverError(style_asy_item.keys())
+            compiler = style_asy_item['compiler']
             if not isinstance(compiler, str):
                 raise DriverError(type(compiler))
             if compiler not in {'latex', 'pdflatex', 'xelatex', 'lualatex'}:
                 raise DriverError(compiler)
             compilers.append(compiler)
         else:
-            yield from self._generate_preamble_style_simple(asystyle_item)
+            yield from self._generate_preamble_style_simple(style_asy_item)
 
     @ensure_type_items(PreambleItem)
     @processing_target

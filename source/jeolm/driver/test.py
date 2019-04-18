@@ -1,9 +1,9 @@
-"""
-Keys recognized in metarecords:
-  $test
-  $test$problem-scores
-  $test$mark-limits
-  $test$duration
+r"""
+Record keys recognized by the driver:
+* $test
+* $test$problem-scores
+* $test$mark-limits
+* $test$duration
 """
 
 from string import Template
