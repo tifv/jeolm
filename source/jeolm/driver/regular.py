@@ -687,15 +687,19 @@ class RegularDriver(Driver): # {{{1
                 raise RuntimeError(type(package_path))
             self.package_path = package_path
 
-    class ProvideVerbatimPreambleItem(VerbatimPreambleItem):
-        __slots__ = ['key']
+    class ProvideVerbatimPreambleItem(PreambleItem):
+        __slots__ = ['key', 'value']
         key: str
+        value: Optional[str]
 
-        def __init__(self, key: str, value: str):
-            super().__init__(value=value)
+        def __init__(self, key: str, value: Optional[str]):
+            super().__init__()
             if not isinstance(key, str):
                 raise DriverError(type(key))
+            if value is not None and not isinstance(value, str):
+                raise DriverError(type(value))
             self.key = key
+            self.value = value
 
     class ProvidePackagePreambleItem(PreambleItem):
         __slots__ = [ 'package',
@@ -1027,8 +1031,8 @@ class RegularDriver(Driver): # {{{1
         else:
             yield from self._generate_preamble_style_simple(style_item)
 
-    @ensure_type_items(PreambleItem)
-    def _generate_preamble_style_simple(self, style_item):
+    #@ensure_type_items(PreambleItem)
+    def _generate_preamble_style_simple(self, style_item) -> Iterable[PreambleItem]:
         # coincides with the set of items that are allowed in 'style' items
         # in $content
         if 'verbatim' in style_item.keys():
@@ -1043,8 +1047,8 @@ class RegularDriver(Driver): # {{{1
         else:
             raise DriverError(style_item.keys())
 
-    @ensure_type_items(PreambleItem)
-    def _generate_preamble_style_verbatim(self, style_item):
+    #@ensure_type_items(PreambleItem)
+    def _generate_preamble_style_verbatim(self, style_item) -> Iterable[PreambleItem]:
         if style_item.keys() == {'verbatim'}:
             if not isinstance(style_item['verbatim'], str):
                 raise DriverError(type(style_item['verbatim']))
@@ -1060,8 +1064,8 @@ class RegularDriver(Driver): # {{{1
         else:
             raise DriverError(style_item.keys())
 
-    @ensure_type_items(PreambleItem)
-    def _generate_preamble_style_package(self, style_item):
+    #@ensure_type_items(PreambleItem)
+    def _generate_preamble_style_package(self, style_item) -> Iterable[PreambleItem]:
         if style_item.keys() == {'package'}:
             yield self.ProvidePackagePreambleItem(
                 package=style_item['package'] )
@@ -1299,7 +1303,7 @@ class RegularDriver(Driver): # {{{1
     @ensure_type_items(BodyItem)
     def _generate_body_content_item( self, target: Target, record,
         *, content_key, content_item, _recursed,
-        preamble, header_info,
+        preamble: List[PreambleItem], header_info,
         _seen_targets,
     ):
         if isinstance(content_item, str):
@@ -1355,7 +1359,7 @@ class RegularDriver(Driver): # {{{1
             if not isinstance(content_item['style'], list):
                 raise DriverError(type(content_item['style']))
             for style_item in content_item['style']:
-                preamble.append(
+                preamble.extend(
                     self._generate_preamble_style_simple(style_item) )
         elif 'special' in content_item.keys():
             special_name = content_item.pop('special')
@@ -1954,6 +1958,10 @@ class RegularDriver(Driver): # {{{1
                 if not cls._check_and_set( provided_preamble,
                         item.key, item.value ):
                     continue
+                if item.value is None:
+                    continue
+                else:
+                    item = cls.VerbatimPreambleItem(item.value)
             cls._fill_preamble_item(item, document_template)
             document_template.append_text('\n')
 
