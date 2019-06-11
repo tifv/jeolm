@@ -168,7 +168,9 @@ class CyclicNode(BuildableNode): # {{{1
         pass
 
     def _needs_build_cyclic(self) -> bool:
-        return any(need.modified for need in self.cyclic_needs)
+        return any(
+            need.modified or not need.updated
+            for need in self.cyclic_needs )
 
 class CyclicDatedNode(CyclicNode, BuildableDatedNode): # {{{1
 
