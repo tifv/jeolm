@@ -433,6 +433,7 @@ class AsymptoteFigureNode(
             assert not self.updated
         else:
             assert self.link_node.updated
+            self._load_mtime()
             self.modified = self.link_node.modified
             self.updated = True
 
@@ -448,6 +449,7 @@ class AsymptoteFigureNode(
                 return
             else:
                 self.link_node = None
+                self._load_mtime()
                 self.updated = False
 
         assert self.link_node is None
