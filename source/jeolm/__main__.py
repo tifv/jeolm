@@ -233,7 +233,7 @@ def main_list(args, *, project):
         logger.warning("No-op: no targets for source listing")
     if args.source_type == 'all':
         suffixes = {'.tex'}.union(_FIGURE_SUFFIXES)
-    if args.source_type == 'tex':
+    elif args.source_type == 'tex':
         suffixes = {'.tex'}
     elif args.source_type == 'asy':
         suffixes = {'.asy'}
