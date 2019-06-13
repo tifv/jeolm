@@ -13,7 +13,7 @@ class SourceNodeFactory:
         self.project = project
         self.nodes = dict()
 
-    def __call__(self, inpath):
+    def __call__(self, inpath: PurePosixPath) -> jeolm.node.SourceFileNode:
         assert isinstance(inpath, PurePosixPath), type(inpath)
         assert not inpath.is_absolute(), inpath
         try:
@@ -23,7 +23,7 @@ class SourceNodeFactory:
         node = self.nodes[inpath] = self._prebuild_source(inpath)
         return node
 
-    def _prebuild_source(self, inpath):
+    def _prebuild_source(self, inpath: PurePosixPath) -> jeolm.node.SourceFileNode:
         source_node = jeolm.node.SourceFileNode(
             name='source:{}'.format(inpath),
             path=self.project.source_dir/inpath )

@@ -22,19 +22,22 @@ import logging
 logger = logging.getLogger(__name__)
 
 import typing
-from typing import ( NewType, ClassVar, Any, Union, Optional,
+from typing import ( ClassVar, Any, Union, Optional,
     Iterable, Sequence,
     Tuple, List, Set, Dict,
     Coroutine, Generator )
 if typing.TYPE_CHECKING:
     import posix
 
+
 class MissingTargetError(FileNotFoundError): # {{{1
     """Missing target file after execution of build commands."""
     pass
 
+
 class NodeErrorReported(ValueError): # {{{1
     pass
+
 
 def _mtime_less(mtime: Optional[int], other: Optional[int]) -> bool: # {{{1
     if other is None:
@@ -451,6 +454,7 @@ class PathNode(DatedNode): # {{{1
         if cls.root is None:
             return path
         return path.relative_to(cls.root)
+
 
 class BuildablePathNode(PathNode, BuildableDatedNode): # {{{1
     """Represents a filesystem object that can be (re)built."""

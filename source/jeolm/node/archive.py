@@ -9,7 +9,7 @@ import tarfile
 import zipfile
 
 from jeolm.node import Node, FilelikeNode, FileNode
-from jeolm.node.text import TextNode, VarTextNode
+from jeolm.node.text import TextNode, VarTextNode, SimpleTextNode
 from jeolm.node.cyclic import AutowrittenNeed
 
 from . import Command
@@ -23,12 +23,12 @@ ArchiveMTime = Union[int, float]
 # pylint: enable=invalid-name
 
 
-class _ArchiveCommand(Command):
+class _BaseArchiveCommand(Command):
 
-    node: '_ArchiveNode'
+    node: 'BaseArchiveNode'
 
-    def __init__(self, node: '_ArchiveNode') -> None:
-        assert isinstance(node, _ArchiveNode), type(node)
+    def __init__(self, node: 'BaseArchiveNode') -> None:
+        assert isinstance(node, BaseArchiveNode), type(node)
         super().__init__(node)
 
     async def run(self) -> None:
@@ -50,7 +50,7 @@ class _ArchiveCommand(Command):
         def __init__(self, archive_stream: BinaryIO) -> None:
             pass
 
-        def __enter__(self) -> '_ArchiveCommand.Archiver':
+        def __enter__(self) -> '_BaseArchiveCommand.Archiver':
             return self
 
         def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> bool:
@@ -81,7 +81,7 @@ class _ArchiveCommand(Command):
             if not isinstance(node, FilelikeNode):
                 raise RuntimeError(node)
 
-            if isinstance(node, TextNode):
+            if isinstance(node, (TextNode, SimpleTextNode)):
                 self.add_member_str(path, time.time(), node.text)
                 return
 
@@ -96,9 +96,9 @@ class _ArchiveCommand(Command):
                 )
 
 
-class _ZipArchiveCommand(_ArchiveCommand):
+class _ZipArchiveCommand(_BaseArchiveCommand):
 
-    class ZipArchiver(_ArchiveCommand.Archiver):
+    class Archiver(_BaseArchiveCommand.Archiver):
 
         _file_type = 0o100000
 
@@ -125,9 +125,9 @@ class _ZipArchiveCommand(_ArchiveCommand):
             self._archive.writestr(info, content)
 
 
-class _TgzArchiveCommand(_ArchiveCommand):
+class _TgzArchiveCommand(_BaseArchiveCommand):
 
-    class Archiver(_ArchiveCommand.Archiver):
+    class Archiver(_BaseArchiveCommand.Archiver):
 
         _archive: tarfile.TarFile
 
@@ -150,12 +150,12 @@ class _TgzArchiveCommand(_ArchiveCommand):
             self._archive.addfile(info, io.BytesIO(content))
 
 
-class _ArchiveNode(FileNode):
+class BaseArchiveNode(FileNode):
 
-    _Command: ClassVar[Type[_ArchiveCommand]] = _ArchiveCommand
+    _Command: ClassVar[Type[_BaseArchiveCommand]] = _BaseArchiveCommand
     default_suffix: ClassVar[Optional[str]] = None
 
-    command: _ArchiveCommand
+    command: _BaseArchiveCommand
     archive_content: Dict[PurePosixPath, FilelikeNode]
 
     def __init__( self, path: PosixPath,
@@ -169,7 +169,10 @@ class _ArchiveNode(FileNode):
         if not isinstance(node, FilelikeNode):
             raise TypeError(type(node))
         if path in self.archive_content:
-            raise ValueError(path)
+            raise ValueError(
+                f"Path already added to archive: {path}, "
+                f"old_node: {self.archive_content[path].name}, "
+                f"new_node: {node.name}")
         self.append_needs(node)
         self.archive_content[path] = node
 
@@ -184,12 +187,6 @@ class _ArchiveNode(FileNode):
             if not isinstance(node, FilelikeNode):
                 continue
             self._archive_add_tree_item(node, node_filter, path_namer)
-            if isinstance(node, self._skipped_nodes):
-                continue
-            if not node_filter(node):
-                continue
-            path = path_namer(node)
-            self.archive_add(path, node)
 
     def _archive_add_tree_item( self, node: FilelikeNode,
         node_filter: Callable[[FilelikeNode], bool],
@@ -212,11 +209,11 @@ class _ArchiveNode(FileNode):
         self.archive_add_tree( root_node,
             node_filter=node_filter, path_namer=path_namer )
 
-class ZipArchiveNode(_ArchiveNode):
+class ZipArchiveNode(BaseArchiveNode):
     _Command = _ZipArchiveCommand
     default_suffix = '.zip'
 
-class TgzArchiveNode(_ArchiveNode):
+class TgzArchiveNode(BaseArchiveNode):
     _Command = _TgzArchiveCommand
     default_suffix = '.tgz'
 

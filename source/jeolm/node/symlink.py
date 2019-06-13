@@ -9,7 +9,9 @@ from . import ( Node, PathNode, ProductNode, FilelikeNode,
 import logging
 logger = logging.getLogger(__name__)
 
-from typing import ClassVar, Type, Optional, Iterable
+from typing import TypeVar, Generic, ClassVar, Type, Optional, Iterable
+_PN_co = TypeVar('_PN_co', bound=PathNode, covariant=True)
+_FN_co = TypeVar('_FN_co', bound=FilelikeNode, covariant=True)
 
 
 def _naive_relative_to(path: PosixPath, root: PosixPath) -> PurePosixPath:
@@ -68,7 +70,7 @@ class SymLinkCommand(Command):
     def _clear_path(self) -> None:
         self.node.path.unlink()
 
-class SymLinkNode(ProductNode):
+class SymLinkNode(ProductNode, Generic[_PN_co]):
     """
     Represents a symbolic link to some other path.
 
@@ -83,7 +85,7 @@ class SymLinkNode(ProductNode):
     command: SymLinkCommand
     current_target: Optional[str]
 
-    def __init__( self, source: PathNode, path: PosixPath,
+    def __init__( self, source: _PN_co, path: PosixPath,
         *, relative: bool = True,
         name: Optional[str] = None, needs: Iterable[Node] = (),
     ) -> None:
@@ -93,7 +95,7 @@ class SymLinkNode(ProductNode):
         Args:
             source (PathNode):
                 passed to the superclass
-            path (pathlib.Path):
+            path (pathlib.PosixPath):
                 passed to the superclass.
             relative (bool):
                 if the resulting symbolic link should be relative or absolute.
@@ -150,9 +152,11 @@ class SymLinkNode(ProductNode):
         return self.mtime is None
 
 
-class SymLinkedFileNode(SymLinkNode, FilelikeNode):
+class SymLinkedFileNode(SymLinkNode[_FN_co], FilelikeNode):
 
-    def __init__( self, source: FilelikeNode, path: PosixPath,
+    source: _FN_co
+
+    def __init__( self, source: _FN_co, path: PosixPath,
         *, relative: bool = True,
         name: Optional[str] = None, needs: Iterable[Node] = (),
     ) -> None:
@@ -161,7 +165,7 @@ class SymLinkedFileNode(SymLinkNode, FilelikeNode):
         super().__init__( source, path, relative=relative,
             name=name, needs=needs )
 
-class ProxyNode(PathNode):
+class ProxyNode(PathNode, Generic[_PN_co]):
     """
     Represents the same path as its source.
 
@@ -174,7 +178,9 @@ class ProxyNode(PathNode):
             semantics: it is the node to be proxy for.
     """
 
-    def __init__( self, source: PathNode,
+    source: _PN_co
+
+    def __init__( self, source: _PN_co,
         *, name: Optional[str] = None, needs: Iterable[Node] = (),
     ) -> None:
         """
@@ -208,9 +214,9 @@ class ProxyNode(PathNode):
             f"{self.__class__.__name__}(name={self.name!r}, "
             f"source={self.source!r})" )
 
-class ProxyFileNode(ProxyNode, FilelikeNode):
+class ProxyFileNode(ProxyNode[_FN_co], FilelikeNode):
 
-    def __init__( self, source: FilelikeNode,
+    def __init__( self, source: _FN_co,
         *, name: Optional[str] = None, needs: Iterable[Node] = (),
     ) -> None:
         if not isinstance(source, FilelikeNode):

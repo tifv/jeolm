@@ -15,6 +15,16 @@ from . import _cache_node
 import logging
 logger = logging.getLogger(__name__)
 
+import typing
+from typing import Any, Dict
+if typing.TYPE_CHECKING:
+    from .source import SourceNodeFactory
+
+
+class BuildableFigureNode(jeolm.node.FileNode):
+    build_dir_node: jeolm.node.directory.DirectoryNode
+    output_dir_node: jeolm.node.directory.DirectoryNode
+    pass
 
 class FigureNodeFactory: #{{{1
 
@@ -26,14 +36,25 @@ class FigureNodeFactory: #{{{1
         'asy', 'svg', 'pdf', 'eps', 'png', 'jpg', ))
     flexible_figure_source_types = frozenset(('asy', 'svg',))
 
+    class _ProxyFigureNode(
+        jeolm.node.symlink.ProxyFileNode[jeolm.node.FilelikeNode],
+        BuildableFigureNode,
+    ):
+        pass
+
+    source_node_factory: SourceNodeFactory
+    build_dir_node: jeolm.node.directory.DirectoryNode
+
+    _nodes: Dict[Any, jeolm.node.FilelikeNode]
+
     def __init__(self, *, project, driver,
         build_dir_node,
         source_node_factory
     ):
         self.project = project
         self.driver = driver
-        self.build_dir_node = build_dir_node
         self.source_node_factory = source_node_factory
+        self.build_dir_node = build_dir_node
 
         self._nodes = dict()
 
@@ -105,9 +126,8 @@ class FigureNodeFactory: #{{{1
         *, figure_type, figure_recipe: FigureRecipe,
     ):
         source_node = self.source_node_factory(figure_recipe.source)
-        node = jeolm.node.symlink.ProxyFileNode(
-            name='figure:{}:{}'.format(figure_path, figure_type),
-            source=source_node )
+        node = jeolm.node.symlink.ProxyFileNode( source_node,
+            name='figure:{}:{}'.format(figure_path, figure_type) )
         return node
 
     def _figure_path_build_dir_key(self, figure_path):
@@ -150,7 +170,7 @@ class FigureNodeFactory: #{{{1
 
     def _get_figure_node_svg( self, figure_path,
         *, figure_type, figure_recipe
-    ):
+    ) -> BuildableFigureNode:
         build_dir_node = self._get_build_dir_svg(figure_path)
         output_dir_node = self._get_output_dir_svg(figure_path)
         svg_node = self._get_figure_node_svg_source( figure_path,
@@ -165,15 +185,17 @@ class FigureNodeFactory: #{{{1
         figure_node.command = jeolm.node.SubprocessCommand( figure_node,
             ( 'inkscape', '--without-gui',
                 f'--export-{figure_type}=' +
-                    figure_node.path.relative_to(build_dir_node.path),
+                    str(figure_node.path.relative_to(build_dir_node.path)),
                 svg_node.path.name
             ),
             cwd=build_dir_node.path )
         build_dir_node.post_check_node.append_needs(figure_node)
-        figure_node = jeolm.node.symlink.ProxyFileNode(
-            source=figure_node, name=f'{figure_node.name}:proxy',
+        proxy_figure_node = self._ProxyFigureNode( figure_node,
+            name=f'{figure_node.name}:proxy',
             needs=(build_dir_node.post_check_node,) )
-        return figure_node
+        proxy_figure_node.build_dir_node = build_dir_node
+        proxy_figure_node.output_dir_node = output_dir_node
+        return proxy_figure_node
 
     def _figure_node_svg_source_key(self, figure_path, **kwargs):
         return figure_path, 'svg', 'svg'
@@ -248,7 +270,7 @@ class FigureNodeFactory: #{{{1
             self.build_dir_node = build_dir_node
             self.asy_source_nodes = asy_source_nodes
 
-        def __call__(self, asy_context):
+        def __call__(self, asy_context) -> BuildableFigureNode:
             assert isinstance(asy_context, self.factory.AsymptoteContext)
             return self.factory._get_figure_node_asy( self.figure_path,
                 figure_type=self.figure_type,
@@ -291,18 +313,18 @@ class FigureNodeFactory: #{{{1
     def _get_figure_node_asy( self, figure_path,
         *, figure_type, asy_context,
         parent_build_dir_node, asy_source_nodes,
-    ):
+    ) -> BuildableFigureNode:
         run_asy_content = self._generate_run_asy(asy_context)
         run_hash = text_hash(run_asy_content)
         build_dir_node = self._get_build_dir_asy( figure_path, asy_context,
             run_hash=run_hash, parent_dir_node=parent_build_dir_node )
         output_dir_node = self._get_output_dir_asy( figure_path, asy_context,
             run_hash=run_hash, build_dir_node=build_dir_node )
-        run_asy_node = jeolm.node.text.TextNode(
+        run_asy_node = jeolm.node.text.SimpleTextNode(
             name=f'figure:{figure_path}:asy:{run_hash[:10]}:source:run',
             path=build_dir_node.path/'Run.asy',
             text=run_asy_content,
-            build_dir_node=build_dir_node )
+            needs=(build_dir_node,))
         build_dir_node.register_node(run_asy_node)
         asy_nodes = self._get_figure_node_asy_sources(
             figure_path, asy_context,
@@ -324,10 +346,12 @@ class FigureNodeFactory: #{{{1
             ),
             cwd=build_dir_node.path )
         build_dir_node.post_check_node.append_needs(figure_node)
-        figure_node = jeolm.node.symlink.ProxyFileNode(
-            source=figure_node, name=f'{figure_node.name}:proxy',
+        proxy_figure_node = self._ProxyFigureNode( figure_node,
+            name=f'{figure_node.name}:proxy',
             needs=(build_dir_node.post_check_node,) )
-        return figure_node
+        proxy_figure_node.build_dir_node = build_dir_node
+        proxy_figure_node.output_dir_node = output_dir_node
+        return proxy_figure_node
 
     @classmethod
     def _generate_run_asy(cls, asy_context):

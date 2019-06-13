@@ -60,13 +60,17 @@ class _CleanupSymLinkCommand(SymLinkCommand):
                 old_var_path.unlink()
 
 
-class VarTextNode(FileNode):
+class SimpleTextNode(FileNode):
 
     def __init__( self, path: PosixPath, text: str,
         *, name: Optional[str] = None, needs: Iterable[Node] = (),
     ) -> None:
         super().__init__(path, name=name, needs=needs)
         self.command = WriteTextCommand(self, text)
+        self.text = text
+
+class VarTextNode(SimpleTextNode):
+    pass
 
 class TextNode(SymLinkedFileNode):
 

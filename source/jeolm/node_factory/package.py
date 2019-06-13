@@ -13,9 +13,31 @@ from jeolm.records import RecordPath
 import logging
 logger = logging.getLogger(__name__)
 
+import typing
+from typing import Any, Dict
+if typing.TYPE_CHECKING:
+    from .source import SourceNodeFactory
+
+
+class BuildablePackageNode(jeolm.node.FileNode):
+    build_dir_node: jeolm.node.directory.DirectoryNode
+    output_dir_node: jeolm.node.directory.DirectoryNode
+    pass
 
 class PackageNodeFactory:
+
     package_types = frozenset(('dtx', 'sty',))
+
+    class _ProxyPackageNode(
+        jeolm.node.symlink.ProxyFileNode[jeolm.node.FilelikeNode],
+        BuildablePackageNode,
+    ):
+        pass
+
+    source_node_factory: SourceNodeFactory
+    build_dir_node: jeolm.node.directory.DirectoryNode
+
+    _nodes: Dict[Any, jeolm.node.FilelikeNode]
 
     def __init__(self, *, project, driver,
         build_dir_node,
@@ -23,8 +45,8 @@ class PackageNodeFactory:
     ):
         self.project = project
         self.driver = driver
-        self.build_dir_node = build_dir_node
         self.source_node_factory = source_node_factory
+        self.build_dir_node = build_dir_node
 
         self._nodes = dict()
 
@@ -63,9 +85,8 @@ class PackageNodeFactory:
 
     def _get_package_node_proxy(self, package_path, *, package_recipe):
         source_node = self.source_node_factory(package_recipe.source)
-        node = jeolm.node.symlink.ProxyFileNode(
-            name='package:{}:sty'.format(package_path),
-            source=source_node )
+        node = jeolm.node.symlink.ProxyFileNode( source_node,
+            name='package:{}:sty'.format(package_path) )
         return node
 
     # pylint: disable=no-self-use,unused-argument,unused-variable
@@ -118,7 +139,8 @@ class PackageNodeFactory:
         else:
             raise RuntimeError
 
-    def _get_package_node_dtx(self, package_path, *, package_recipe):
+    def _get_package_node_dtx( self, package_path, *, package_recipe
+    ) -> BuildablePackageNode:
         build_dir_node = self._get_build_dir( package_path,
             package_type='dtx' )
         build_dir = build_dir_node.path
@@ -152,10 +174,12 @@ class PackageNodeFactory:
                 ins_node.path.name ),
             cwd=build_dir_node.path )
         build_dir_node.post_check_node.append_needs(sty_node)
-        sty_node = jeolm.node.symlink.ProxyFileNode(
-            source=sty_node, name='{}:proxy'.format(sty_node.name),
+        proxy_sty_node = self._ProxyPackageNode( sty_node,
+            name='{}:proxy'.format(sty_node.name),
             needs=(build_dir_node.post_check_node,) )
-        return sty_node
+        proxy_sty_node.build_dir_node = build_dir_node
+        proxy_sty_node.output_dir_node = output_dir_node
+        return proxy_sty_node
 
     _ins_template = Template(
         r"\input docstrip.tex" '\n'

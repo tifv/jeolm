@@ -1,5 +1,3 @@
-from pathlib import Path, PurePosixPath
-
 import jeolm.node
 import jeolm.node.directory
 import jeolm.node.symlink
@@ -13,6 +11,10 @@ from .document import DocumentNodeFactory
 import logging
 logger = logging.getLogger(__name__)
 
+import typing
+from typing import Type
+if typing.TYPE_CHECKING:
+    from .archive import BaseDocumentArchiveNode
 
 class TargetNode(jeolm.node.Node):
     pass
@@ -71,32 +73,27 @@ class TargetNodeFactory:
             )
             target_node.append_needs(exposed_node)
             if archive is not None:
-                raise RuntimeError("XXX") # XXX
-#                archive_node = self._get_archive_node( target,
-#                    document_node, archive_type=archive )
-#                target_node.append_needs(archive_node)
+                archive_node = self._get_archive_node( target,
+                    document_node, archive_type=archive )
+                target_node.append_needs(archive_node)
         return target_node
 
-#    def _get_archive_node(self, target, document_node, archive_type):
-#        if archive_type == 'zip':
-#            from jeolm.node.archive import ZipArchiveNode as ArchiveNode
-#        elif archive_type == 'tgz':
-#            from jeolm.node.archive import TgzArchiveNode as ArchiveNode
-#        else:
-#            raise RuntimeError(archive_type)
-#        # XXX maybe we should just pack source/ and figures/ directories
-#        # from builddir
-#        archive_node = ArchiveNode(
-#            name="document:{}:archive".format(target),
-#            path=(self.project.root/document_node.outname).with_suffix(
-#                ArchiveNode.default_suffix )
-#        )
-#        source_dir = self.project.source_dir
-#        style_dir = source_dir / '_style'
-#        archive_node.archive_add_dir( PurePosixPath('.'),
-#            document_node, source_dir,
-#            node_filter=lambda node: style_dir not in node.path.parents,
-#            path_namer=lambda node: '-'.join(node.path.relative_to(source_dir).parts),
-#        )
-#        return archive_node
+    def _get_archive_node( self, target, document_node, archive_type
+    ) -> 'BaseDocumentArchiveNode':
+        archive_node_class: Type['BaseDocumentArchiveNode']
+        if archive_type == 'zip':
+            from .archive import ZipDocumentArchiveNode
+            archive_node_class = ZipDocumentArchiveNode
+        elif archive_type == 'tgz':
+            from .archive import TgzDocumentArchiveNode
+            archive_node_class = TgzDocumentArchiveNode
+        else:
+            raise RuntimeError(archive_type)
+        archive_node = archive_node_class(
+            document_node=document_node, source_dir=self.project.source_dir,
+            name="document:{}:archive".format(target),
+            path=(self.project.root/document_node.outname).with_suffix(
+                archive_node_class.default_suffix )
+        )
+        return archive_node
 

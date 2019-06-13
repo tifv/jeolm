@@ -14,7 +14,7 @@ from jeolm.target import Target
 from jeolm.driver import DocumentRecipe
 
 from . import _cache_node
-from .figure import FigureNodeFactory
+from .figure import FigureNodeFactory, BuildableFigureNode
 
 import logging
 logger = logging.getLogger(__name__)
@@ -23,6 +23,9 @@ from typing import Union, List
 
 
 class DocumentNode(jeolm.node.FileNode):
+    build_dir_node: jeolm.node.directory.DirectoryNode
+    output_dir_node: jeolm.node.directory.DirectoryNode
+    outname: str
     pass
 
 class DocumentNodeFactory:
@@ -48,7 +51,10 @@ class DocumentNodeFactory:
         'lualatex' : _LuaLaTeXDocumentNode,
     }
 
-    class _ProxyDocumentNode(jeolm.node.symlink.ProxyFileNode, DocumentNode):
+    class _ProxyDocumentNode(
+        jeolm.node.symlink.ProxyFileNode[jeolm.node.FilelikeNode],
+        DocumentNode,
+    ):
         pass
 
     def __init__(self, *, project, driver,
@@ -78,7 +84,7 @@ class DocumentNodeFactory:
     # pylint: enable=no-self-use
 
     @_cache_node(_document_node_key)
-    def _get_document_node(self, target):
+    def _get_document_node(self, target) -> DocumentNode:
         recipe = self.driver.produce_document_recipe(target)
         build_dir_node = self._get_build_dir(target, recipe)
         output_dir_node = jeolm.node.directory.DirectoryNode(
@@ -102,9 +108,6 @@ class DocumentNodeFactory:
                 output_dir_node=output_dir_node,
                 source_dir_node=source_dir_node,
                 figure_dir_node=figure_dir_node )
-        cyclic_figure_nodes = [ figure_node
-            for figure_node in figure_nodes
-            if isinstance(figure_node, jeolm.node.cyclic.CyclicNeed) ]
         document_node_class = self._document_node_classes[recipe.compiler]
         document_node = document_node_class(
             name='document:{}:output'.format(target),
@@ -116,15 +119,15 @@ class DocumentNodeFactory:
             needs=(*source_nodes, *package_nodes),
         )
         build_dir_node.post_check_node.append_needs(document_node)
-        document_node = self._ProxyDocumentNode(
-            source=document_node, name='{}:proxy'.format(document_node.name),
+        proxy_document_node = self._ProxyDocumentNode( document_node,
+            name='{}:proxy'.format(document_node.name),
             needs=(build_dir_node.post_check_node,), )
         # pylint: disable=attribute-defined-outside-init
-        document_node.figure_nodes = figure_nodes
-        document_node.build_dir_node = build_dir_node
-        document_node.outname = recipe.outname
+        proxy_document_node.build_dir_node = build_dir_node
+        proxy_document_node.output_dir_node = output_dir_node
+        proxy_document_node.outname = recipe.outname
         # pylint: enable=attribute-defined-outside-init
-        return document_node
+        return proxy_document_node
 
     # pylint: disable=no-self-use
     def _target_path_build_dir_key(self, target_path):
@@ -397,7 +400,7 @@ class AsymptoteFigureNode(
     latex_compiler: str
     latex_preamble: str
     _invariable_needs: List[jeolm.node.Node]
-    link_node = Union[None, jeolm.node.Node]
+    link_node: Union[None, jeolm.node.symlink.SymLinkNode[BuildableFigureNode]]
 
     def __init__(self,
         *, figure_dir_node, alias,
