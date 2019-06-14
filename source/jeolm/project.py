@@ -273,5 +273,5 @@ class InitProject(Project):
         import yaml
         with cls._resource_manifest_path.open(encoding='utf-8') \
                 as manifest_file:
-            return yaml.load(manifest_file)
+            return yaml.safe_load(manifest_file)
 
