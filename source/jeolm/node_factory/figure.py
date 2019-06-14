@@ -18,6 +18,7 @@ logger = logging.getLogger(__name__)
 import typing
 from typing import Any, Dict
 if typing.TYPE_CHECKING:
+    import jeolm.project
     from .source import SourceNodeFactory
 
 
@@ -47,7 +48,9 @@ class FigureNodeFactory: #{{{1
 
     _nodes: Dict[Any, jeolm.node.FilelikeNode]
 
-    def __init__(self, *, project, driver,
+    def __init__( self, *,
+        project: 'jeolm.project.Project',
+        driver,
         build_dir_node,
         source_node_factory
     ):

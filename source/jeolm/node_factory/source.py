@@ -6,10 +6,18 @@ import jeolm.node
 import logging
 logger = logging.getLogger(__name__)
 
+import typing
+from typing import Any, Dict
+if typing.TYPE_CHECKING:
+    import jeolm.project
+
 
 class SourceNodeFactory:
 
-    def __init__(self, *, project):
+    project: 'jeolm.project.Project'
+    nodes: Dict[Any, jeolm.node.FilelikeNode]
+
+    def __init__(self, *, project: 'jeolm.project.Project') -> None:
         self.project = project
         self.nodes = dict()
 
