@@ -42,7 +42,7 @@ class FigureNodeFactory: #{{{1
     ):
         pass
 
-    source_node_factory: SourceNodeFactory
+    source_node_factory: 'SourceNodeFactory'
     build_dir_node: jeolm.node.directory.DirectoryNode
 
     _nodes: Dict[Any, jeolm.node.FilelikeNode]
