@@ -12,7 +12,7 @@ from jeolm.target import Target
 
 from jeolm.driver.regular import RegularDriver
 
-from . import DriverError, processing_target, ensure_type_items
+from . import DriverError, processing_target
 
 import logging
 logger = logging.getLogger(__name__)
@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 class TestDriver(RegularDriver):
 
-    @ensure_type_items(RegularDriver.BodyItem)
+    #@ensure_type_items(RegularDriver.BodyItem)
     @processing_target
     def _generate_body_auto( self, target, record,
         *, preamble, header_info,
@@ -39,7 +39,7 @@ class TestDriver(RegularDriver):
             _seen_targets=_seen_targets )
         yield from self._generate_test_briefing(target, record)
 
-    @ensure_type_items((RegularDriver.BodyItem))
+    #@ensure_type_items((RegularDriver.BodyItem))
     @processing_target
     def _generate_test_briefing(self, target, metarecord):
         problem_scores = metarecord.get('$test$problem-scores')

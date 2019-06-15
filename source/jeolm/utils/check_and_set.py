@@ -1,14 +1,16 @@
 import logging
 logger = logging.getLogger(__name__)
 
-from typing import TypeVar, MutableMapping
-T = TypeVar('T')
-S = TypeVar('S')
+from typing import TypeVar, Hashable, MutableMapping
+K = TypeVar('K', bound=Hashable)
+V = TypeVar('V')
 
 class ClashingValueError(ValueError):
     pass
 
-def check_and_set(mapping: MutableMapping[T, S], key: T, value: S) -> bool:
+def check_and_set( mapping: MutableMapping[K, V],
+    key: K, value: V,
+) -> bool:
     """
     Set mapping[key] to value if key is not in mapping.
 
@@ -17,7 +19,7 @@ def check_and_set(mapping: MutableMapping[T, S], key: T, value: S) -> bool:
     Raise ClashingValueError if key is present, but value is different.
     """
     try:
-        other: S = mapping[key]
+        other: V = mapping[key]
     except KeyError:
         mapping[key] = value
         return True

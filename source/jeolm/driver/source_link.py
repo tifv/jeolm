@@ -13,7 +13,7 @@ from jeolm.target import Target
 
 from jeolm.driver.regular import RegularDriver
 
-from . import DriverError, processing_target, ensure_type_items
+from . import DriverError, processing_target
 
 import logging
 logger = logging.getLogger(__name__)
@@ -75,7 +75,7 @@ class SourceLinkDriver(RegularDriver):
             r'    {figures:${source_path}}' '\n'
             r'\end{flushright}' )
 
-    @ensure_type_items(RegularDriver.BodyItem)
+    #@ensure_type_items(RegularDriver.BodyItem)
     @processing_target
     def _generate_body_source( self, target, record=None,
         *, preamble, header_info,

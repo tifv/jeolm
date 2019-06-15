@@ -17,11 +17,13 @@ logger = logging.getLogger(__name__)
 
 from typing import ( TypeVar, Type, NewType, ClassVar, overload,
     Any, Union, Optional,
-    Callable, Hashable, Iterable, Iterator, Collection, Sequence, Mapping,
+    Callable, Iterable, Iterator, Collection, Sequence, Hashable, Mapping,
     Tuple, List, Set, FrozenSet, Dict,
     Generator, Pattern )
 T = TypeVar('T')
-R = TypeVar('R')
+K = TypeVar('K', bound=Hashable)
+C = TypeVar('C', bound=Callable[..., Any])
+G = TypeVar('G', bound=Callable[..., Iterable])
 
 ATTRIBUTE_KEY_PATTERN = (
     r'(?P<stem>'
@@ -185,7 +187,7 @@ class DocumentRecipe:
 
     class SourceKey(DocumentTemplate.Key):
         __slots__ = ['source_path']
-        def __init__(self, source_path: RecordPath) -> None:
+        def __init__(self, source_path: PurePosixPath) -> None:
             self.source_path = source_path
         def __eq__(self, other: Any) -> bool:
             return ( isinstance(other, type(self)) and
@@ -388,7 +390,7 @@ class Driver(DriverRecords, metaclass=abc.ABCMeta):
     @abc.abstractmethod
     def produce_figure_recipe( self, figure_path: RecordPath,
         *, figure_types: FrozenSet[str] = frozenset(('pdf', 'png', 'jpg')),
-    ) -> Dict[str, Any]:
+    ) -> FigureRecipe:
         raise NotImplementedError
 
 
@@ -417,29 +419,14 @@ if not __debug__:
                 '\n'.join(driver_messages)
             ) from error
 
-#    @overload
-#    def folding_driver_errors( function: Callable[..., Generator[T, None, R]],
-#    ) -> Callable[..., Generator[T, None, R]]:
-#        pass
-#
-#    @overload
-#    def folding_driver_errors( function: Callable[..., Iterator[T]],
-#    ) -> Callable[..., Iterator[T]]:
-#        pass
-#
-#    @overload
-#    def folding_driver_errors( function: Callable[..., T],
-#    ) -> Callable[..., T]:
-#        pass
-
-    def folding_driver_errors(function: Callable) -> Callable:
+    def folding_driver_errors(function: C) -> C:
         """Decorator."""
         if not isgeneratorfunction(function):
             @wraps(function)
             def wrapper(*args: Any, **kwargs: Any) -> Any:
                 with _fold_driver_errors():
                     return function(*args, **kwargs)
-            return wrapper
+            return wrapper # type: ignore
         else:
             @wraps(function)
             def wrapper_g(*args: Any, **kwargs: Any) -> Any:
@@ -447,7 +434,7 @@ if not __debug__:
                     return ( yield from
                         function(*args, **kwargs)
                     )
-            return wrapper_g
+            return wrapper_g # type: ignore
 
 else:
 
@@ -455,45 +442,23 @@ else:
     def _fold_driver_errors_dummy() -> Generator[None, None, None]:
         yield
 
-    def folding_driver_errors_dummy(function: Callable) -> Callable:
+    def folding_driver_errors_dummy(function: C) -> C:
         return function
 
     _fold_driver_errors = _fold_driver_errors_dummy
     folding_driver_errors = folding_driver_errors_dummy
 
-def checking_target_recursion(
-    *, skip_check: Optional[Callable] = None,
-) -> Callable[[Callable[..., Generator]], Callable[..., Generator]]:
-    """Decorator factory."""
-    def decorator( method: Callable[..., Generator[T, None, R]],
-    ) -> Callable[..., Generator[T, None, R]]:
-        assert isgeneratorfunction(method)
-        @wraps(method)
-        def wrapper( self: Any, target: Target, *args: Any,
-            _seen_targets: Optional[Set[Target]] = None,
-            **kwargs: Any
-        ) -> Any:
-            if _seen_targets is None:
-                _seen_targets = set()
-            if skip_check is None:
-                checking = True
-            else:
-                checking = not skip_check(self, target, *args, **kwargs)
-            if checking:
-                if target in _seen_targets:
-                    raise DriverError(f"Cycle detected from {target}")
-                else:
-                    _seen_targets.add(target)
-            try:
-                return ( yield from
-                    method( self, target, *args,
-                        _seen_targets=_seen_targets, **kwargs )
-                )
-            finally:
-                if checking:
-                    _seen_targets.discard(target)
-        return wrapper
-    return decorator
+class SeenItems(Set[K]):
+
+    @contextmanager
+    def look(self, item: K) -> Generator[None, None, None]:
+        if item in self:
+            raise DriverError(f"cycle detected from {item}")
+        self.add(item)
+        try:
+            yield
+        finally:
+            self.discard(item)
 
 @contextmanager
 def process_target_aspect( target: Union[Target, RecordPath], aspect: str,
@@ -510,22 +475,7 @@ def process_target_key( target: Union[Target, RecordPath], key: str,
     with process_target_aspect(target, aspect=f'key {key}'):
         yield
 
-#@overload
-#def processing_target( method: Callable[..., Generator[T, None, R]],
-#) -> Callable[..., Generator[T, None, R]]:
-#    pass
-#
-#@overload
-#def processing_target( method: Callable[..., Iterator[T]],
-#) -> Callable[..., Iterator[T]]:
-#    pass
-#
-#@overload
-#def processing_target( method: Callable[..., T],
-#) -> Callable[..., T]:
-#    pass
-
-def processing_target(method: Callable) -> Callable:
+def processing_target(method: C) -> C:
     """Decorator."""
     aspect = method.__qualname__
     if not isgeneratorfunction(method):
@@ -535,7 +485,7 @@ def processing_target(method: Callable) -> Callable:
         ) -> Any:
             with process_target_aspect(target, aspect=aspect):
                 return method(self, target, *args, **kwargs)
-        return wrapper
+        return wrapper # type: ignore
     else:
         @wraps(method)
         def wrapper_g( self: Any, target: Target,
@@ -545,24 +495,9 @@ def processing_target(method: Callable) -> Callable:
                 return ( yield from
                     method(self, target, *args, **kwargs)
                 )
-        return wrapper_g
+        return wrapper_g # type: ignore
 
-#@overload
-#def processing_package_path( method: Callable[..., Generator[T, None, R]],
-#) -> Callable[..., Generator[T, None, R]]:
-#    pass
-#
-#@overload
-#def processing_package_path( method: Callable[..., Iterator[T]],
-#) -> Callable[..., Iterator[T]]:
-#    pass
-#
-#@overload
-#def processing_package_path( method: Callable[..., T],
-#) -> Callable[..., T]:
-#    pass
-
-def processing_package_path(method: Callable) -> Callable:
+def processing_package_path(method: C) -> C:
     """Decorator."""
     aspect = method.__qualname__
     if not isgeneratorfunction(method):
@@ -572,7 +507,7 @@ def processing_package_path(method: Callable) -> Callable:
         ) -> Any:
             with process_target_aspect(package_path, aspect=aspect):
                 return method(self, package_path, *args, **kwargs)
-        return wrapper
+        return wrapper # type: ignore
     else:
         @wraps(method)
         def wrapper_g( self: Any, package_path: RecordPath,
@@ -582,24 +517,9 @@ def processing_package_path(method: Callable) -> Callable:
                 return ( yield from
                     method(self, package_path, *args, **kwargs)
                 )
-        return wrapper_g
+        return wrapper_g # type: ignore
 
-#@overload
-#def processing_figure_path( method: Callable[..., Generator[T, None, R]],
-#) -> Callable[..., Generator[T, None, R]]:
-#    pass
-#
-#@overload
-#def processing_figure_path( method: Callable[..., Iterator[T]],
-#) -> Callable[..., Iterator[T]]:
-#    pass
-#
-#@overload
-#def processing_figure_path( method: Callable[..., T],
-#) -> Callable[..., T]:
-#    pass
-
-def processing_figure_path(method: Callable) -> Callable:
+def processing_figure_path(method: C) -> C:
     """Decorator."""
     if not isgeneratorfunction(method):
         @wraps(method)
@@ -609,7 +529,7 @@ def processing_figure_path(method: Callable) -> Callable:
             with process_target_aspect( figure_path,
                     aspect=method.__qualname__ ):
                 return method(self, figure_path, *args, **kwargs)
-        return wrapper
+        return wrapper # type: ignore
     else:
         @wraps(method)
         def wrapper_g( self: Any, figure_path: RecordPath,
@@ -620,24 +540,5 @@ def processing_figure_path(method: Callable) -> Callable:
                 return ( yield from
                     method(self, figure_path, *args, **kwargs)
                 )
-        return wrapper_g
-
-# XXX this will eventually be obsoleted by static type checking
-def ensure_type_items( typespec: Union[Tuple[Type, ...], Type]
-) -> Callable[[Callable[..., Generator]], Callable[..., Generator]]:
-    def decorator( method: Callable[..., Generator]
-    ) -> Callable[..., Generator]:
-        assert isgeneratorfunction(method)
-        @wraps(method)
-        def wrapper(self: Any, *args: Any, **kwargs: Any) -> Generator:
-            for item in method(self, *args, **kwargs):
-                if isinstance(item, typespec):
-                    yield item
-                else:
-                    raise RuntimeError(
-                        f"Generator {method.__qualname__} yielded value "
-                        f"of type {type(item)}" )
-        return wrapper
-    return decorator
-
+        return wrapper_g # type: ignore
 

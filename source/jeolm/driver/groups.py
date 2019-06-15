@@ -16,14 +16,13 @@ from jeolm.records import RecordPath
 from jeolm.target import Flag, FlagContainer, Target
 
 from . import ( DriverError,
-    process_target_aspect, process_target_key, processing_target,
-    ensure_type_items )
+    process_target_aspect, process_target_key, processing_target )
 from .regular import RegularDriver
 
 import logging
 logger = logging.getLogger(__name__)
 
-from typing import Optional, Any, Dict
+from typing import Optional, Any, Iterable, Dict
 
 
 class GroupsDriver(RegularDriver):
@@ -91,11 +90,10 @@ class GroupsDriver(RegularDriver):
         child_record.setdefault( '$content$auto$groups',
             parent_record.get('$content$auto$groups', False) )
 
-    @ensure_type_items(Target)
     @processing_target
     def _generate_targets_auto_source( self, target, record,
         *, _seen_targets,
-    ):
+    ) -> Iterable[Target]:
         call_super = partial( super()._generate_targets_auto_source,
             target, record, _seen_targets=_seen_targets )
         if not record.get('$delegate$auto$groups', False):
@@ -134,7 +132,7 @@ class GroupsDriver(RegularDriver):
         outname = outname_base + outname_flags
         return outname
 
-    @ensure_type_items(RegularDriver.BodyItem)
+    #@ensure_type_items(RegularDriver.BodyItem)
     def _generate_body_header_def( self, target, record,
         *, header,
     ):
@@ -153,7 +151,7 @@ class GroupsDriver(RegularDriver):
             self.groupname_def_template.substitute(group_name=group_name)
         )
 
-    @ensure_type_items(RegularDriver.BodyItem)
+    #@ensure_type_items(RegularDriver.BodyItem)
     @processing_target
     def _generate_body_auto_source( self, target, record,
         *, preamble, header_info,

@@ -9,7 +9,7 @@ import jeolm.node.text
 import jeolm.node.cyclic
 import jeolm.node.latex
 
-from jeolm.records import RecordPath
+from jeolm.records import RecordPath, NAME_PATTERN
 from jeolm.target import Target
 from jeolm.driver import DocumentRecipe
 
@@ -21,6 +21,12 @@ logger = logging.getLogger(__name__)
 
 from typing import Union, List
 
+FILE_NAME_PATTERN = '(?:' + NAME_PATTERN + ')' + r'\.\w+'
+
+def unidecode(string: str) -> str:
+    global unidecode
+    from unidecode import unidecode
+    return unidecode(string)
 
 class DocumentNode(jeolm.node.FileNode):
     build_dir_node: jeolm.node.directory.DirectoryNode
@@ -235,6 +241,9 @@ class DocumentNodeFactory:
     def _name_hash(name):
         return hashlib.sha256(name.encode('utf-8')).hexdigest()
 
+    _ascii_file_name_regex = re.compile(FILE_NAME_PATTERN, re.ASCII)
+    _file_name_regex = re.compile(FILE_NAME_PATTERN)
+
     def _prebuild_regular_sources( self, target, recipe,
         *, source_dir_node,
     ):
@@ -248,12 +257,23 @@ class DocumentNodeFactory:
         source_path_aliases = {
             source_path : '-'.join(source_path.with_suffix('').parts)
             for source_path in source_paths }
+        if recipe.compiler in {'latex', 'pdflatex'}:
+            source_path_aliases = {
+                source_path : unidecode(alias).replace("'", "")
+                for source_path, alias
+                in source_path_aliases.items() }
         self._resolve_alias_conflicts( source_path_aliases,
             alias_key_func=lambda path, alias: (alias, path.suffix),
             key_hash_func=lambda path: self._name_hash(str(path)) )
         source_path_aliases = {
             source_path : alias + source_path.suffix
             for source_path, alias in source_path_aliases.items() }
+        if recipe.compiler in {'latex', 'pdflatex'}:
+            assert all( self._ascii_file_name_regex.fullmatch(alias)
+                for alias in source_path_aliases.values() )
+        else:
+            assert all( self._file_name_regex.fullmatch(alias)
+                for alias in source_path_aliases.values() )
         source_nodes = dict()
         for source_path, alias in source_path_aliases.items():
             source_node = source_nodes[source_path] = \
@@ -294,6 +314,9 @@ class DocumentNodeFactory:
             build_dir_node.register_node(package_node)
         return package_nodes
 
+    _ascii_figure_name_regex = re.compile(NAME_PATTERN, re.ASCII)
+    _figure_name_regex = re.compile(NAME_PATTERN)
+
     def _prebuild_regular_figures( self, target, recipe,
         *, figure_dir_node, output_dir_node
     ):
@@ -312,10 +335,22 @@ class DocumentNodeFactory:
         figure_path_aliases = {
             (figure_path, figure_index) : '-'.join(figure_path.parts)
             for (figure_path, figure_index) in figure_paths }
+        if recipe.compiler in {'latex', 'pdflatex'}:
+            figure_path_aliases = {
+                (figure_path, figure_index) :
+                    unidecode(alias_stem).replace("'", "")
+                for (figure_path, figure_index), alias_stem
+                in figure_path_aliases.items() }
         self._resolve_alias_conflicts( figure_path_aliases,
             key_hash_func=lambda items:
                 self._name_hash(':'.join(str(item) for item in items))
         )
+        if recipe.compiler in {'latex', 'pdflatex'}:
+            assert all( self._ascii_figure_name_regex.fullmatch(alias_stem)
+                for alias_stem in figure_path_aliases.values() )
+        else:
+            assert all( self._figure_name_regex.fullmatch(alias_stem)
+                for alias_stem in figure_path_aliases.values() )
         figure_nodes = dict()
         asy_latex_compiler = None
         asy_latex_preamble = None

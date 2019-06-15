@@ -4,53 +4,13 @@ import datetime
 
 from typing import Any, Union, Optional
 
-class _NeverType:
-
-    def __new__(cls) -> '_NeverType':
-        global Never
-        try:
-            return Never
-        except NameError:
-            return super().__new__(cls)
-
-    def _cmp( self, other: Any,
-        less_than: bool, equal: bool, greater_than: bool
-    ) -> bool:
-        """Return lt, eq, gt if self <=, ==, >= other."""
-        if other is Never:
-            return equal
-        elif isinstance(other, datetime.date):
-            return greater_than
-        else:
-            return NotImplemented
-
-    def __eq__(self, other: Any) -> bool:
-        return self._cmp(other, False, True, False)
-
-    def __ne__(self, other: Any) -> bool:
-        return self._cmp(other, True, False, True)
-
-    def __lt__(self, other: Any) -> bool:
-        return self._cmp(other, True, False, False)
-
-    def __le__(self, other: Any) -> bool:
-        return self._cmp(other, True, True, False)
-
-    def __gt__(self, other: Any) -> bool:
-        return self._cmp(other, False, False, True)
-
-    def __ge__(self, other: Any) -> bool:
-        return self._cmp(other, False, True, True)
-
-Never = _NeverType()
-
 class Period:
 
     _date: datetime.date
     _period: Optional[int]
 
     def __init__( self,
-        date: Union['Period', datetime.date, 'DatePeriod'],
+        date: Union['DatePeriod', 'Period', datetime.date],
         period: Optional[int] = None
     ) -> None:
         if isinstance(date, Period):
@@ -115,8 +75,6 @@ class Period:
             if self._period is not None:
                 return less_than
             return equal
-        elif other is Never:
-            return less_than
         else:
             return NotImplemented
 
@@ -152,4 +110,43 @@ class DatePeriod(metaclass=abc.ABCMeta):
 
 DatePeriod.register(datetime.date)
 DatePeriod.register(Period)
+
+class _NeverType:
+    """A singleton class for the purpose of sorting lists of dates."""
+
+    def __new__(cls) -> '_NeverType':
+        global Never
+        try:
+            return Never
+        except NameError:
+            return super().__new__(cls)
+
+    def _cmp( self, other: Any,
+        less_than: bool, equal: bool, greater_than: bool
+    ) -> bool:
+        """Return lt, eq, gt if self <=, ==, >= other."""
+        if other is Never:
+            return equal
+        else:
+            return greater_than
+
+    def __eq__(self, other: Any) -> bool:
+        return self._cmp(other, False, True, False)
+
+    def __ne__(self, other: Any) -> bool:
+        return self._cmp(other, True, False, True)
+
+    def __lt__(self, other: Any) -> bool:
+        return self._cmp(other, True, False, False)
+
+    def __le__(self, other: Any) -> bool:
+        return self._cmp(other, True, True, False)
+
+    def __gt__(self, other: Any) -> bool:
+        return self._cmp(other, False, False, True)
+
+    def __ge__(self, other: Any) -> bool:
+        return self._cmp(other, False, True, True)
+
+Never = _NeverType()
 
