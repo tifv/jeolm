@@ -2120,8 +2120,16 @@ class RegularDriver(Driver): # {{{1
         document_template: DocumentTemplate,
     ) -> None:
         figure_counter: Dict[RecordPath, int] = {}
+        new_page = True
         for item in body:
             assert isinstance(item, cls.BodyItem), type(item)
+            if isinstance(item, cls.NewPageBodyItem):
+                if new_page:
+                    continue
+                else:
+                    new_page = True
+            else:
+                new_page = False
             cls._fill_body_item( item, document_template,
                 figure_counter=figure_counter )
             document_template.append_text('\n')
