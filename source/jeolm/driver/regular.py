@@ -1689,7 +1689,9 @@ class RegularDriver(Driver): # {{{1
             def date_key(item: 'RegularDriver._ChildItem') -> Any:
                 body, preamble, header_info = item
                 key = self._min_date(header_info['dates'])
-                if key is None:
+                if key is not None:
+                    return key
+                else:
                     return Never
             child_bodies.sort(key=date_key)
         else:
