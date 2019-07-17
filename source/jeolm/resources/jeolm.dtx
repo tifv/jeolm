@@ -263,6 +263,25 @@
 \strut\hspace{0.5\@resizeto@width}%
 \clap{#1}%
 \hspace{0.5\@resizeto@width}\strut}
+%    \end{macrocode}
+%
+%    \begin{macrocode}
+\newlength\@stretchto@fromwidth
+\newsavebox\@stretchto@box
+\newcommand\stretchto[2]{%
+\settowidth{\@resizeto@width}{#2}%
+\savebox\@stretchto@box{#1}%
+\settowidth{\@stretchto@fromwidth}{\usebox\@stretchto@box}%
+\ifdim\@resizeto@width<\@stretchto@fromwidth%
+    \usebox\@stretchto@box%
+\else%
+    \strut\hspace{0.5\@resizeto@width}%
+    \clap{#1}%
+    \hspace{0.5\@resizeto@width}\strut%
+\fi}
+%    \end{macrocode}
+%
+%    \begin{macrocode}
 \newcommand\mathresizeto[2]{\mathpalette{\@mathresizeto@unpack}{{#1}{#2}}}
 \def\@mathresizeto@unpack#1#2{\@mathresizeto@do{#1}#2}
 \def\@mathresizeto@do#1#2#3{%
@@ -435,8 +454,8 @@
 % These macros boil down to |\problem@yx|, which is defined later.
 %    \begin{macrocode}
 \newcommand\problem{\problemx{}}
-\newcommand\problemx[1]{\stepcounter{jeolmproblem}%
-    \problemyx{\problem@numbering{jeolmproblem}}{#1}}
+\newcommand\problemx[1]{\stepcounter{\problem@counter}%
+    \problemyx{\problem@numbering{\problem@counter}}{#1}}
 \newcommand\problemy[1]{\problemyx{#1}{}}
 \newcommand\problemyx[2]{\problem@yx{#1}{#2}\problem@space}
 %    \end{macrocode}
@@ -461,11 +480,13 @@
 % \begin{macro}{\resetproblem}
 % Underlying counter for |\problem| and friends.
 %    \begin{macrocode}
-\newcounter{jeolmproblem}
-\newcommand\setproblem[1]{\setcounter{jeolmproblem}{#1}}
-\newcommand\resetproblem{\setcounter{jeolmproblem}{0}}
+\newcounter{problem}
+\newcounter{exercise}
+\newcommand\setproblem[1]{\setcounter{problem}{#1}}
+\newcommand\setexercise[1]{\setcounter{exercise}{#1}}
+\newcommand\resetproblem{\setcounter{problem}{0}\setcounter{exercise}{0}}
 \newcommand\problem@numbering{\arabic}
-\newcommand\problem@counter{jeolmproblem}
+\newcommand\problem@counter{problem}
 %    \end{macrocode}
 % \end{macro}
 % \end{macro}
@@ -512,7 +533,6 @@
 % \begin{macro}{\problem@label}
 % Manage labeling by directly setting |\@currentlabel|.
 %    \begin{macrocode}
-\newcommand\theproblem{}
 \newcommand\problem@label[1]{%
     \global\edef\theproblem{#1}%
     \edef\@currentlabel{\theproblem}}
@@ -597,7 +617,7 @@
 \newcommand\subproblem@space@math{\mspace{20mu}}
 \newcommand\subproblem@format@text{\problem@format@text}
 \newcommand\subproblem@format[2]{\text{\begingroup\subproblem@format@text
-    (\resizeto{\kernagainst{#1#2}{(}{)}}{\kernagainst{m#2}{(}{)}})%
+    (\stretchto{\kernagainst{#1#2}{(}{)}}{\kernagainst{b#2}{(}{)}})%
     \endgroup}}
 %    \end{macrocode}
 % \end{macro}
@@ -605,7 +625,7 @@
 % \end{macro}
 %
 % \begin{environment}{problems}
-% Environment |problems| is a |list| with counter set to |jeolmproblem|,
+% Environment |problems| is a |list| with counter set to |problem|,
 % along with some formatting tuning.
 %    \begin{macrocode}
 \newenvironment{problems}{%
@@ -641,11 +661,17 @@
 %
 % \begin{environment}{exercises}
 %    \begin{macrocode}
-\newenvironment{exercises}{%
+\newenvironment{exercises*}{%
     \renewcommand\problem@format@text{\mdseries}%
-    \renewcommand\problem@counter{enumi}\setcounter{enumi}{0}%
+    \renewcommand\problem@counter{exercise}%
+}{}
+\newenvironment{exercises}{%
+    \begin{exercises*}%
     \begin{problems}%
-}{\end{problems}}
+}{%
+    \end{problems}%
+    \end{exercises*}%
+}
 %    \end{macrocode}
 % \end{environment}
 %
