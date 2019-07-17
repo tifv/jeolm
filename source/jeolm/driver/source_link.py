@@ -5,6 +5,7 @@ Record keys recognized by the driver:
 """
 
 from string import Template
+from urllib.parse import quote as url_quote
 
 from jeolm.utils.unique import unique
 
@@ -58,21 +59,24 @@ class SourceLinkDriver(RegularDriver):
     class SourceLinkBodyItem(RegularDriver.VerbatimBodyItem):
         _template = Template(
             r'\begin{flushright}\ttfamily\small' '\n'
-            r'  \href{${root}${source_path}}' '\n'
-            r'    {source:${source_path}}' '\n'
+            r'  \href{${root}${source_path_url}}' '\n'
+            r'    {source:${source_path_tex}}' '\n'
             r'\end{flushright}' )
 
         def __init__(self, source_path, *, root):
             super().__init__(
                 value=self._template.substitute(
-                    root=root, source_path=source_path )
+                    root=root,
+                    source_path_url=url_quote(str(source_path)),
+                    source_path_tex=str(source_path).replace(r'_', r'\_'),
+                )
             )
 
     class FigureDirLinkBodyItem(SourceLinkBodyItem):
         _template = Template(
             r'\begin{flushright}\ttfamily\small' '\n'
-            r'  \href{${root}${source_path}}' '\n'
-            r'    {figures:${source_path}}' '\n'
+            r'  \href{${root}${source_path_url}}' '\n'
+            r'    {figures:${source_path_tex}}' '\n'
             r'\end{flushright}' )
 
     #@ensure_type_items(RegularDriver.BodyItem)
