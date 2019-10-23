@@ -490,7 +490,7 @@ text-config:
           $style:
           - verbatim: |-
               \setmathfont{STIX Two Math}
-              \setmathfont[range={\frac,\bigtriangleup}]{Tex Gyre Pagella Math}
+              \AtBeginDocument{\renewcommand\kratno{\threedotcolon}}
             provide: setmathfont
         # }}}
 

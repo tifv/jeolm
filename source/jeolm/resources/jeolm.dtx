@@ -204,7 +204,6 @@
     {\@kratno@template{\scriptstyle}{\sf@size}}%
     {\@kratno@template{\scriptscriptstyle}{\ssf@size}}%
 }
-\newcommand\nkratno{\mathrel{\not{\kratno}}}
 %    \end{macrocode}
 %
 % Allow exchanging greek letters with their variants.
@@ -341,25 +340,25 @@
 %
 % \subsection{Lazy figures}
 %
-% \begin{macro}{\maybefigure}
+% \begin{macro}{\lazyfigure}
 % It allows latexmk to catch up with all figures on second run.
 % This implies that latexmk will be able to rebuild missing figures, like
 % from Asymptote source.
 %    \begin{macrocode}
-\newcommand\maybefigure[2][]{%
-    \edef\maybefigure@name{\maybefiguredir#2\maybefiguresuffix}%
-    \IfFileExists{\maybefigure@name}%
-        {\includegraphics[#1]{\maybefigure@name}}%
+\newcommand\lazyfigure[2][]{%
+    \edef\lazyfigure@name{\lazyfiguredir#2\lazyfiguresuffix}%
+    \IfFileExists{\lazyfigure@name}%
+        {\includegraphics[#1]{\lazyfigure@name}}%
         {\leavevmode
-            \PackageWarning{jeolm}{file `\maybefigure@name' not found}}%
+            \PackageWarning{jeolm}{file `\lazyfigure@name' not found}}%
 }
-\newcommand\maybefiguredir{\currfiledir figures/}
+\newcommand\lazyfiguredir{\currfiledir figures/}
 \begingroup
-\def\maybefigure@ifpdfgraphics#1\maybefigure@end{\in@{,.pdf,}{,#1,}\ifin@}
-\expandafter\maybefigure@ifpdfgraphics\Gin@extensions\maybefigure@end
-    \endgroup\newcommand\maybefiguresuffix{.pdf}
+\def\lazyfigure@ifpdfgraphics#1\lazyfigure@end{\in@{,.pdf,}{,#1,}\ifin@}
+\expandafter\lazyfigure@ifpdfgraphics\Gin@extensions\lazyfigure@end
+    \endgroup\newcommand\lazyfiguresuffix{.pdf}
 \else
-    \endgroup\newcommand\maybefiguresuffix{.eps}
+    \endgroup\newcommand\lazyfiguresuffix{.eps}
 \fi
 %    \end{macrocode}
 % \end{macro}
@@ -559,7 +558,7 @@
 % As the number of problem is enclosed in special command, by redefining that
 % command we can omit it.
 %    \begin{macrocode}
-\newcommand\subref[1]{\begingroup
+\newcommand\subproblemref[1]{\begingroup
     \let\subproblem@label@paren\@empty
     \let\subproblem@label@problem\@gobble
     \ref{#1}%
