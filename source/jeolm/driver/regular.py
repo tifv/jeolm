@@ -1862,7 +1862,7 @@ class RegularDriver(Driver): # {{{1
                 if item.package not in package_options:
                     # package is already processed
                     continue
-                options = package_options[item.package]
+                options = package_options.pop(item.package)
                 options_prohibited = set(options['prohibited'])
                 option_list = [
                     option
