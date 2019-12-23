@@ -269,8 +269,8 @@ class LaTeXLog: # {{{1
                 "<MAGENTA>({file_name})<NOCOLOUR>"
                 .format(page_number=page_number, file_name=file_name) )
             if match.group('overfull') is not None:
-                # 15pt is delibirate
-                is_large = float(match.group('overfull_points') or 0) > 15
+                # 10pt is delibirate
+                is_large = float(match.group('overfull_points') or 0) > 10
                 message = match.expand(self._latex_log_overfull_template)
                 if is_large:
                     message = "<BOLD>" + message + "<REGULAR>"
