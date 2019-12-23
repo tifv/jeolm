@@ -642,6 +642,7 @@
     \begin{list}{\problem@in@item@current}{%
         \leftmargin=2.45em\labelsep=\problem@space@length%
         \@nmbrlisttrue\def\@listctr{\problem@counter}}%
+    \pretocmd{\item}{\def\theproblem{\problem@numbering{\problem@counter}}}{}{}%
 }{\end{list}}
 %    \end{macrocode}
 % \end{environment}
