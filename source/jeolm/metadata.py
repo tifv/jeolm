@@ -296,6 +296,7 @@ class Metadata(Records):
         r')?')
     _tex_includegraphics_regex = re.compile(
         r'\\includegraphics')
+    # XXX Add \lazyfigure similarly
 
     # pylint: disable=unused-argument
 

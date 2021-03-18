@@ -1958,6 +1958,7 @@ class RegularDriver(Driver): # {{{1
         source_type, = source_types
         figure_types = self._figure_types[source_type] & figure_types
         if len(figure_types) > 1:
+            # unreachable
             raise DriverError(figure_types)
         figure_type, = figure_types
         suffix = self._get_figure_suffix(source_type)
