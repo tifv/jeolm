@@ -15,6 +15,8 @@ $style:
     condition: {or: [latex, pdflatex]}
   - package: multicol
   - package: graphicx
+  - package: tocloft
+    condition: tocloft
 
   - jeolm
 
@@ -492,6 +494,10 @@ text-config:
               \setmathfont{STIX Two Math}
               \AtBeginDocument{\renewcommand\kratno{\threedotcolon}}
             provide: setmathfont
+          $style[asy]:
+          - verbatim: |-
+              \setmathfont{STIX Two Math}
+            provide: setmathfont
         # }}}
 
         asana-math: # {{{
@@ -760,21 +766,21 @@ page-config:
       $style:
       - error: core misconfiguration
       $style[a6paper]:
-      - verbatim: '\geometry{vmargin={1.5em,1.5em},hmargin={1.5em,1.5em}}'
+      - verbatim: '\geometry{vmargin={1cm,1cm},hmargin={1cm,1cm}}'
         provide: geometry:margin
       $style[a6paper,landscape]:
       - .[a5paper,-a6paper]
       $style[a5paper]:
-      - verbatim: '\geometry{vmargin={2em,2em},hmargin={2em,2em}}'
+      - verbatim: '\geometry{vmargin={1cm,1cm},hmargin={1cm,1cm}}'
         provide: geometry:margin
       $style[a4paper]:
-      - verbatim: '\geometry{vmargin={3em,3em},hmargin={3em,3em}}'
+      - verbatim: '\geometry{vmargin={1.5cm,1.5cm},hmargin={1.5cm,1.5cm}}'
         provide: geometry:margin
       $style[a3paper]:
-      - verbatim: '\geometry{vmargin={4em,4em},hmargin={4em,4em}}'
+      - verbatim: '\geometry{vmargin={2cm,2cm},hmargin={2cm,2cm}}'
         provide: geometry:margin
       $style[screen]:
-      - verbatim: '\geometry{vmargin={0.5em,0.5em},hmargin={0.5em,0.5em}}'
+      - verbatim: '\geometry{vmargin={3mm,3mm},hmargin={3mm,3mm}}'
         provide: geometry:margin
     # }}}
 

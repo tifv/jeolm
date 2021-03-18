@@ -1,10 +1,67 @@
 % \iffalse
-%
-%<package>\NeedsTeXFormat{LaTeX2e}[2009/09/24]
 %<*gobble>
-\ProvidesFile{jeolm.dtx}
+% \fi
+\ifcat @A%
+    \def\jeolmdriver#1\jeolmenddriver{}
+\else
+    \let\jeolmdriver\relax\let\jeolmenddriver\endinput
+\fi
+% \def\jeolmdriver#1\jeolmenddriver{}
+\jeolmdriver
+% \iffalse
 %</gobble>
-%<package>\ProvidesPackage{jeolm}
+%<*driver>
+% \fi
+\documentclass{ltxdoc}
+\usepackage{etoolbox}
+\newbool{moderntex}
+\usepackage{ifxetex}  \ifbool{xetex} {\booltrue{moderntex}}{}
+\usepackage{ifluatex} \ifbool{luatex}{\booltrue{moderntex}}{}
+\ifbool{moderntex}{
+    \usepackage[no-math]{fontspec}
+    \defaultfontfeatures{Ligatures=TeX,Scale=MatchLowercase}
+    \setmainfont{STIX Two Text}
+    \setsansfont{Liberation Sans}
+    \setmonofont{Liberation Mono}
+    \let\cyrillicfont\normalfont
+    \let\cyrillicfontsf\sffamily
+    \let\cyrillicfonttt\ttfamily
+}{
+    \usepackage[utf8]{inputenc}
+    \usepackage[T2A]{fontenc}
+    \usepackage[russian,english]{babel}
+}
+\DisableCrossrefs
+\CodelineNumbered
+\usepackage{jeolm}
+\begin{document}
+\DocInput{jeolm.sty}
+\end{document}
+% \iffalse
+%</driver>
+%<*gobble>
+% \fi
+\jeolmenddriver
+\let\jeolmdriver\undefined
+% \iffalse
+%</gobble>
+%
+%<*package>
+\NeedsTeXFormat{LaTeX2e}
+\ProvidesPackage{jeolm}
+    [2021/03/18 v0 jeolm supplementary routines]
+%</package>
+%
+%<batchfile>\input docstrip.tex
+%<batchfile>\keepsilent
+%<batchfile>\askforoverwritefalse
+%<batchfile>\nopreamble
+%<batchfile>\nopostamble
+%<batchfile>\generate{\file{jeolm.sty}{\from{jeolm.dtx}{package}}}
+%<batchfile>\generate{\file{jeolm.ins}{\from{jeolm.dtx}{batchfile}}}
+%<batchfile>\generate{\file{jeolm.drv}{\from{jeolm.dtx}{driver}}}
+%<batchfile>\endbatchfile
+%<batchfile>\endinput
 %
 % \fi
 %
@@ -116,7 +173,7 @@
 % Mentioning previous subproblem: \ref{a subproblem} for |\ref{a subproblem}|.
 % \\
 % Mentioning previous subproblem without mentioning the problem number:
-% \subref{a subproblem} for |\subref{a subproblem}|.
+% \subproblemref{a subproblem} for |\subproblemref{a subproblem}|.
 % This is useful for references within the problem.
 %
 % \DescribeEnv{problems}
@@ -184,19 +241,24 @@
 % \subsection{Package options}
 %
 %    \begin{macrocode}
-\ProcessOptions
+\DeclareOption{subnum-asbuk}{\newcommand\subproblem@numbering{\asbuk}}
+\ProcessOptions\relax
 %    \end{macrocode}
 %
 % \subsection{Some definitions}
 %
 % Infamous Russian <<divided by>> relation.
+% Symbol |\threedotcolon| from unicode-math, if available,
+% should be preffered over this one.
 %    \begin{macrocode}
 \newlength\@kratno@height
 \newcommand\@kratno@template[2]{\setlength{\@kratno@height}{#2pt}%
 \mathrel{%
+    \hspace{0.20\@kratno@height}%
     \rlap{\raisebox{-0.25\@kratno@height}{$\mathsurround=0pt#1\cdot$}}%
-    \rlap{\raisebox{ 0.05\@kratno@height}{$\mathsurround=0pt#1\cdot$}}%
-          \raisebox{ 0.35\@kratno@height}{$\mathsurround=0pt#1\cdot$}%
+    \rlap{\raisebox{ 0.00\@kratno@height}{$\mathsurround=0pt#1\cdot$}}%
+          \raisebox{ 0.25\@kratno@height}{$\mathsurround=0pt#1\cdot$}%
+    \hspace{0.20\@kratno@height}%
     }}
 \newcommand\kratno{\mathchoice%
     {\@kratno@template{\displaystyle}{\tf@size}}%
@@ -368,7 +430,7 @@
 % \begin{macro}{\jeolmlabel}
 % \begin{macro}{\jeolmref}
 % \begin{macro}{\jeolmeqref}
-% \begin{macro}{\jeolmsubref}
+% \begin{macro}{\jeolmsubproblemref}
 % \begin{environment}{jeolmlabelspace}
 % Redirect labels, allowing multiple inclusion of source files (provided that
 % these files use |\jeolmlabel| and |\jeolmref| instead of normal commands).
@@ -376,12 +438,12 @@
 \newcommand\jeolmlabel[1]{\label{#1}}
 \newcommand\jeolmref[1]{\ref{#1}}
 \newcommand\jeolmeqref[1]{\eqref{#1}}
-\newcommand\jeolmsubref[1]{\subref{#1}}
+\newcommand\jeolmsubproblemref[1]{\subproblemref{#1}}
 \newenvironment{jeolmlabelspace}[1]{%
     \renewcommand\jeolmlabel[1]{\label{#1:##1}}%
     \renewcommand\jeolmref[1]{\ref{#1:##1}}%
     \renewcommand\jeolmeqref[1]{\eqref{#1:##1}}%
-    \renewcommand\jeolmsubref[1]{\subref{#1:##1}}%
+    \renewcommand\jeolmsubproblemref[1]{\subproblemref{#1:##1}}%
 }{}
 %    \end{macrocode}
 % \end{environment}
@@ -430,12 +492,12 @@
 \newcommand\@worksheet@star{\@worksheet*}
 \newif\ifworksheetnumerated
 \worksheetnumeratedfalse
-\newcommand\worksheet{%
+\newcommand\worksheet[1]{%
     \ifworksheetnumerated%
         \expandafter\@worksheet%
     \else%
         \expandafter\@worksheet@star%
-    \fi}
+    \fi{#1}}
 %    \end{macrocode}
 % \end{macro}
 %
@@ -495,7 +557,7 @@
 %    \begin{macrocode}
 \newcounter{jeolmsubproblem}
 \newcommand\resetsubproblem{\setcounter{jeolmsubproblem}{0}}
-\newcommand\subproblem@numbering{\alph}
+\providecommand\subproblem@numbering{\alph}
 %    \end{macrocode}
 % \end{macro}
 %
@@ -509,7 +571,7 @@
     \problem@label{#1}\resetsubproblem
     \problem@format{#1}{#2}}
 %    \end{macrocode}
-% In items of |problem| environment, counter increment and labeling is
+% In items of |problems| environment, counter increment and labeling is
 % managed by |\item| command itself.
 %    \begin{macrocode}
 \newcommand\problem@in@item{\problemx@in@item{}}
@@ -554,7 +616,7 @@
 %    \end{macrocode}
 % \end{macro}
 %
-% \begin{macro}{\subref}
+% \begin{macro}{\subproblemref}
 % As the number of problem is enclosed in special command, by redefining that
 % command we can omit it.
 %    \begin{macrocode}
