@@ -493,10 +493,20 @@ text-config:
           - verbatim: |-
               \setmathfont{STIX Two Math}
               \AtBeginDocument{\renewcommand\kratno{\threedotcolon}}
+              \renewcommand{\tfrac}[2]{%
+                  \frac%
+                      {\raisebox{-.2ex}{\scriptsize $#1$}}%
+                      {\raisebox{.40ex}{\scriptsize $#2$}}%
+                  }
             provide: setmathfont
           $style[asy]:
           - verbatim: |-
               \setmathfont{STIX Two Math}
+              \renewcommand{\tfrac}[2]{%
+                  \frac%
+                      {\raisebox{-.2ex}{\scriptsize $#1$}}%
+                      {\raisebox{.40ex}{\scriptsize $#2$}}%
+                  }
             provide: setmathfont
         # }}}
 
