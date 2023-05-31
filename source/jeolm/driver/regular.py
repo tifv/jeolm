@@ -2215,7 +2215,7 @@ class RegularDriver(Driver): # {{{1
     date_template = Template(
         r'\DTMDate{$dateiso}' )
     period_template = Template(
-        r'\jeolmdisplayperiod{$period}')
+        r', \jeolmdisplayperiod{$period}')
 
     @classmethod
     def _constitute_caption_addtoc(cls, caption: str) -> str:
