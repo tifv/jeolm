@@ -1,0 +1,90 @@
+% \iffalse
+% This is file “jeolmsymbol.sty”.
+% It is placed by July Tikhonov in the public domain.
+%<*package>
+\NeedsTeXFormat{LaTeX2e}
+\ProvidesPackage{jeolmsymbol}
+    [2022-10-14 v1.1 some symbols and redefinitions]
+%</package>
+% \fi
+%
+% \providebool{altmaindoc}\ifaltmaindoc
+% \csuse{nopartialtableofcontents}
+% \else ^^A \ifaltmaindoc
+%
+% \GetFileInfo{jeolmsymbol.sty}
+%
+% \title{The \textsf{jeolmsymbol} package\footnote{The file has version number~\fileversion\ dated \filedate}}
+%
+% \author{July Tikhonov \\ \texttt{july.tikh@gmail.com}}
+%
+% \maketitle
+%
+% \fi ^^A \ifaltmaindoc
+%
+% \DoNotIndex{\let,\def,\edef}
+% \DoNotIndex{\fi,\par}
+% \DoNotIndex{\DeclareOption,\ProcessOptions,\RequirePackage}
+%
+%    \begin{macrocode}
+%<*package>
+%    \end{macrocode}
+%
+% \begin{macro}{\kratno}
+% Infamous Russian <<divided by>> relation.
+% Symbol |\threedotcolon| from unicode-math, if available,
+% should be preferred over this one.
+%    \begin{macrocode}
+\newlength\@kratno@height
+\newcommand\@kratno@template[2]{\setlength{\@kratno@height}{#2pt}%
+\mathrel{%
+    \hspace{0.20\@kratno@height}%
+    \rlap{\raisebox{-0.25\@kratno@height}{$\mathsurround=0pt#1\cdot$}}%
+    \rlap{\raisebox{ 0.00\@kratno@height}{$\mathsurround=0pt#1\cdot$}}%
+          \raisebox{ 0.25\@kratno@height}{$\mathsurround=0pt#1\cdot$}%
+    \hspace{0.20\@kratno@height}%
+    }}
+\newcommand\kratno{\mathchoice%
+    {\@kratno@template{\displaystyle}{\tf@size}}%
+    {\@kratno@template{\textstyle}{\tf@size}}%
+    {\@kratno@template{\scriptstyle}{\sf@size}}%
+    {\@kratno@template{\scriptscriptstyle}{\ssf@size}}%
+}
+%    \end{macrocode}
+% \end{macro}
+%
+% \begin{macro}{\geq}
+% \begin{macro}{\leq}
+% Redefine |\geq| as |\geqslant| and |\leq| as |\leqslant| for the Russian language.
+%    \begin{macrocode}
+\def\switch@ineq@slant{%
+    \unless\ifdefined\geq@straight%
+        \let\geq@straight\geq\let\leq@straight\leq \fi
+    \let\geq\geqslant\let\leq\leqslant
+}
+\def\switch@ineq@straight{%
+    \ifdefined\geq@straight \let\geq\geq@straight\let\leq\leq@straight \fi
+}
+\gappto\blockextras@russian{\switch@ineq@slant}
+\gappto\inlineextras@russian{\switch@ineq@slant}
+\gappto\extrasrussian{\switch@ineq@slant}
+\gappto\noextras@russian{\switch@ineq@straight}
+%    \end{macrocode}
+% \end{macro}
+% \end{macro}
+%
+% \begin{macro}{\hm}
+% Courtesy of Lvovskiy
+%    \begin{macrocode}
+\providecommand*{\hm}[1]%
+    {#1\nobreak\discretionary{}{\hbox{$\mathsurround=0pt #1$}}{}}
+%    \end{macrocode}
+% \end{macro}
+%
+%    \begin{macrocode}
+%</package>
+%    \end{macrocode}
+%
+% \Finale
+%
+\endinput

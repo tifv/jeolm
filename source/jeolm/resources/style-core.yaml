@@ -18,11 +18,18 @@ $style:
   - package: tocloft
     condition: tocloft
 
-  - jeolm
-
   - text-config
 
   - page-config
+
+  - problems
+  - worksheet
+  - verbatim:
+      \def\worksheetauthors{}
+      \def\worksheetdate{}
+  - jeolmfigure
+  - jeolmsymbol
+  - jeolmcompat
 
   - hyperref
 
@@ -43,7 +50,7 @@ $style[asy]:
       options: [utf8]
       condition: {or: [latex, pdflatex]}
 
-    - text-config[no-jeolm-macro,no-parskip]
+    - text-config[no-parskip]
 
 $style[asy,-compiler-selection-guard]:
   - compiler-selection[compiler-selection-guard]
@@ -193,10 +200,6 @@ text-config:
       - verbatim:
           \defaultfontfeatures{Ligatures=TeX,Scale=MatchLowercase}
       - setfont
-      - verbatim: |-
-          \let\cyrillicfont\normalfont
-          \let\cyrillicfontsf\sffamily
-          \let\cyrillicfonttt\ttfamily
 
       setfont: # {{{
 
@@ -398,9 +401,6 @@ text-config:
       - package: amssymb
       - package: mathabx
       - package: upgreek
-      - style:
-        - swap-vargreek/default
-        - swap-vargreek/upgreek
       - style: [ineq-slanted]
         condition: russian
     $style[pdflatex]:
@@ -410,36 +410,16 @@ text-config:
     $style[lualatex,computer-modern-math]:
       *default-math-font-config
 
-    $style[lualatex]:
+    $style[xelatex]:
       &unicode-math-font-config
       - package: amsmath
       - package: amssymb
+      - package: mathtools
       - unicode-math
-      - style:
-        - swap-vargreek/default
-        - swap-vargreek/mupgreek
       - style: [ineq-slanted]
         condition: russian
-    $style[xelatex]:
+    $style[lualatex]:
       *unicode-math-font-config
-
-    swap-vargreek: # {{{
-      default:
-        $style:
-        - verbatim: |-
-            \AtBeginDocument{\swapvar{phi}\swapvar{epsilon}}
-          condition: {not: no-jeolm-macro}
-      upgreek:
-        $style:
-        - verbatim: |-
-            \AtBeginDocument{\swapvar[up]{phi}\swapvar[up]{epsilon}}
-          condition: {not: no-jeolm-macro}
-      mupgreek:
-        $style:
-        - verbatim: |-
-            \AtBeginDocument{\swapvar[mup]{phi}\swapvar[mup]{epsilon}}
-          condition: {not: no-jeolm-macro}
-    # }}}
 
     ineq-slanted:
       $style:
@@ -452,8 +432,8 @@ text-config:
         options:
         - math-style=ISO
         - partial=upright
+        - warnings-off={mathtools-colon,mathtools-overbracket}
       - setfont
-#      - verbatim: \AtBeginDocument{\let\setminus\smallsetminus}
 
       setfont: # {{{
 

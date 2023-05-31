@@ -1,0 +1,844 @@
+% \iffalse
+% This is file “problems.sty”.
+% It is placed by July Tikhonov in the public domain.
+% This file can be compiled to produce documentation;
+% if you have opened it in Overleaf, press Ctrl+Enter.
+%<*gobble>
+% \fi
+\newcommand\notreallypackage{}%
+\ifcat @A%
+% \iffalse
+%</gobble>
+%<*package>
+\NeedsTeXFormat{LaTeX2e}
+\ProvidesPackage{problems}
+    [2022-10-22 v1.0.1 lists of problems and subproblems]
+%</package>
+%<*gobble>
+% \fi
+    \def\notreallypackage#1\reallystartpackage{}
+\else
+    \let\notreallypackage\relax \let\reallystartpackage\endinput
+\fi
+% \def\notreallypackage#1\reallystartpackage{}
+\notreallypackage
+% \iffalse
+%</gobble>
+%<*driver>
+% \fi
+\documentclass{ltxdoc}
+\usepackage{etoolbox}
+\newbool{moderntex}
+\usepackage{ifxetex}  \ifbool{xetex} {\booltrue{moderntex}}{}
+\usepackage{ifluatex} \ifbool{luatex}{\booltrue{moderntex}}{}
+\ifbool{moderntex}{
+    \usepackage[no-math]{fontspec}
+    \defaultfontfeatures{Ligatures=TeX,Scale=MatchLowercase}
+    \setmainfont{STIX Two Text}
+        \newfontfamily\cyrillicfont{STIX Two Text}
+    \setsansfont{Liberation Sans}
+        \newfontfamily\cyrillicfontsf{Liberation Sans}
+    \setmonofont{Liberation Mono}
+        \newfontfamily\cyrillicfonttt{Liberation Mono}
+    \usepackage{polyglossia}
+    \setmainlanguage{english}
+    \setotherlanguage{russian}
+}{
+    \usepackage[utf8]{inputenc}
+    \usepackage[T2A]{fontenc}
+    \usepackage[russian,english]{babel}
+}
+\usepackage{tocloft}
+\usepackage{titletoc}
+\usepackage[svgnames]{xcolor}
+\usepackage{hypdoc}
+    %\usepackage{hyperref}
+    \hypersetup{urlcolor=blue}
+\DisableCrossrefs
+\CodelineNumbered
+\usepackage{problems}
+\csuse{begin}{document}
+\DocInput{problems.sty}
+\csuse{end}{document}
+% \iffalse
+%</driver>
+%<*gobble>
+% \fi
+\reallystartpackage
+\let\notreallypackage\undefined
+% \iffalse
+%</gobble>
+%
+%<batchfile>\input docstrip.tex
+%<batchfile>\keepsilent
+%<batchfile>\askforoverwritefalse
+%<batchfile>\nopreamble
+%<batchfile>\nopostamble
+%<batchfile>\generate{\file{problems.sty}{\from{problems.dtx}{package}}}
+%<batchfile>\generate{\file{problems.ins}{\from{problems.dtx}{batchfile}}}
+%<batchfile>\generate{\file{problems.drv}{\from{problems.dtx}{driver}}}
+%<batchfile>\endbatchfile
+%<batchfile>\endinput
+%
+% \fi
+%
+% \providebool{altmaindoc}\ifaltmaindoc
+% \csuse{partialtableofcontents}
+% \else ^^A \ifaltmaindoc
+%
+% \GetFileInfo{problems.sty}
+%
+% \title{The \textsf{problems} package}
+%
+% \author{July Tikhonov \\ \texttt{july.tikh@gmail.com}}
+%
+% \maketitle
+% \tableofcontents
+%
+% \fi ^^A \ifaltmaindoc
+%
+% \DoNotIndex{\let,\def,\edef}
+% \DoNotIndex{\fi,\par}
+% \DoNotIndex{\DeclareOption,\ProcessOptions,\RequirePackage}
+%
+% \unless\ifdefined\problemsdemonstrate
+% \newbox\problemsdemobox
+% \newenvironment{problemsdemonstrate}
+%   {\par\begin{lrbox}{\problemsdemobox}\begin{minipage}[b][][t]{0.9\linewidth}}
+%   {\end{minipage}\end{lrbox}^^A
+%     \begin{center}\fboxsep=0.04\linewidth\framebox{^^A
+%       \usebox\problemsdemobox}\end{center}}
+% \fi
+%
+% \section{Introduction}
+%
+% This package defines |problems| environment, which can be used to typeset
+% a series of problems with subproblems.
+% For example,
+%\begin{verbatim}
+%\begin{problems}
+%\item A problem text.
+%\item Another problem text
+%\\\subproblem a case of the problem;
+%\\\subproblem another case of the problem.
+%\end{problems}
+%\end{verbatim}
+% produces
+%\begin{problemsdemonstrate}
+%\begin{problems}
+%\item A problem text.
+%\item Another problem text
+%\\\subproblem a case of the problem;
+%\\\subproblem another case of the problem.
+%\end{problems}
+%\end{problemsdemonstrate}
+%
+% The counter does not reset with each invocation of the |problems|, which
+% allows to intersperse definitions, statements, and other introductory text
+% between the problems.
+%
+% Problems and subproblems can be marked (e.g., with a star or a circle) using
+% |<|\meta{mark}|>| syntax:
+%\begin{verbatim}
+%\begin{problems}
+%\item<$^\circ$> A problem text.
+%\item Another problem text
+%\\\subproblem a case of the problem;
+%\\\subproblem<*> another case of the problem.
+%\end{problems}
+%\end{verbatim}
+% produces
+%\begin{problemsdemonstrate}
+%\begin{problems}
+%\item<$^\circ$> A problem text.
+%\item Another problem text
+%\\\subproblem a case of the problem;
+%\\\subproblem<*> another case of the problem.
+%\end{problems}
+%\end{problemsdemonstrate}
+%
+% Since the problem counter does not reset automatically, it is important to
+% add the macro |\resetproblem| at the beginning of any problem list.
+%
+%
+% \section{Reference}
+%
+% \subsection{Package options}
+%
+% The package accepts options as a comma-separated sequence
+% of key|=|value pairs.
+% Currently, only one key is available:
+% \begin{itemize}
+% \item |subnumcs=|\meta{csname}
+% will set the numeration of subproblems to |\|\meta{csname}.
+% \par For example, |subnumcs=asbuk| will label subproblems
+% in Russian lowercase letters.
+% It would be equivalent to
+%\begin{verbatim}
+%\def\subproblemlabelauto{\asbuk{\subproblemcounter}}
+%\end{verbatim}
+% \end{itemize}
+%
+% \subsection{Problems}
+%
+% \DescribeMacro{\problem}
+% Macro |\problem[|\meta{label}|]<|\meta{mark}|>|
+% with two optional arguments produces a problem label with
+% a dot and a horizontal space after it.
+% If \meta{label} is not provided, a counter
+% (defined by |\problemcounter|, usually defined as |problem|)
+% is advanced and its value is used as the label
+% (via |\problemlabelauto|, usually defined as |\arabic{\problemcounter}|).
+%
+% The \meta{mark} argument is positioned slightly overlapping the dot that
+% follows the number, and therefore should be above-baseline.
+% Also, it is typeset using |\rlap|, so its width is completely ignored.
+%
+% For example,
+%\begin{verbatim}
+%\par\problem The text of a problem.
+%\par\problem[22] The text of a problem.
+%\par\problem<*> The text of a problem.
+%\par\problem[0']<$^\circ$> The text of a problem.
+%\end{verbatim}
+% produces
+%\begin{problemsdemonstrate}
+%\par\problem The text of a problem.
+%\par\problem[22] The text of a problem.
+%\par\problem<*> The text of a problem.
+%\par\problem[0']<$^\circ$> The text of a problem.
+%\end{problemsdemonstrate}
+%
+% To reset the counter, use |\resetproblem|
+% (which is effectively an alias to command |\setcounter{problem}{0}|).
+%
+% \subsection{Lists of problems}
+%
+% \DescribeEnv{problems}
+% The environment |problems| is a |list| with |\problem|-like formatting
+% of items.
+% Macro |\item| is redefined as |\item[|\meta{label}|]<|\meta{mark}|>|,
+% with effect completely analogous to |\problem|.
+%
+% The counter used for numbering the problem is also shared with |\problem| and
+% does not reset between invocations of the environment.
+% Use |\resetproblem| to reset it.
+%
+% For example,
+%\begin{verbatim}
+%\begin{problems}
+%\item The text of a problem.
+%\item[22] The text of a problem.
+%\item<*> The text of a problem.
+%\item[0']<$^\circ$> The text of a problem.
+%\end{problems}
+%\end{verbatim}
+% produces
+%\begin{problemsdemonstrate}
+%\begin{problems}
+%\item The text of a problem.
+%\item[22] The text of a problem.
+%\item<*> The text of a problem.
+%\item[0']<$^\circ$> The text of a problem.
+%\end{problems}
+%\end{problemsdemonstrate}
+%
+% \subsection{Subproblems}
+%
+% \DescribeMacro{\subproblem}
+% Macro |\subproblem[|\meta{label}|]<|\meta{mark}|>|
+% with two optional arguments produces a subproblem label with
+% parentheses around it and a horizontal space after.
+% If \meta{label} is not provided, a counter
+% (defined by |\subproblemcounter|, usually defined as |subproblem|)
+% is advanced and its value is used as the label
+% (via |\subproblemlabelauto|, usually defined as |\alph{\subproblemcounter}|).
+%
+% The \meta{mark} argument is positioned after the label, inside
+% the parentheses.
+%
+% For example,
+%\begin{verbatim}
+%\begin{problems}\item A problem with a parameter $a$. Solve it for\\
+%\subproblem $a = 1$;\quad
+%\subproblem $a = 3$;\quad
+%\subproblem[x]<*> every odd $a$.
+%\end{problems}
+%\end{verbatim}
+% produces
+%\begin{problemsdemonstrate}
+%\begin{problems}\item A problem with a parameter $a$. Solve it for\\
+%\subproblem $a = 1$;\quad
+%\subproblem $a = 3$;\quad
+%\subproblem[x]<*> every odd $a$.
+%\end{problems}
+%\end{problemsdemonstrate}
+%
+% Since subproblems define the structure of a problem, it is recommended to put
+% the first subproblem of a sequence at the beginning of a line;
+% if the text of the problem continues after the sequence of subproblems,
+% it should continue from the next line.
+%
+% If the text of some subproblems is long, or if the text of the problem
+% consists entirely of its subproblems, each subproblem should be placed
+% on its own line.
+% For example,
+%\begin{verbatim}
+%\begin{problems}
+%\item
+%\subproblem The text of a problem.\\
+%\subproblem Some extension of the problem.\\
+%\subproblem Some further extension.
+%\end{problems}
+%\end{verbatim}
+% produces
+%\begin{problemsdemonstrate}
+%\begin{problems}
+%\item
+%\subproblem The text of a problem.\\
+%\subproblem Some extension of the problem.\\
+%\subproblem Some further extension.
+%\end{problems}
+%\end{problemsdemonstrate}
+%
+% \subsection{Referencing}
+%
+% Problems (made either via |\problem| or |\item| within |problems|)
+% are referenceable: you can use |\label| and |\ref| around them in
+% a usual manner:
+%\begin{verbatim}
+%\begin{problems}
+%\item\label{a1} Problem~\ref{a1}.
+%\item[7']\label{a2} Problem~\ref{a2}.
+%\item<*>\label{a3} Problem~\ref{a3}.
+%\end{problems}
+%\problem\label{a4} Problem~\ref{a4}.
+%\end{verbatim}
+% produces
+%\begin{problemsdemonstrate}
+%\begin{problems}
+%\item\label{a1} Problem~\ref{a1}.
+%\item[7']\label{a2} Problem~\ref{a2}.
+%\item<*>\label{a3} Problem~\ref{a3}.
+%\end{problems}
+%\problem\label{a4} Problem~\ref{a4}.
+%\end{problemsdemonstrate}
+%
+% \DescribeMacro{\subproblemref}
+% References to subproblems are also possible; by default the label will be
+% the number of the problem joined with the label of the subproblem.
+% Macro |\subproblemref| can be used instead of |\ref| to reference subproblem
+% without referencing its problem
+% (useful for internal references within the problem):
+%\begin{verbatim}
+%\begin{problems}
+%\item\label{b0}%
+%\subproblem\label{b1}%
+%Problem~\ref{b0}, subproblem~\ref{b1}.
+%\\
+%\subproblem[b']\label{b3}%
+%Problem~\ref{b0}, subproblem~\subproblemref{b3}.
+%\\
+%\subproblem<*>\label{b2}%
+%Problem~\ref{b0}, subproblem~\subproblemref{b2}.
+%\end{problems}
+%\end{verbatim}
+% produces
+%\begin{problemsdemonstrate}
+%\begin{problems}
+%\item\label{b0}%
+%\subproblem\label{b1}%
+%Problem~\ref{b0}, subproblem~\ref{b1}.
+%\\
+%\subproblem[b']\label{b3}%
+%Problem~\ref{b0}, subproblem~\subproblemref{b3}.
+%\\
+%\subproblem<*>\label{b2}%
+%Problem~\ref{b0}, subproblem~\subproblemref{b2}.
+%\end{problems}
+%\end{problemsdemonstrate}
+%
+% \subsection{Exercises}
+%
+% \DescribeEnv{exercises*}
+% Envinronment |exercises*| makes every |\problem| inside it use a different
+% problem counter and disables bold font for problem and subproblem labels.
+% It can be used for some introductory points.
+%
+% \DescribeEnv{exercises}
+% Envinronment |exercises| makes the same changes \emph{and} directly
+% activates |problems| environment:
+%\begin{verbatim}
+%\begin{exercises}
+%\item A problem text.
+%\item Another problem text
+%\\\subproblem a case of the problem;
+%\\\subproblem another case of the problem.
+%\end{exercises}
+%\end{verbatim}
+% produces
+%\begin{problemsdemonstrate}
+%\begin{exercises}
+%\item A problem text.
+%\item Another problem text
+%\\\subproblem a case of the problem;
+%\\\subproblem another case of the problem.
+%\end{exercises}
+%\end{problemsdemonstrate}
+%
+% \subsection{Compatibility}
+%
+% Commands that should no longer be used, but still should work (|\item| variants only work within the |problems| environment, of course):
+% \begin{itemize}
+% \item |\problemx{|\meta{mark}|}|
+%    $\mapsto$ |\problem<|\meta{mark}|>|
+% \item |\problemy{|\meta{label}|}|
+%    $\mapsto$ |\problem[|\meta{label}|]|
+% \item |\problemyx{|\meta{label}|}{|\meta{mark}|}|
+%    $\mapsto$ |\problem[|\meta{label}|]<|\meta{mark}|>|
+% \item |\itemx{|\meta{mark}|}|
+%    $\mapsto$ |\item<|\meta{mark}|>|
+% \item |\itemy{|\meta{label}|}|
+%    $\mapsto$ |\item[|\meta{label}|]|
+% \item |\itemyx{|\meta{label}|}{|\meta{mark}|}|
+%    $\mapsto$ |\item[|\meta{label}|]<|\meta{mark}|>|
+% \item |\subproblemx{|\meta{mark}|}|
+%    $\mapsto$ |\subproblem<|\meta{mark}|>|
+% \item |\subproblemy{|\meta{label}|}|
+%    $\mapsto$ |\subproblem[|\meta{label}|]|
+% \item |\subproblemyx{|\meta{label}|}{|\meta{mark}|}|
+%    $\mapsto$ |\subproblem[|\meta{label}|]<|\meta{mark}|>|
+% \end{itemize}
+%
+% \StopEventually{}
+%
+% \section{Implementation}
+%
+%    \begin{macrocode}
+%<*package>
+%    \end{macrocode}
+%
+%    \begin{macrocode}
+\RequirePackage{etoolbox}
+\RequirePackage{xkeyval}
+\RequirePackage{amsmath}
+\RequirePackage{mathtools}
+%    \end{macrocode}
+%
+%    \begin{macrocode}
+\DeclareOptionX{subnumcs}[alph]%
+    {\edef\subproblemlabelauto{%
+        \expandafter\noexpand\csname#1\endcsname{\noexpand\subproblemcounter}}}
+\ProcessOptionsX\relax
+%    \end{macrocode}
+%
+%    \begin{macrocode}
+\providecommand\maybephantomsection
+    {\ifdefined\phantomsection\phantomsection\fi}
+%    \end{macrocode}
+%
+% \subsection{Tinkering with box widths}
+%
+% \begin{macro}{\problems@stretchto}
+% Macro |\problems@stretchto{|\meta{arg}|}{|\meta{sample}|}|
+% places \meta{arg} in the center of the box of the width of \meta{sample}
+% (unless the width of the latter box is smaller, in which case
+% it simply outputs a box with \meta{arg}).
+%    \begin{macrocode}
+\newlength\problems@stretchto@width
+\newlength\problems@stretchto@fromwidth
+\newsavebox\problems@stretchto@box
+\newcommand\problems@stretchto[2]{%
+\settowidth{\problems@stretchto@width}{#2}%
+\savebox\problems@stretchto@box{#1}%
+\settowidth{\problems@stretchto@fromwidth}{\usebox\problems@stretchto@box}%
+\ifdim\problems@stretchto@width<\problems@stretchto@fromwidth%
+    \usebox\problems@stretchto@box%
+\else%
+    \strut\hspace{0.5\problems@stretchto@width}%
+    \clap{\usebox\problems@stretchto@box}%
+    \hspace{0.5\problems@stretchto@width}\strut%
+\fi}
+%    \end{macrocode}
+% \end{macro}
+%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% \begin{macro}{\problems@kernagainst}
+% Macro |\problems@kernagainst{|\meta{a}|}{|\meta{x}|}{|\meta{y}|}| outputs
+% the character \meta{a} but with such additional spaces around it that
+% \meta{x}|\problems@kernagainst{|\meta{a}|}|\meta{y} will look exactly as
+% just \meta{x}\meta{a}\meta{y}, but allows insertion of additional spaces
+% between the parts.
+%    \begin{macrocode}
+\newlength\problems@kernagainst@width
+\newlength\problems@kernagainst@width@a
+\newlength\problems@kernagainst@width@b
+\newlength\problems@kernagainst@width@c
+\newcommand\problems@kernagainst[3]{%
+    \settowidth\problems@kernagainst@width@a{#2}%
+    \settowidth\problems@kernagainst@width@b{#1}%
+    \settowidth\problems@kernagainst@width@c{#3}%
+    \settowidth\problems@kernagainst@width{#2#1}%
+    \addtolength\problems@kernagainst@width{-\problems@kernagainst@width@a}%
+    \addtolength\problems@kernagainst@width{-\problems@kernagainst@width@b}%
+    \hspace{\problems@kernagainst@width}%
+    #1%
+    \settowidth\problems@kernagainst@width{#1#3}%
+    \addtolength\problems@kernagainst@width{-\problems@kernagainst@width@c}%
+    \addtolength\problems@kernagainst@width{-\problems@kernagainst@width@b}%
+    \hspace{\problems@kernagainst@width}%
+}
+%    \end{macrocode}
+% \end{macro}
+%
+% \subsection{Argument parser}
+%
+% \begin{macro}{\problems@parse}
+% We will have several macros of the form
+% |\problem[|\meta{label}|]<|\meta{mark}|>| with two optional arguments.
+% In such cases we will define macro |\problem| as\\
+% |\problems@parse{|\meta{exec}|}{|\meta{advance}|}{|\meta{autolabel}|}{|\meta{automark}|}|,\\
+% which then expands to
+% \meta{exec}|{|\meta{label}|}{|\meta{mark}|}|, where the default values
+% for \meta{label} and \meta{mark} are
+% \meta{autolabel} and \meta{automark}, respectively.
+% Contents of \meta{advance} is prepended to \meta{exec} only if \meta{label}
+% is not provided.
+%    \begin{macrocode}
+\def\problems@parse#1#2#3#4{%
+    \def\problems@parse@save@exec{#1}%
+    \def\problems@parse@save@autolabel@advance{#2}%
+    \def\problems@parse@save@autolabel{#3}%
+    \def\problems@parse@save@automark{#4}%
+    \problems@parse@label}
+\def\problems@parse@label{%
+    \@ifnextchar[\problems@parse@setlabel\problems@parse@autolabel}
+\def\problems@parse@setlabel[#1]{%
+    \def\problems@parse@save@label{#1}%
+    \problems@parse@mark}
+\def\problems@parse@autolabel{%
+    \problems@parse@save@autolabel@advance%
+    \let\problems@parse@save@label\problems@parse@save@autolabel%
+    \problems@parse@mark}
+\def\problems@parse@mark{%
+    \@ifnextchar<\problems@parse@setmark\problems@parse@automark}
+\def\problems@parse@setmark<#1>{%
+    \def\problems@parse@save@mark{#1}%
+    \problems@parse@exec}
+\def\problems@parse@automark{%
+    \let\problems@parse@save@mark\problems@parse@save@automark%
+    \problems@parse@exec}
+\def\problems@parse@exec{%
+    \edef\problems@parse@save{\noexpand\problems@parse@save@exec%
+        {\expandonce\problems@parse@save@label}%
+        {\expandonce\problems@parse@save@mark}}%
+    \problems@parse@save}
+%    \end{macrocode}
+% \end{macro}
+%
+% \subsection{Definitions of public macros}
+%
+% \begin{macro}{\problem}
+%    \begin{macrocode}
+\newcommand\problem{\problems@parse%
+    {\problem@}{\problemlabelauto@advance}{\problemlabelauto}{}}
+%    \end{macrocode}
+% \end{macro}
+%
+% \begin{macro}{\subproblem}
+%    \begin{macrocode}
+\newcommand\subproblem{\problems@parse%
+    {\subproblem@}{\subproblemlabelauto@advance}{\subproblemlabelauto}{}}
+%    \end{macrocode}
+% \end{macro}
+%
+% \subsection{Definitions of legacy public macros}
+%
+% \begin{macro}{\problemy}
+% \begin{macro}{\problemx}
+% \begin{macro}{\problemyx}
+% These macros should no longer be used.
+%    \begin{macrocode}
+\newcommand\problemx [1]{\problem<#1>}
+\newcommand\problemy [1]{\problem[#1]\relax}
+\newcommand\problemyx[2]{\problem[#1]<#2>}
+%    \end{macrocode}
+% \end{macro}
+% \end{macro}
+% \end{macro}
+%
+% \begin{macro}{\subproblemy}
+% \begin{macro}{\subproblemx}
+% \begin{macro}{\subproblemyx}
+% These macros should no longer be used.
+%    \begin{macrocode}
+\newcommand\subproblemx [1]{\subproblem<#1>}
+\newcommand\subproblemy [1]{\subproblem[#1]\relax}
+\newcommand\subproblemyx[2]{\subproblem[#1]<#2>}
+%    \end{macrocode}
+% \end{macro}
+% \end{macro}
+% \end{macro}
+%
+% \subsection{Numbering}
+%
+% \begin{macro}{\setproblem}
+% \begin{macro}{\resetproblem}
+% Underlying counter for |\problem| (and |\item| within |problems|).
+%    \begin{macrocode}
+\newcounter{problem}
+\newcounter{exercise}
+\newcommand\setproblem[1]{\setcounter{problem}{#1}}
+\newcommand\setexercise[1]{\setcounter{exercise}{#1}}
+\newcommand\problemcounter{problem}
+\newcommand\resetproblem{%
+    \setcounter{\problemcounter}{0}%
+    \ifdefstring{\problemcounter}{problem}{}{%
+        \setcounter{problem}{0}%
+    }%
+    \ifdefstring{\problemcounter}{exercise}{}{%
+        \setcounter{exercise}{0}%
+    }%
+    \resetsubproblem}
+\newcommand\problemlabelauto@advance{%
+    \stepcounter{\problemcounter}}
+\providecommand\problemlabelauto{%
+    \arabic{\problemcounter}}
+%    \end{macrocode}
+% \end{macro}
+% \end{macro}
+%
+% \begin{macro}{\resetsubproblem}
+% Underlying counter for |\subproblem|.
+%    \begin{macrocode}
+\newcounter{subproblem}
+\newcommand\subproblemcounter{subproblem}
+\newcommand\resetsubproblem{%
+    \setcounter{\subproblemcounter}{0}%
+    \ifdefstring{\subproblemcounter}{subproblem}{}{%
+        \setcounter{subproblem}{0}%
+    }%
+}
+\newcommand\subproblemlabelauto@advance{%
+    \stepcounter{\subproblemcounter}}
+\providecommand\subproblemlabelauto{%
+    \alph{\subproblemcounter}}
+%    \end{macrocode}
+% \end{macro}
+%
+% \subsection{Structural macros}
+%
+% \begin{macro}{\problem@}
+% This macro boils down to |\problem@setlabel| and |\problem@format|,
+% which are defined later.
+% The former allows |\label| to be used to reference the problem, while the
+% latter produces the visible output.
+%    \begin{macrocode}
+\newcommand\problem@[2]{%
+    \problem@setlabel{#1}\resetsubproblem%
+    \problem@format{#1}{#2}%
+    \maybephantomsection%
+    \problem@space}
+%    \end{macrocode}
+% \end{macro}
+%
+% \begin{macro}{\subproblem@}
+% This macro boils down to |\subproblem@setlabel| and |\subproblem@format|,
+% which are defined later.
+% The former allows |\label| to be used to reference the subproblem, while the
+% latter produces the visible output.
+%    \begin{macrocode}
+\newcommand\subproblem@[2]{%
+    \subproblem@setlabel{#1}%
+    \subproblem@format{#1}{#2}%
+    \maybephantomsection%
+    \unless\if@inlabel%
+        \ifmmode\subproblem@space@math\else\subproblem@space\fi
+    \fi
+}
+%    \end{macrocode}
+% \end{macro}
+%
+% \subsection{Labeling}
+%
+% \begin{macro}{\problem@setlabel}
+% Manage labeling by directly setting |\@currentlabel|.
+%    \begin{macrocode}
+\newcommand\problem@setlabel[1]{%
+    \global\edef\theproblem{#1}%
+    \edef\@currentlabel{\theproblem}}
+%    \end{macrocode}
+% \end{macro}
+%
+% \begin{macro}{\subproblem@setlabel}
+% Label of subproblem will include the number of problem.
+%    \begin{macrocode}
+\let\subproblem@label@problem\@empty
+\let\subproblem@label@paren\@gobble
+\newcommand\subproblem@setlabel[1]{%
+    \global\edef\thesubproblem{%
+        \string\subproblem@label@problem{\theproblem}%
+        \string\subproblem@label@paren(%
+        #1%
+        \string\subproblem@label@paren)}%
+    \edef\@currentlabel{\thesubproblem}}
+%    \end{macrocode}
+% \end{macro}
+%
+% \begin{macro}{\subproblemref}
+% As the number of problem is enclosed in a special command, by redefining that
+% command we can omit it.
+%    \begin{macrocode}
+\newcommand\subproblemref{\@ifstar\subproblemref@star\subproblemref@}
+\newcommand\subproblemref@[1]{\begingroup
+    \let\subproblem@label@paren\@empty
+    \let\subproblem@label@problem\@gobble
+    \ref{#1}%
+\endgroup}
+\newcommand\subproblemref@star[1]{\begingroup
+    \let\subproblem@label@paren\@empty
+    \let\subproblem@label@problem\@gobble
+    \ref*{#1}%
+\endgroup}
+%    \end{macrocode}
+% \end{macro}
+%
+% \subsection{Formatting}
+%
+% \begin{macro}{\problem@format}
+% \begin{macro}{\problem@space}
+% \begin{macro}{\problemformattext}
+%    \begin{macrocode}
+\newlength\problem@space@length
+\problem@space@length=1em
+\newcommand\problem@space{\hspace{\problem@space@length}\ignorespaces}
+\newcommand\problemformattext{\bfseries}
+\newcommand\problem@format@compose[2]{\begingroup
+    \def\problem@format@label@{#1}%
+    \ifdefempty{\problem@format@label@}{}{\problem@format@label@.}%
+    \endgroup\rlap{\!#2}}
+\newcommand\problem@format[2]{\begingroup\problemformattext%
+    \problem@format@compose{#1}{#2}%
+\endgroup}
+%    \end{macrocode}
+% \end{macro}
+% \end{macro}
+% \end{macro}
+%
+% \begin{macro}{\subproblem@format}
+% \begin{macro}{\subproblem@space}
+% \begin{macro}{\subproblemformattext}
+%    \begin{macrocode}
+\newlength\subproblem@space@length
+\newlength\@subproblem@letter@width
+\subproblem@space@length=0.5em
+\newcommand\subproblem@space{\hspace{\subproblem@space@length}\ignorespaces}
+\newcommand\subproblem@space@math{\mspace{20mu}}
+\newcommand\subproblemformattext{\problemformattext}
+\newcommand\subproblem@format@compose[2]{(\problems@stretchto%
+    {\problems@kernagainst{#1#2}{(}{)}}%
+    {\problems@kernagainst{n#2}{(}{)}}%
+)}
+\newcommand\subproblem@format[2]{\text{\begingroup\subproblemformattext
+    \subproblem@format@compose{#1}{#2}%
+\endgroup}}
+%    \end{macrocode}
+% \end{macro}
+% \end{macro}
+% \end{macro}
+%
+% \subsection{The Environment}
+%
+% \begin{environment}{problems}
+% Environment |problems| is a |list| with counter set to |\problemcounter|,
+% along with some formatting tuning.
+%    \begin{macrocode}
+\newenvironment{problems}{%
+%    \end{macrocode}
+% Legacy macros |\itemx|, |\itemy| and |\itemyx| are defined only inside the
+% environment. They should not be used anymore.
+%    \begin{macrocode}
+    \let\itemx\problems@itemx
+    \let\itemy\problems@itemy
+    \let\itemyx\problems@itemyx
+%    \end{macrocode}
+% This will be the LABEL argument to |list|.
+% Macro |\problems@LABEL@mark| will be defined in each occurence of |\item|.
+%    \begin{macrocode}
+    \def\problems@LABEL{%
+        \problem@format@compose%
+            {\problemlabelauto}%
+            {\problems@LABEL@mark}}%
+    \begin{list}{\problems@LABEL}{%
+        \let\makelabel\problems@mklab%
+        \leftmargin=2.45em%
+        \labelsep=\problem@space@length%
+%    \end{macrocode}
+% We cannot use |\usecounter|, because it resets the counter.
+% So we will just copy most of its definition here.
+%    \begin{macrocode}
+        \@nmbrlisttrue\def\@listctr{\problemcounter}%
+%    \end{macrocode}
+%    \begin{macrocode}
+    }%
+%    \end{macrocode}
+% Replace |\item| macro.
+%    \begin{macrocode}
+    \let\problems@orig@item\item%
+    \let\item\problems@item%
+%    \end{macrocode}
+%    \begin{macrocode}
+}{\end{list}}
+%    \end{macrocode}
+%
+%    \begin{macrocode}
+\let\problem@in@item@current\problem@in@item
+\newcommand\problems@mklab[1]{\@mklab{\problemformattext #1}}%
+\def\problems@item{%
+    \resetsubproblem%
+    \let\problems@item@unparse\problems@item@unparse@label%
+    \problems@parse%
+        {\problems@item@unparse}%
+        {\let\problems@item@unparse\problems@item@unparse@nolabel}%
+        {}{}}%
+\newcommand\problems@item@unparse@label[2]{%
+    \def\problems@LABEL@mark{#2}%
+    \problems@orig@item[\problem@format@compose{#1}{#2}]%
+    \maybephantomsection%
+    \problem@setlabel{#1}}
+\newcommand\problems@item@unparse@nolabel[2]{%
+    \def\problems@LABEL@mark{#2}%
+    \def\theproblem{\problemlabelauto}%
+    \problems@orig@item\relax}
+\newcommand\problems@itemx[1]{\item<#1>}
+\newcommand\problems@itemy[1]{\item[#1]\relax}
+\newcommand\problems@itemyx[2]{\item[#1]<#2>}
+%    \end{macrocode}
+% \end{environment}
+%
+% \begin{environment}{exercises*}
+% \begin{environment}{exercises}
+% Alter the appearance of problems and change the counter.
+%    \begin{macrocode}
+\newenvironment{exercises*}{%
+    \renewcommand\problemformattext{\mdseries}%
+    \renewcommand\problemcounter{exercise}%
+}{}
+\newenvironment{exercises}{%
+    \begin{exercises*}%
+    \begin{problems}%
+}{%
+    \end{problems}%
+    \end{exercises*}%
+}
+%    \end{macrocode}
+% \end{environment}
+% \end{environment}
+%
+%    \begin{macrocode}
+%</package>
+%    \end{macrocode}
+%
+% \Finale
+%
+\endinput

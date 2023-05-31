@@ -1,14 +1,13 @@
 style:
   source/_style/core.yaml: style-core.yaml
-  source/_style/jeolm.dtx: jeolm.dtx
-  source/_style/jeolm.yaml: jeolm.yaml
+  source/_style/jeolmcompat.sty: jeolmcompat.sty
+  source/_style/jeolmfigure.sty: jeolmfigure.sty
+  source/_style/jeolmsymbol.sty: jeolmsymbol.sty
+  source/_style/problems.sty: problems.sty
+  source/_style/worksheet.sty: worksheet.sty
 
 style-lualatex:
   source/_style/lualatex.yaml: style-lualatex.yaml
-
-style-groups:
-  source/_style/jeolm-groups.sty: jeolm-groups.sty
-  source/_style/jeolm-groups.yaml: jeolm-groups.yaml
 
 gitignore:
   .gitignore: gitignore

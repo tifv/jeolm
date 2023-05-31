@@ -1,0 +1,273 @@
+% \iffalse
+% This is file “worksheet.sty”.
+% It is placed by July Tikhonov in the public domain.
+%<*package>
+\NeedsTeXFormat{LaTeX2e}
+\ProvidesPackage{worksheet}
+    [2021-12-18 v0.9.1 worksheet headers]
+%</package>
+% \fi
+%
+% \providebool{altmaindoc}\ifaltmaindoc
+% \csuse{partialtableofcontents}
+% \else ^^A \ifaltmaindoc
+%
+% \GetFileInfo{worksheet.sty}
+%
+% \title{The \textsf{worksheet} package\footnote{The file has version number~\fileversion\ dated \filedate}}
+%
+% \author{July Tikhonov \\ \texttt{july.tikh@gmail.com}}
+%
+% \maketitle
+% \tableofcontents
+%
+% \fi ^^A \ifaltmaindoc
+%
+% \DoNotIndex{\let,\def,\edef}
+% \DoNotIndex{\fi,\par}
+% \DoNotIndex{\DeclareOption,\ProcessOptions,\RequirePackage}
+%
+% \section{Description}
+%
+% \DescribeMacro{\worksheet}
+% \DescribeMacro{\worksheetheader}
+% TBD
+%
+% \DescribeMacro{\courseinstitution}
+% \DescribeMacro{\coursedaterange}
+% \DescribeMacro{\worksheetgroups}
+% \DescribeMacro{\worksheetauthors}
+% \DescribeMacro{\worksheetdate}
+% TBD
+%
+% \subsection{Compatibility}
+%
+% \DescribeMacro{\jeolmheader}
+% TBD
+%
+% \DescribeMacro{\jeolminstitution}
+% \DescribeMacro{\jeolmdaterange}
+% \DescribeMacro{\jeolmgroup}
+% \DescribeMacro{\jeolmgroupname}
+% \DescribeMacro{\jeolmauthors}
+% \DescribeMacro{\jeolmdate}
+% TBD
+%
+% \section{Implementation}
+%
+%    \begin{macrocode}
+%<*package>
+%    \end{macrocode}
+%
+%    \begin{macrocode}
+\newtoggle{worksheet@oldstyle} \togglefalse{worksheet@oldstyle}
+\DeclareOption{oldstyle}{\toggletrue{worksheet@oldstyle}}
+\ProcessOptions\relax
+%    \end{macrocode}
+%
+%    \begin{macrocode}
+\newcommand\courseinstitution{%
+    \string\def\string\courseinstitution\{???\}}
+\newcommand\coursedaterange{%
+    \string\def\string\coursedaterange\{???\}}
+\newcommand\worksheetgroups{%
+    \string\def\string\worksheetgroups\{???\}}
+\def\worksheetgroupnameone{group}%
+\def\worksheetgroupnamemany{groups}%
+\gappto\captionsenglish{%
+    \def\worksheetgroupnameone{group}%
+    \def\worksheetgroupnamemany{groups}%
+}
+\gappto\captionsrussian{%
+    \def\worksheetgroupnameone{группа}%
+    \def\worksheetgroupnamemany{группы}%
+}
+\newcommand\worksheetgroupname{%
+    \begingroup\edef\x{\noexpand\endgroup\noexpand\in@{,}{\worksheetgroups}}\x%
+    \ifin@ \worksheetgroupnamemany:\else \worksheetgroupnameone\fi%
+}
+\newcommand\worksheetauthors{}
+\newcommand\worksheetdate{}
+\newcommand\worksheetmakegroups[1][]{%
+    \ifdefvoid{\worksheetgroups}{}{\begingroup
+        \def\worksheetgroupname@{#1}%
+        \ifdefempty{\worksheetgroupname@}{}%
+            {\begingroup\small\worksheetgroupname@\endgroup\enspace}%
+        \worksheetgroups%
+    \endgroup}%
+}
+%    \end{macrocode}
+%
+% \begin{macro}{\worksheetheader}
+%    \begin{macrocode}
+\newcommand\worksheetheader{\iftoggle{worksheet@oldstyle}%
+    {\worksheetheader@oldstyle}%
+    {\worksheetheader@newstyle}%
+}
+%    \end{macrocode}
+% \end{macro}
+%
+% \begin{macro}{\worksheetheader@newstyle}
+%    \begin{macrocode}
+\newcommand\worksheetheader@newstyle{%
+    \par\begin{minipage}{\linewidth}
+    \small\sffamily%
+        \newbox\institutionbox%
+        \savebox\institutionbox{\bfseries[\courseinstitution]}%
+        \newbox\authorsbox%
+        \savebox\authorsbox{\worksheetauthors}%
+        \noindent%
+        \ifdimless{\wd\institutionbox + 2em + \wd\authorsbox}{\linewidth}{%
+            \unhbox\institutionbox%
+            \hskip 2em plus 1fill\relax%
+            \unhbox\authorsbox%
+        }{%
+            \ifboolexpr{
+                test {\ifdimless{\wd\institutionbox}{\linewidth}} and
+                test {\ifdimless{\wd\authorsbox}{\linewidth}}
+            }{%
+                \unhbox\institutionbox\hfill\\\null\hfill\unhbox\authorsbox%
+            }{%
+                \begingroup
+                \leftskip 0pt plus 1fil\relax%
+                \rightskip 0pt\relax%
+                \parfillskip 0pt\relax%
+                \hskip 0pt plus -1fil%
+                \unhbox\institutionbox%
+                \hskip 2em plus 1fill\relax%
+                \unhbox\authorsbox%
+                \par\endgroup%
+            }%
+        }%
+        \par
+        \newbox\daterangebox%
+        \savebox\daterangebox{\upshape[\itshape\coursedaterange\/\upshape]}%
+        \newbox\groupbox%
+        \savebox\groupbox{\large\worksheetmakegroups[\worksheetgroupname]}%
+        \newbox\datebox%
+        \ifdefvoid{\worksheetdate}{}%
+            {\savebox\datebox{\itshape\worksheetdate}}%
+        \noindent
+        \ifdimless%
+            {\wd\daterangebox + 2em + \wd\groupbox + 2em + \wd\datebox}%
+            {\linewidth}%
+        {%
+            \unhbox\daterangebox%
+            \hskip 2em plus 1fill\relax\unhbox\groupbox%
+            \ifdefvoid{\worksheetdate}{}{%
+                \hskip 2em plus 1fill\relax\unhbox\datebox}%
+        }{%
+            \ifboolexpr{
+                test {\ifdimless{\wd\daterangebox + 2em
+                    + \wd\datebox}{\linewidth}} and
+                test {\ifdimless{\wd\groupbox}{\linewidth}}
+            }{%
+                \unhbox\daterangebox\hskip 2em plus 1fill\relax%
+                    \unhbox\datebox\\%
+                \null\hfill\unhbox\groupbox%
+                \ifdefvoid{\worksheetdate}{}{%
+                    \hfill\null%
+                }%
+            }{%
+                \begingroup
+                \leftskip 0pt plus 1fil\relax%
+                \rightskip 0pt\relax%
+                \parfillskip 0pt\relax%
+                \hskip 0pt plus -1fil%
+                \unhbox\daterangebox
+                \hskip 2em plus 1fill\relax%
+                \unhbox\groupbox%
+                \ifdefvoid{\worksheetdate}{}{%
+                    \hskip 2em\relax%
+                    \unhbox\datebox}%
+                \par\endgroup%
+            }%
+        }
+        \par%
+        \rule[1ex]{\textwidth}{0.5pt}%
+    \end{minipage}%
+    \@nobreaktrue\vspace{1ex}\par%
+}
+%    \end{macrocode}
+% \end{macro}
+%
+% \begin{macro}{\worksheetheader@oldstyle}
+%    \begin{macrocode}
+\newcommand\worksheetheader@oldstyle{%
+    \par\begin{minipage}{\linewidth}
+    \small\sffamily%
+        \leavevmode\null\hfill%
+            {\bfseries\courseinstitution}%
+        \hfill\null
+        \par
+        \newbox\datebox%
+        \ifdefvoid{\worksheetdate}{}%
+            {\savebox\datebox{\itshape\worksheetdate}}%
+        \leavevmode\null\hfill%
+            {\itshape\coursedaterange}%
+        \qquad
+            {\worksheetmakegroups}%
+        \ifdimequal{\wd\datebox}{0pt}{}{%
+            \qquad\unhbox\datebox}%
+        \hfill\null
+        \par%
+        \rule[1ex]{\textwidth}{0.5pt}%
+    \end{minipage}%
+    \@nobreaktrue\vspace{1ex}\par%
+}
+%    \end{macrocode}
+% \end{macro}
+%
+% \begin{macro}{\worksheet}
+%    \begin{macrocode}
+\newskip\worksheet@afterskip
+\worksheet@afterskip 2.3ex \@plus .2ex
+\newcommand\worksheet@{
+    \if@nobreak\vskip-\worksheet@afterskip\fi
+    \@startsection%
+        {section}%                          name
+        {1}%                                level
+        {\z@}%                              indent
+        {3.5ex \@plus 1ex \@minus .2ex}%    beforeskip
+        {\worksheet@afterskip}%             afterskip
+        {\normalfont\Large\bfseries}%       style
+}
+\newcommand\worksheet@star{\worksheet@*}
+\newif\ifworksheetnumerated
+\worksheetnumeratedfalse
+\newcommand\worksheet[1]{%
+    \ifbool{worksheetnumerated}{%
+        \worksheet@%
+    }{%
+        \worksheet@star%
+    }{#1}%
+}
+%    \end{macrocode}
+% \end{macro}
+%
+% \begin{macro}{\jeolmheader}
+% These macros are for compatibility only.
+%    \begin{macrocode}
+\newcommand\jeolmheader{\begingroup
+    \def\courseinstitution{\jeolminstitution}%
+    \def\coursedaterange{\jeolmdaterange}%
+    \def\worksheetgroups{\ifdefvoid{\jeolmgroupname}{\jeolmgroup}{\jeolmgroupname}}%
+    \def\worksheetauthors{\jeolmauthors}%
+    \def\worksheetdate{\jeolmdate}%
+    \worksheetheader
+\endgroup}
+\newcommand\jeolminstitution{Wherever}
+\newcommand\jeolmgroup{Whatever}
+\newcommand\jeolmdaterange{Whenever}
+\let\jeolmauthors\relax
+\let\jeolmdate\relax
+%    \end{macrocode}
+% \end{macro}
+%
+%    \begin{macrocode}
+%</package>
+%    \end{macrocode}
+%
+% \Finale
+%
+\endinput

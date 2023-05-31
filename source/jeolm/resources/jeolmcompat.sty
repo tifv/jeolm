@@ -1,0 +1,79 @@
+% \iffalse
+% This is file “jeolmcompat.sty”.
+% It is placed by July Tikhonov in the public domain.
+%<*package>
+\NeedsTeXFormat{LaTeX2e}
+\ProvidesPackage{jeolmcompat}
+    [2021-12-18 v0.0 unknown]
+%</package>
+% \fi
+%
+% \providebool{altmaindoc}\ifaltmaindoc
+% \csuse{nopartialtableofcontents}
+% \else ^^A \ifaltmaindoc
+%
+% \GetFileInfo{jeolmcompat.sty}
+%
+% \title{The \textsf{jeolmcompat} package\footnote{The file has version number~\fileversion\ dated \filedate}}
+%
+% \author{July Tikhonov \\ \texttt{july.tikh@gmail.com}}
+%
+% \maketitle
+% \tableofcontents
+%
+% \fi ^^A \ifaltmaindoc
+%
+% \DoNotIndex{\let,\def,\edef}
+% \DoNotIndex{\fi,\par}
+% \DoNotIndex{\DeclareOption,\ProcessOptions,\RequirePackage}
+%
+%    \begin{macrocode}
+%<*package>
+%    \end{macrocode}
+%
+% \begin{macro}{\jeolmlabel}
+% \begin{macro}{\jeolmref}
+% \begin{macro}{\jeolmeqref}
+% \begin{macro}{\jeolmsubproblemref}
+% \begin{environment}{jeolmlabelspace}
+% Redirect labels, allowing multiple inclusion of source files (provided that
+% these files use |\jeolmlabel| and |\jeolmref| instead of normal commands).
+%    \begin{macrocode}
+\newcommand\jeolmlabel[1]{\label{#1}}
+\newcommand\jeolmref[1]{\ref{#1}}
+\newcommand\jeolmeqref[1]{\eqref{#1}}
+\newcommand\jeolmsubproblemref[1]{\subproblemref{#1}}
+\newenvironment{jeolmlabelspace}[1]{%
+    \renewcommand\jeolmlabel[1]{\label{#1:##1}}%
+    \renewcommand\jeolmref[1]{\ref{#1:##1}}%
+    \renewcommand\jeolmeqref[1]{\eqref{#1:##1}}%
+    \renewcommand\jeolmsubproblemref[1]{\subproblemref{#1:##1}}%
+}{}
+%    \end{macrocode}
+% \end{environment}
+% \end{macro}
+% \end{macro}
+% \end{macro}
+% \end{macro}
+%
+% \begin{macro}{\jeolmdisplayperiod}
+%    \begin{macrocode}
+\newcommand\jeolmdisplayperiod[1]{пара #1}
+%    \end{macrocode}
+% \end{macro}
+%
+% \begin{macro}{\claim}
+% Recommended use is |\begin{claim}{|\meta{name}|} … \end{claim}|.
+%    \begin{macrocode}
+\newcommand\claim[1]{\claim@format{#1}}
+\newcommand\claim@format[1]{\noindent\textbf{#1.\enspace}\ignorespaces}
+%    \end{macrocode}
+% \end{macro}
+%
+%    \begin{macrocode}
+%</package>
+%    \end{macrocode}
+%
+% \Finale
+%
+\endinput
