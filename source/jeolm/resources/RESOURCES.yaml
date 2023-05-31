@@ -6,6 +6,9 @@ style:
   source/_style/problems.sty: problems.sty
   source/_style/worksheet.sty: worksheet.sty
 
+style-xelatex:
+  source/_style/xelatex.yaml: style-xelatex.yaml
+
 style-lualatex:
   source/_style/lualatex.yaml: style-lualatex.yaml
 

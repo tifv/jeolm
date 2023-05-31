@@ -1,0 +1,5 @@
+compiler-selection:
+
+  $style[default-compiler,-xelatex-compiler-select-guard]:
+  - .[xelatex,-default-compiler]
+
