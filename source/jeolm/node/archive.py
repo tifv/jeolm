@@ -11,6 +11,7 @@ import zipfile
 from jeolm.node import Node, FilelikeNode, FileNode
 from jeolm.node.text import TextNode, VarTextNode, SimpleTextNode
 from jeolm.node.cyclic import AutowrittenNeed
+from jeolm.node.symlink import ProxyNode
 
 from . import Command
 
@@ -171,12 +172,12 @@ class BaseArchiveNode(FileNode):
         if path in self.archive_content:
             raise ValueError(
                 f"Path already added to archive: {path}, "
-                f"old_node: {self.archive_content[path].name}, "
-                f"new_node: {node.name}")
+                f"old_node: {self.archive_content[path]}, "
+                f"new_node: {node}")
         self.append_needs(node)
         self.archive_content[path] = node
 
-    _skipped_nodes = (AutowrittenNeed, VarTextNode)
+    _skipped_nodes = (AutowrittenNeed, VarTextNode, ProxyNode)
 
     def archive_add_tree( self, root_node: Node,
         *,
