@@ -2197,7 +2197,7 @@ class RegularDriver(Driver): # {{{1
         return cls.date_def_template.substitute(date=date_s)
 
     date_def_template = Template(
-        r'\def\jeolmdate{$date}%' )
+        r'\def\worksheetdate{$date}%' )
 
     @classmethod
     def _constitute_date(cls, date: Union[str, DatePeriod]) -> str:
@@ -2246,16 +2246,16 @@ class RegularDriver(Driver): # {{{1
             return ', '.join(author.abbr for author in author_list)
 
     authors_def_template = Template(
-        r'\def\jeolmauthors{$authors}%' )
+        r'\def\worksheetauthors{$authors}%' )
 
     usepackage_template = Template(
         r'\usepackage$options{$package}' )
     resetproblem_template = Template(
         r'\resetproblem' )
     jeolmheader_begin_template = Template(
-        r'\begingroup % \jeolmheader' )
+        r'\begingroup % \worksheetheader' )
     jeolmheader_end_template = Template(
-        r'\jeolmheader \endgroup' )
+        r'\worksheetheader \endgroup' )
     jeolmfigure_template = Template(
         r'\jeolmfigure$options{$figure_ref}' )
 

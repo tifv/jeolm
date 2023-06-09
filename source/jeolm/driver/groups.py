@@ -188,6 +188,7 @@ class GroupsDriver(RegularDriver):
             raise DriverError
         return self._min_date(date_groups[group] for group in target_groups)
 
-    groupname_def_template = Template(r'\def\jeolmgroupname{$group_name}%')
+    groupname_def_template = Template(
+        r'\def\worksheetgroups{$group_name}%')
 
 
